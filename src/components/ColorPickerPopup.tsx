@@ -219,7 +219,7 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
       {/* 1. Main Gradient Area (Saturation/Brightness) */}
       <div 
         ref={mainAreaRef}
-        onMouseDown={(e) => { isDraggingMain.current = true; handleMainDrag(e.clientX, e.clientY); }}
+        onMouseDown={(e) => { e.stopPropagation(); isDraggingMain.current = true; handleMainDrag(e.clientX, e.clientY); }}
         className="w-full h-[220px] rounded-[8px] relative overflow-hidden shadow-[inset_0_0_2px_rgba(0,0,0,0.1)] cursor-crosshair"
         style={{ backgroundColor: baseHueColor }}
       >
@@ -247,7 +247,7 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
       {/* 2. Hue Slider */}
       <div 
         ref={hueSliderRef}
-        onMouseDown={(e) => { isDraggingHue.current = true; handleHueDrag(e.clientX); }}
+        onMouseDown={(e) => { e.stopPropagation(); isDraggingHue.current = true; handleHueDrag(e.clientX); }}
         className="mt-[20px] relative w-full h-[14px] rounded-full shadow-[inset_0_0_2px_rgba(0,0,0,0.2)] cursor-pointer" 
         style={{ background: 'linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)' }}
       >

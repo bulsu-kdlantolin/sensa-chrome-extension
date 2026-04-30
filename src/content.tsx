@@ -15,6 +15,7 @@ import type { SensaUserProfile } from "./lib/storage"
 import { useSpeech } from "./hooks/useSpeech"
 import { useVoiceNavigation } from "./hooks/useVoiceNavigation"
 import { useLiveCaptions } from "./hooks/useLiveCaptions"
+import { useAudioFrequencyAnalysis } from "./hooks/useAudioFrequencyAnalysis"
 
 export const config: PlasmoCSConfig = {
   matches: ["<all_urls>"]
@@ -117,6 +118,9 @@ export default function FloatingDockManager() {
     isAuditoryModeActive && isCaptionsActive,
     targetLanguage,
     auditorySettings.showOriginalText
+  )
+  const { frequencyData, borderFlash } = useAudioFrequencyAnalysis(
+    isAuditoryModeActive && isCaptionsActive
   )
 
   useEffect(() => {
@@ -314,6 +318,25 @@ export default function FloatingDockManager() {
   // Notice how the return now uses <> ... </> to group the Modal and the Dock separately
   return (
     <>
+      {/* 🎯 VISUAL SOUND RADAR: Border Flash Animation */}
+      {borderFlash.isFlashing && (
+        <div
+          className="fixed inset-0 pointer-events-none z-[99998]"
+          style={{
+            borderWidth: "8px",
+            borderStyle: "solid",
+            borderColor:
+              borderFlash.color === "red"
+                ? `rgba(255, 0, 0, ${borderFlash.intensity / 100})`
+                : `rgba(0, 200, 0, ${borderFlash.intensity / 100})`,
+            boxShadow:
+              borderFlash.color === "red"
+                ? `inset 0 0 40px rgba(255, 0, 0, ${borderFlash.intensity / 100 * 0.5}), 0 0 60px rgba(255, 0, 0, ${borderFlash.intensity / 100 * 0.3})`
+                : `inset 0 0 30px rgba(0, 200, 0, ${borderFlash.intensity / 100 * 0.3})`
+          }}
+        />
+      )}
+
       {/* 1. THE SETTINGS MODAL (Floats dead center, outside the drag logic) */}
       {isVisualSettingsOpen && (
         <VisualSettingsModal onClose={() => setIsVisualSettingsOpen(false)} />
@@ -440,6 +463,7 @@ export default function FloatingDockManager() {
               chrome.storage.local.set({ sensa_auditory_focus_mode: next })
             }}
             onOpenSettings={() => setIsAuditorySettingsOpen(true)}
+            frequencyData={frequencyData}
             onClose={() => {
               deactivateDock()
               setIsCaptionLanguageOpen(false)

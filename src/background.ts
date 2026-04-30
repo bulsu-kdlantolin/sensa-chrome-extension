@@ -123,13 +123,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         const streamId = await getStreamIdWithRetry(targetTabId)
 
-        chrome.runtime.sendMessage({
-          type: "EXECUTE_OFFSCREEN_CAPTURE",
-          streamId,
-          targetLang: message.targetLang,
-          targetTabId
+        // 🚨 THE FIX: Read chrome.storage here where it is safe, then pass deviceId!
+        chrome.storage.local.get(["sensa_auditory_settings"], (res) => {
+          const deviceId = res?.sensa_auditory_settings?.outputDevice || "default"
+
+          chrome.runtime.sendMessage({
+            type: "EXECUTE_OFFSCREEN_CAPTURE",
+            streamId,
+            targetLang: message.targetLang,
+            targetTabId,
+            deviceId // Passed safely to the offscreen document
+          })
+          sendResponse({ ok: true })
         })
-        sendResponse({ ok: true })
       } catch (err) {
         sendResponse({ ok: false, error: String(err) })
       }
@@ -167,38 +173,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false
   }
 
-  // --- FETCH GOOGLE FONTS (background fallback) ---
-  if (message?.type === "FETCH_GOOGLE_FONTS") {
-    ;(async () => {
-      try {
-        const key = typeof message?.key === "string" ? message.key : ((import.meta as any).env?.VITE_GOOGLE_FONTS_API_KEY || (import.meta as any).env?.PLASMO_PUBLIC_GOOGLE_FONTS_API_KEY)
-
-        if (!key) {
-          sendResponse({ ok: false, error: "Missing API key in background" })
-          return
-        }
-
-        const res = await fetch(`https://www.googleapis.com/webfonts/v1/webfonts?key=${key}&sort=popularity`)
-        if (!res.ok) {
-          sendResponse({ ok: false, error: `Status ${res.status}` })
-          return
-        }
-
-        const data = await res.json()
-        if (!Array.isArray(data.items)) {
-          sendResponse({ ok: false, error: "Unexpected response shape" })
-          return
-        }
-
-        sendResponse({ ok: true, items: data.items })
-      } catch (err) {
-        sendResponse({ ok: false, error: String(err) })
-      }
-    })()
-    return true
-  }
-
-  // 5. FETCH GOOGLE FONTS (Bypasses YouTube's strict CSP!)
+  // --- FETCH GOOGLE FONTS (Bypasses YouTube's strict CSP!) ---
   if (message?.type === "FETCH_GOOGLE_FONTS") {
     ;(async () => {
       try {

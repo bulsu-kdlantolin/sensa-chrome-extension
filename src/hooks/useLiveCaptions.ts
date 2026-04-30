@@ -3,11 +3,21 @@ import { useEffect, useRef, useState } from "react"
 export function useLiveCaptions(isActive: boolean, targetLanguage: string, showOriginalText: boolean) {
   const [captions, setCaptions] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  
+  // Refs ensure we always have the latest value without triggering re-renders!
   const targetLanguageRef = useRef(targetLanguage)
+  const showOriginalTextRef = useRef(showOriginalText)
 
   useEffect(() => {
     targetLanguageRef.current = targetLanguage
+  }, [targetLanguage])
 
+  useEffect(() => {
+    showOriginalTextRef.current = showOriginalText
+  }, [showOriginalText])
+
+  // 1. Silently update the backend language WITHOUT restarting the audio stream
+  useEffect(() => {
     if (!isActive) return
 
     chrome.runtime.sendMessage({
@@ -16,6 +26,7 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
     })
   }, [targetLanguage, isActive])
 
+  // 2. THE AUDIO ENGINE: This should ONLY run when isActive turns on or off
   useEffect(() => {
     if (!isActive) {
       chrome.runtime.sendMessage({ type: "STOP_CAPTURE" })
@@ -57,7 +68,7 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
         console.log(`📡 [Sensa Background]: ${msg.message}`)
       }
       if (msg.type === "CAPTION_UPDATE" && msg.text) {
-        if (!showOriginalText && msg.source === "original") return
+        if (!showOriginalTextRef.current && msg.source === "original") return
         setCaptions((prev) => [...prev, msg.text].slice(-4))
       }
     }
@@ -69,7 +80,8 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
       chrome.runtime.onMessage.removeListener(handleMessage)
       chrome.runtime.sendMessage({ type: "STOP_CAPTURE" })
     }
-  }, [isActive, showOriginalText])
+  // 🚨 FIX: Removed targetLanguage from this array so the audio engine never restarts unnecessarily!
+  }, [isActive]) 
 
   return { captions, error }
 }

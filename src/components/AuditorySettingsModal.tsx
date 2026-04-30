@@ -83,8 +83,8 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
                     if (res.ok) {
                         const data = await res.json()
                         if (!cancelled && Array.isArray(data.items)) {
-                            // 🚨 NO LIMIT: Downloads all 1,600+ fonts
-                            setGoogleFonts(data.items.map((it: any) => ({ family: it.family })))
+                            // Downloads the top 100 most popular, highly legible fonts in the world
+                            setGoogleFonts(data.items.slice(0, 100).map((it: any) => ({ family: it.family })))
                             return
                         }
                     }
@@ -92,8 +92,8 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
 
                 chrome.runtime.sendMessage({ type: "FETCH_GOOGLE_FONTS" }, (response) => {
                     if (!cancelled && response?.ok && Array.isArray(response.items)) {
-                        // 🚨 NO LIMIT: Downloads all 1,600+ fonts
-                        setGoogleFonts(response.items.map((it: any) => ({ family: it.family })))
+                        // Downloads the top 100 most popular, highly legible fonts in the world
+                        setGoogleFonts(response.items.slice(0, 100).map((it: any) => ({ family: it.family })))
                     }
                 })
             } catch (err) {
@@ -138,8 +138,8 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
         font.family.toLowerCase().includes(fontSearch.trim().toLowerCase())
     )
     
-    // 🚨 Render Performance Fix: Only draw the top 50 matches so clicks don't get ignored!
-    const renderedFonts = filteredFonts.slice(0, 50)
+    // Only draw the top 100 matches to match the loaded Google Fonts cap.
+    const renderedFonts = filteredFonts.slice(0, 100)
 
     // Clean execution of font selection
     const handleFontSelect = (family: string) => {
@@ -149,6 +149,13 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
         loadGoogleFont(family)
         persistSettings({ fontFamily: family })
     }
+
+    // Preload the fonts that are currently visible in the dropdown so their
+    // labels render in the actual font, not the fallback font.
+    useEffect(() => {
+        if (!fontDropdownOpen) return
+        renderedFonts.forEach((font) => loadGoogleFont(font.family))
+    }, [fontDropdownOpen, renderedFonts])
 
     // Close the dropdown when clicking outside
     useEffect(() => {
