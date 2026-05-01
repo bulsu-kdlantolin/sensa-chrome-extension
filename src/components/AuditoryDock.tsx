@@ -1,5 +1,6 @@
+import React from "react"
 import { Tooltip } from "./Tooltip"
-import type { FrequencyData } from "../hooks/useAudioFrequencyAnalysis"
+import AudioVisualizer from "./AudioVisualizer"
 
 interface AuditoryDockProps {
   isDark: boolean
@@ -13,60 +14,30 @@ interface AuditoryDockProps {
   isFocusMode: boolean
   onToggleFocusMode: () => void
   onOpenSettings: () => void
-  frequencyData?: FrequencyData
   onClose: () => void
 }
 
-export default function AuditoryDock({ isDark, isMinimized, isCaptionsActive, onToggleCaptions, onMinimizeToggle, onOpenCaptionLanguage, onOpenTextSize, onOpenCaptionTransparency, isFocusMode, onToggleFocusMode, onOpenSettings, frequencyData, onClose }: AuditoryDockProps) {
+export default function AuditoryDock({ isDark, isMinimized, isCaptionsActive, onToggleCaptions, onMinimizeToggle, onOpenCaptionLanguage, onOpenTextSize, onOpenCaptionTransparency, isFocusMode, onToggleFocusMode, onOpenSettings, onClose }: AuditoryDockProps) {
   const pillBg = isDark ? "bg-gray-900" : "bg-white"
   const iconColorInactive = isDark ? "text-gray-300" : "text-black"
   const hoverInactive = isDark ? "hover:bg-gray-800" : "hover:bg-gray-100"
-
-  // 🎯 VISUAL SOUND RADAR: Generate animated bars from frequency data
-  const getBarHeights = () => {
-    if (!frequencyData?.frequencies || frequencyData.frequencies.length === 0) {
-      return [0, 0, 0, 0]
-    }
-
-    // Split frequency data into 4 bands for visualization
-    const len = frequencyData.frequencies.length
-    const bandSize = Math.floor(len / 4)
-    const bars = []
-
-    for (let i = 0; i < 4; i++) {
-      const start = i * bandSize
-      const end = (i + 1) * bandSize
-      const bandData = frequencyData.frequencies.slice(start, end)
-      
-      // Get average amplitude for this band (normalize to 0-100)
-      const avg = bandData.reduce((a, b) => a + b, 0) / Math.max(1, bandData.length)
-      bars.push(Math.min(100, (avg / 255) * 100))
-    }
-
-    return bars
-  }
-
-  const barHeights = getBarHeights()
 
   return (
     <div className="flex flex-col gap-[12px]">
       {/* TOP PILL */}
       <div className={`flex flex-col items-center ${pillBg} rounded-full p-[6px] border-2 border-[#FF7A2F] shadow-lg gap-[8px]`}>
         {/* 🎯 VISUAL SOUND RADAR: Animated Audio Visualizer */}
-        <button className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full ${hoverInactive} transition-colors ${iconColorInactive}`}>
+        <button type="button" className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full ${hoverInactive} transition-colors ${iconColorInactive}`}>
           <Tooltip label="Audio Visualizer" isDark={isDark} />
-          <div className="flex items-center justify-center gap-[3px] h-[24px]">
-            {barHeights.map((height, idx) => (
-              <div
-                key={idx}
-                className="w-[1.5px] bg-gradient-to-t from-[#FF7A2F] to-[#FFB366] rounded-full transition-all duration-100"
-                style={{
-                  height: `${Math.max(4, height)}px`,
-                  opacity: 0.6 + (height / 100) * 0.4
-                }}
-              />
-            ))}
+          <div className="flex items-center justify-center h-[20px] w-[28px]">
+            <AudioVisualizer isActive={true} isDark={isDark} />
           </div>
+          <svg viewBox="0 0 24 24" fill="currentColor" className="absolute w-[16px] h-[16px] opacity-20 pointer-events-none">
+            <rect x="5" y="10" width="2" height="4" rx="1" />
+            <rect x="9" y="7" width="2" height="10" rx="1" />
+            <rect x="13" y="4" width="2" height="16" rx="1" />
+            <rect x="17" y="8" width="2" height="8" rx="1" />
+          </svg>
         </button>
 
         <button

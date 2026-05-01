@@ -112,9 +112,9 @@ export default function AudioProxy() {
                 }
                 socket.send(int16Array.buffer)
                 
-                // 🎯 VISUAL SOUND RADAR: Check frequencies every ~20 packets (reduce overhead)
+                // 🎯 VISUAL SOUND RADAR: Check frequencies more frequently (~16-33ms = ~30-60fps)
                 frequencyCheckCounter++
-                if (frequencyCheckCounter > 20) {
+                if (frequencyCheckCounter > 5) {
                   frequencyCheckCounter = 0
                   analyser.getByteFrequencyData(dataArray)
                   
