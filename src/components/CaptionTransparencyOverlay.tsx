@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 
 interface CaptionTransparencyOverlayProps {
 	isDark: boolean
@@ -16,6 +16,12 @@ export default function CaptionTransparencyOverlay({
 	onTransparencyChange
 }: CaptionTransparencyOverlayProps) {
 	const [transparency, setTransparency] = useState(initialTransparency)
+	const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+	const [initialOffsetLoaded, setInitialOffsetLoaded] = useState(false)
+	const offsetRef = useRef(offset)
+	const draggingRef = useRef(false)
+	const dragStartRef = useRef({ x: 0, y: 0 })
+	const offsetStartRef = useRef({ x: 0, y: 0 })
 
 	const clampTransparency = (value: number) => Math.min(100, Math.max(0, value))
 
@@ -30,8 +36,53 @@ export default function CaptionTransparencyOverlay({
 		setTransparency(initialTransparency)
 	}, [initialTransparency])
 
+	useEffect(() => {
+		offsetRef.current = offset
+	}, [offset])
+
+	useEffect(() => {
+		chrome.storage.local.get(["sensa_caption_transparency_overlay_offset"], (result) => {
+			if (result.sensa_caption_transparency_overlay_offset) {
+				setOffset(result.sensa_caption_transparency_overlay_offset)
+			}
+			setInitialOffsetLoaded(true)
+		})
+	}, [])
+
+	useEffect(() => {
+		const onMove = (ev: MouseEvent) => {
+			if (!draggingRef.current) return
+			const dx = ev.clientX - dragStartRef.current.x
+			const dy = ev.clientY - dragStartRef.current.y
+			setOffset({ x: offsetStartRef.current.x + dx, y: offsetStartRef.current.y + dy })
+		}
+
+		const onUp = () => {
+			if (!draggingRef.current) return
+			draggingRef.current = false
+			chrome.storage.local.set({ sensa_caption_transparency_overlay_offset: offsetRef.current })
+		}
+
+		window.addEventListener("mousemove", onMove)
+		window.addEventListener("mouseup", onUp)
+
+		return () => {
+			window.removeEventListener("mousemove", onMove)
+			window.removeEventListener("mouseup", onUp)
+		}
+	}, [])
+
 	const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
 		if (event.target === event.currentTarget) onClose()
+	}
+
+	const onHeaderMouseDown = (event: React.MouseEvent) => {
+		const target = event.target as HTMLElement
+		if (target.closest("button, input, select, textarea")) return
+		event.preventDefault()
+		draggingRef.current = true
+		dragStartRef.current = { x: event.clientX, y: event.clientY }
+		offsetStartRef.current = { x: offsetRef.current.x, y: offsetRef.current.y }
 	}
 
 	const opacity = transparency / 100
@@ -44,7 +95,11 @@ export default function CaptionTransparencyOverlay({
 
 	return (
 		<div onClick={handleBackdropClick} className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/45 backdrop-blur-sm font-sans px-4">
-			<div className={`relative w-full max-w-[420px] rounded-[34px] border-[3px] p-6 shadow-2xl ${panelClass}`}>
+			<div
+				className={`relative w-full max-w-[420px] rounded-[34px] border-[3px] p-6 shadow-2xl ${panelClass}`}
+				onMouseDown={onHeaderMouseDown}
+				style={{ transform: `translate(${offset.x}px, ${offset.y}px)`, cursor: "grab", visibility: initialOffsetLoaded ? "visible" : "hidden" }}
+			>
 				<h2 className="text-[40px] leading-none font-bold mb-5 tracking-tight">Caption Transparency</h2>
 
 				<button

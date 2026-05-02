@@ -6,14 +6,25 @@ export default function AudioProxy() {
     let processor: ScriptProcessorNode | null = null
     let audioCtx: AudioContext | null = null
     let audioEl: HTMLAudioElement | null = null
+    let analyser: AnalyserNode | null = null
+    let visualizerInterval: ReturnType<typeof setInterval> | null = null
+    
     let currentTargetLang = "EN"
 
     const stopCapture = () => {
       try {
+        if (visualizerInterval) {
+          clearInterval(visualizerInterval)
+          visualizerInterval = null
+        }
         if (processor) {
           processor.disconnect()
           processor.onaudioprocess = null
           processor = null
+        }
+        if (analyser) {
+          analyser.disconnect()
+          analyser = null
         }
         if (audioCtx) {
           audioCtx.close().catch(() => {})
@@ -40,7 +51,6 @@ export default function AudioProxy() {
       }
 
       if (msg.type === "EXECUTE_OFFSCREEN_CAPTURE") {
-        // 🚨 Read the deviceId passed safely from the background script
         const { streamId, targetLang, targetTabId, deviceId } = msg
         currentTargetLang = targetLang || "EN"
 
@@ -67,7 +77,6 @@ export default function AudioProxy() {
           audioEl.srcObject = stream
           audioEl.autoplay = true 
 
-          // 🚨 Apply the routed device without touching chrome.storage!
           if (deviceId && deviceId !== "default" && typeof (audioEl as any).setSinkId === "function") {
             (audioEl as any).setSinkId(deviceId).then(() => {
               log(`-> Output Device successfully routed to: ${deviceId}`)
@@ -86,8 +95,8 @@ export default function AudioProxy() {
               const source = audioCtx.createMediaStreamSource(stream)
               processor = audioCtx.createScriptProcessor(4096, 1, 1)
               
-              // 🎯 VISUAL SOUND RADAR: Add analyser for frequency detection
-              const analyser = audioCtx.createAnalyser()
+              // 🎯 VISUAL SOUND RADAR
+              analyser = audioCtx.createAnalyser()
               analyser.fftSize = 2048
               const dataArray = new Uint8Array(analyser.frequencyBinCount)
 
@@ -112,25 +121,18 @@ export default function AudioProxy() {
                 }
                 socket.send(int16Array.buffer)
                 
-                // 🎯 VISUAL SOUND RADAR: Check frequencies more frequently (~16-33ms = ~30-60fps)
+                // 🎯 Hardware Accelerated Visualizer Loop
                 frequencyCheckCounter++
                 if (frequencyCheckCounter > 5) {
                   frequencyCheckCounter = 0
-                  analyser.getByteFrequencyData(dataArray)
+                  analyser!.getByteFrequencyData(dataArray)
                   
-                  // Nyquist frequency = sampleRate / 2 = 8000 Hz
-                  // Bin width = nyquistFreq / frequencyBinCount
-                  const nyquistFreq = audioCtx.sampleRate / 2
-                  const binWidth = nyquistFreq / analyser.frequencyBinCount
+                  const nyquistFreq = audioCtx!.sampleRate / 2
+                  const binWidth = nyquistFreq / analyser!.frequencyBinCount
                   
-                  // Non-speech detection:
-                  // Speech: 200-400 Hz (low frequencies)
-                  // Beeps/Alarms: 1500-8000 Hz (high frequencies)
+                  const speechEndBin = Math.floor(800 / binWidth)
+                  const alarmStartBin = Math.floor(1500 / binWidth)
                   
-                  const speechEndBin = Math.floor(800 / binWidth) // Up to 800 Hz = speech + harmonics
-                  const alarmStartBin = Math.floor(1500 / binWidth) // 1500 Hz + = alarms
-                  
-                  // Calculate average amplitude in speech vs alarm bands
                   let speechEnergy = 0
                   let alarmEnergy = 0
                   
@@ -145,16 +147,14 @@ export default function AudioProxy() {
                   const avgSpeechEnergy = speechEnergy / Math.max(1, speechEndBin)
                   const avgAlarmEnergy = alarmEnergy / Math.max(1, dataArray.length - alarmStartBin)
                   
-                  // Detect alarm/beep if high-freq energy is significantly above low-freq energy
                   const isAlarmDetected = avgAlarmEnergy > avgSpeechEnergy * 1.5 && avgAlarmEnergy > 40
                   
-                  // Send frequency data to content script for visualization
                   chrome.runtime.sendMessage({
                     type: "FORWARD_TO_TAB",
                     tabId: targetTabId,
                     payload: {
                       type: "AUDIO_FREQUENCY_UPDATE",
-                      frequencies: Array.from(dataArray.slice(0, 128)), // Send first 128 bins for visualizer
+                      frequencies: Array.from(dataArray.slice(0, 128)),
                       isAlarmDetected,
                       speechEnergy: avgSpeechEnergy,
                       alarmEnergy: avgAlarmEnergy
@@ -175,23 +175,40 @@ export default function AudioProxy() {
               const payload = JSON.parse(event.data)
               if (payload.type === "TRANSCRIPT" && payload.text) {
                 const rawText = payload.text
+                const isFinal = payload.isFinal // 🚨 Extract isFinal flag from Node payload
                 
+                // 🚨 Forward the flag to the React UI for smooth scrolling
                 chrome.runtime.sendMessage({ 
-                  type: "FORWARD_TO_TAB", tabId: targetTabId, 
-                  payload: { type: "CAPTION_UPDATE", text: rawText, source: "original" } 
+                  type: "FORWARD_TO_TAB", 
+                  tabId: targetTabId, 
+                  payload: { 
+                    type: "CAPTION_UPDATE", 
+                    text: rawText, 
+                    source: "original",
+                    isFinal: isFinal 
+                  } 
                 })
 
-                chrome.runtime.sendMessage(
-                  { type: "TRANSLATE_TEXT", text: rawText, targetLang: currentTargetLang },
-                  (res) => {
-                    if (res?.ok && res.translated && res.translated !== rawText) {
-                      chrome.runtime.sendMessage({ 
-                        type: "FORWARD_TO_TAB", tabId: targetTabId, 
-                        payload: { type: "CAPTION_UPDATE", text: res.translated, source: "translated" } 
-                      })
+                // 🚨 Restrict translation to final sentences only to save DeepL quota
+                if (isFinal) {
+                  chrome.runtime.sendMessage(
+                    { type: "TRANSLATE_TEXT", text: rawText, targetLang: currentTargetLang },
+                    (res) => {
+                      if (res?.ok && res.translated && res.translated !== rawText) {
+                        chrome.runtime.sendMessage({ 
+                          type: "FORWARD_TO_TAB", 
+                          tabId: targetTabId, 
+                          payload: { 
+                            type: "CAPTION_UPDATE", 
+                            text: res.translated, 
+                            source: "translated",
+                            isFinal: true 
+                          } 
+                        })
+                      }
                     }
-                  }
-                )
+                  )
+                }
               }
             } catch (err) {}
           }

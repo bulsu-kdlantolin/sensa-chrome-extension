@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react"
+import { useEffect, useId, useRef } from "react"
 
 interface FocusModeOverlayProps {
   intensity?: number
@@ -11,122 +11,143 @@ type Rect = {
   height: number
 }
 
-const clampRectToViewport = (rect: Rect, vw: number, vh: number): Rect => {
-  const x = Math.max(0, Math.min(rect.x, vw))
-  const y = Math.max(0, Math.min(rect.y, vh))
-  const width = Math.max(0, Math.min(rect.width, vw - x))
-  const height = Math.max(0, Math.min(rect.height, vh - y))
-  return { x, y, width, height }
-}
-
-const getLargestVisibleRect = (selectors: string[]): Rect | null => {
+// Returns the largest visible video element which is currently playing
+const getLargestPlayingVideoRect = (): Rect | null => {
+  const videos = Array.from(document.querySelectorAll<HTMLVideoElement>("video"))
   let bestRect: Rect | null = null
   let bestArea = 0
 
-  const elements = selectors.flatMap((selector) => Array.from(document.querySelectorAll<HTMLElement>(selector)))
+  for (const v of videos) {
+    try {
+      const rect = v.getBoundingClientRect()
+      const area = rect.width * rect.height
+      if (rect.width < 140 || rect.height < 90) continue
+      if (area <= bestArea) continue
 
-  for (const element of elements) {
-    const rect = element.getBoundingClientRect()
-    const area = rect.width * rect.height
-    if (rect.width < 140 || rect.height < 90) continue
-    if (area <= bestArea) continue
+      const style = window.getComputedStyle(v)
+      if (style.visibility === "hidden" || style.display === "none" || Number(style.opacity) === 0) continue
 
-    const style = window.getComputedStyle(element)
-    if (style.visibility === "hidden" || style.display === "none") continue
+      // Consider it a playing video only if it's not paused/ended and has progressed
+      const isPlaying = !v.paused && !v.ended && v.currentTime > 0
+      if (!isPlaying) continue
 
-    bestArea = area
-    bestRect = {
-      x: rect.left,
-      y: rect.top,
-      width: rect.width,
-      height: rect.height
+      bestArea = area
+      bestRect = { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
+    } catch (e) {
+      continue
     }
   }
 
   return bestRect
 }
 
+// Attempt to find a visible captions container (used by players like YouTube)
+const getVisibleCaptionRect = (vh: number): Rect | null => {
+  const selectors = [
+    ".ytp-caption-window-container",
+    "[aria-live='polite']",
+    "[aria-live='assertive']",
+    "[role='status']",
+    ".caption-window",
+  ]
+
+  const elements = selectors.flatMap((s) => Array.from(document.querySelectorAll<HTMLElement>(s)))
+  let best: Rect | null = null
+  let bestArea = 0
+
+  for (const el of elements) {
+    const style = window.getComputedStyle(el)
+    if (style.visibility === "hidden" || style.display === "none" || Number(style.opacity) === 0) continue
+    const rect = el.getBoundingClientRect()
+    
+    if (rect.top < vh * 0.4) continue // prefer bottom half
+    const area = rect.width * rect.height
+    if (area < 200) continue
+    if (area > bestArea) {
+      bestArea = area
+      best = { x: rect.left, y: rect.top, width: rect.width, height: rect.height }
+    }
+  }
+
+  return best
+}
+
 export default function FocusModeOverlay({ intensity = 0.7 }: FocusModeOverlayProps) {
-  const [mainRect, setMainRect] = useState<Rect | null>(null)
-  const [captionRect, setCaptionRect] = useState<Rect | null>(null)
   const maskId = useId().replace(/:/g, "")
+  
+  // 🚨 THE FIX: Use Refs to manipulate the SVG directly, bypassing React's scroll lag!
+  const mainRectRef = useRef<SVGRectElement>(null)
+  const captionRectRef = useRef<SVGRectElement>(null)
 
   useEffect(() => {
-    const computeRects = () => {
-      const vw = window.innerWidth
+    let animationFrameId: number
+
+    const loop = () => {
       const vh = window.innerHeight
+      const videoRect = getLargestPlayingVideoRect()
+      let capRect = getVisibleCaptionRect(vh)
 
-      const largestVideo = getLargestVisibleRect(["video"])
-      const mainContent = getLargestVisibleRect(["main", "article", "[role='main']"])
-
-      const contentRect = largestVideo ?? mainContent ?? {
-        x: vw * 0.16,
-        y: vh * 0.14,
-        width: vw * 0.68,
-        height: vh * 0.54
+      // If caption rect overlaps the video significantly, omit it to prevent ghost rectangles
+      if (videoRect && capRect) {
+        const overlapX = Math.max(0, Math.min(videoRect.x + videoRect.width, capRect.x + capRect.width) - Math.max(videoRect.x, capRect.x))
+        const overlapY = Math.max(0, Math.min(videoRect.y + videoRect.height, capRect.y + capRect.height) - Math.max(videoRect.y, capRect.y))
+        const overlapArea = overlapX * overlapY
+        const capArea = capRect.width * capRect.height
+        
+        if (capArea > 0 && overlapArea / capArea > 0.25) {
+          capRect = null
+        }
       }
 
-      // Keep a little breathing room around primary content.
-      const paddedContentRect = clampRectToViewport(
-        {
-          x: contentRect.x - 14,
-          y: contentRect.y - 14,
-          width: contentRect.width + 28,
-          height: contentRect.height + 28
-        },
-        vw,
-        vh
-      )
+      // 🚨 Instantly update the DOM. No setState lag!
+      if (mainRectRef.current) {
+        if (videoRect) {
+          mainRectRef.current.setAttribute("x", videoRect.x.toString())
+          mainRectRef.current.setAttribute("y", videoRect.y.toString())
+          mainRectRef.current.setAttribute("width", videoRect.width.toString())
+          mainRectRef.current.setAttribute("height", videoRect.height.toString())
+          mainRectRef.current.setAttribute("opacity", "1") // Show hole
+        } else {
+          mainRectRef.current.setAttribute("opacity", "0") // Hide hole (dims entire screen)
+        }
+      }
 
-      // Reserve a bottom-center strip where captions usually render.
-      const capHeight = Math.min(120, Math.max(70, vh * 0.11))
-      const capWidth = Math.min(920, Math.max(520, vw * 0.8))
-      const capRect = clampRectToViewport(
-        {
-          x: (vw - capWidth) / 2,
-          y: vh - capHeight - 24,
-          width: capWidth,
-          height: capHeight
-        },
-        vw,
-        vh
-      )
+      if (captionRectRef.current) {
+        if (capRect) {
+          captionRectRef.current.setAttribute("x", capRect.x.toString())
+          captionRectRef.current.setAttribute("y", capRect.y.toString())
+          captionRectRef.current.setAttribute("width", capRect.width.toString())
+          captionRectRef.current.setAttribute("height", capRect.height.toString())
+          captionRectRef.current.setAttribute("opacity", "1")
+        } else {
+          captionRectRef.current.setAttribute("opacity", "0")
+        }
+      }
 
-      setMainRect(paddedContentRect)
-      setCaptionRect(capRect)
+      animationFrameId = requestAnimationFrame(loop)
     }
 
-    computeRects()
-
-    const handleRecalc = () => computeRects()
-    window.addEventListener("resize", handleRecalc)
-    window.addEventListener("scroll", handleRecalc, { passive: true })
-
-    const intervalId = window.setInterval(computeRects, 800)
+    animationFrameId = requestAnimationFrame(loop)
 
     return () => {
-      window.removeEventListener("resize", handleRecalc)
-      window.removeEventListener("scroll", handleRecalc)
-      window.clearInterval(intervalId)
+      cancelAnimationFrame(animationFrameId)
     }
   }, [])
 
-  if (!mainRect || !captionRect) return null
-
   return (
     <svg
-      className="fixed inset-0 z-[99998] pointer-events-none"
+      className="fixed inset-0 z-[99998] pointer-events-none block"
       width="100%"
       height="100%"
-      viewBox={`0 0 ${window.innerWidth} ${window.innerHeight}`}
-      preserveAspectRatio="none"
+      // 🚨 THE FIX: Removed viewBox. Coordinates now perfectly map to screen pixels. No Deadspace!
       aria-hidden
     >
       <defs>
         <mask id={maskId}>
           <rect x="0" y="0" width="100%" height="100%" fill="white" />
-          <rect x={mainRect.x} y={mainRect.y} width={mainRect.width} height={mainRect.height} rx="16" fill="black" />
-          <rect x={captionRect.x} y={captionRect.y} width={captionRect.width} height={captionRect.height} rx="16" fill="black" />
+          
+          <rect ref={mainRectRef} rx="12" fill="black" opacity="0" />
+          <rect ref={captionRectRef} rx="8" fill="black" opacity="0" />
         </mask>
       </defs>
 

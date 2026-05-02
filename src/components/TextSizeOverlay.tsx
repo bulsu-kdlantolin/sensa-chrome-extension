@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import React, { useEffect, useRef, useState } from "react"
 
 interface TextSizeOverlayProps {
 	isDark: boolean
@@ -10,6 +10,12 @@ interface TextSizeOverlayProps {
 export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onSizeChange }: TextSizeOverlayProps) {
 	const [fontSize, setFontSize] = useState(initialSize)
 	const [sizeInput, setSizeInput] = useState(String(initialSize))
+	const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+	const [initialOffsetLoaded, setInitialOffsetLoaded] = useState(false)
+	const offsetRef = useRef(offset)
+	const draggingRef = useRef(false)
+	const dragStartRef = useRef({ x: 0, y: 0 })
+	const offsetStartRef = useRef({ x: 0, y: 0 })
 
 	const clampSize = (value: number) => Math.min(72, Math.max(12, value))
 
@@ -26,8 +32,53 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
 		setSizeInput(String(initialSize))
 	}, [initialSize])
 
+	useEffect(() => {
+		offsetRef.current = offset
+	}, [offset])
+
+	useEffect(() => {
+		chrome.storage.local.get(["sensa_text_size_overlay_offset"], (result) => {
+			if (result.sensa_text_size_overlay_offset) {
+				setOffset(result.sensa_text_size_overlay_offset)
+			}
+			setInitialOffsetLoaded(true)
+		})
+	}, [])
+
+	useEffect(() => {
+		const onMove = (ev: MouseEvent) => {
+			if (!draggingRef.current) return
+			const dx = ev.clientX - dragStartRef.current.x
+			const dy = ev.clientY - dragStartRef.current.y
+			setOffset({ x: offsetStartRef.current.x + dx, y: offsetStartRef.current.y + dy })
+		}
+
+		const onUp = () => {
+			if (!draggingRef.current) return
+			draggingRef.current = false
+			chrome.storage.local.set({ sensa_text_size_overlay_offset: offsetRef.current })
+		}
+
+		window.addEventListener("mousemove", onMove)
+		window.addEventListener("mouseup", onUp)
+
+		return () => {
+			window.removeEventListener("mousemove", onMove)
+			window.removeEventListener("mouseup", onUp)
+		}
+	}, [])
+
 	const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
 		if (event.target === event.currentTarget) onClose()
+	}
+
+	const onHeaderMouseDown = (event: React.MouseEvent) => {
+		const target = event.target as HTMLElement
+		if (target.closest("button, input, select, textarea")) return
+		event.preventDefault()
+		draggingRef.current = true
+		dragStartRef.current = { x: event.clientX, y: event.clientY }
+		offsetStartRef.current = { x: offsetRef.current.x, y: offsetRef.current.y }
 	}
 
 	const decrease = () => {
@@ -62,7 +113,11 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
 
 	return (
 		<div onClick={handleBackdropClick} className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/45 backdrop-blur-sm font-sans px-4">
-			<div className={`relative w-full max-w-[420px] rounded-[34px] border-[3px] p-7 shadow-2xl ${panelClass}`}>
+			<div
+				className={`relative w-full max-w-[420px] rounded-[34px] border-[3px] p-7 shadow-2xl ${panelClass}`}
+				onMouseDown={onHeaderMouseDown}
+				style={{ transform: `translate(${offset.x}px, ${offset.y}px)`, cursor: "grab", visibility: initialOffsetLoaded ? "visible" : "hidden" }}
+			>
 				<h2 className="text-[38px] leading-none font-bold mb-7 tracking-tight">Font Size</h2>
 
 				<button

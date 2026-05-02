@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 
 interface CaptionLanguageOverlayProps {
     isDark: boolean
@@ -49,9 +49,62 @@ export default function CaptionLanguageOverlay({
     const [selectedLanguage, setSelectedLanguage] = useState(initialLanguage)
     const [searchTerm, setSearchTerm] = useState("")
 
+    // Draggable/persisted position
+    const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+    const [initialOffsetLoaded, setInitialOffsetLoaded] = useState(false)
+    const offsetRef = useRef(offset)
+    const draggingRef = useRef(false)
+    const dragStartRef = useRef({ x: 0, y: 0 })
+    const offsetStartRef = useRef({ x: 0, y: 0 })
+
     useEffect(() => {
         setSelectedLanguage(initialLanguage)
     }, [initialLanguage])
+
+    useEffect(() => {
+        offsetRef.current = offset
+    }, [offset])
+
+    useEffect(() => {
+        chrome.storage.local.get(["sensa_caption_language_overlay_offset"], (result) => {
+            if (result.sensa_caption_language_overlay_offset) {
+                setOffset(result.sensa_caption_language_overlay_offset)
+            }
+            setInitialOffsetLoaded(true)
+        })
+    }, [])
+
+    useEffect(() => {
+        const onMove = (ev: MouseEvent) => {
+            if (!draggingRef.current) return
+            const dx = ev.clientX - dragStartRef.current.x
+            const dy = ev.clientY - dragStartRef.current.y
+            setOffset({ x: offsetStartRef.current.x + dx, y: offsetStartRef.current.y + dy })
+        }
+
+        const onUp = () => {
+            if (!draggingRef.current) return
+            draggingRef.current = false
+            chrome.storage.local.set({ sensa_caption_language_overlay_offset: offsetRef.current })
+        }
+
+        window.addEventListener("mousemove", onMove)
+        window.addEventListener("mouseup", onUp)
+
+        return () => {
+            window.removeEventListener("mousemove", onMove)
+            window.removeEventListener("mouseup", onUp)
+        }
+    }, [])
+
+    const onHeaderMouseDown = (e: React.MouseEvent) => {
+        const target = e.target as HTMLElement
+        if (target.closest("button, input, select, textarea")) return
+        e.preventDefault()
+        draggingRef.current = true
+        dragStartRef.current = { x: e.clientX, y: e.clientY }
+        offsetStartRef.current = { x: offsetRef.current.x, y: offsetRef.current.y }
+    }
 
     const filteredLanguages = useMemo(() => {
         const needle = searchTerm.trim().toLowerCase()
@@ -79,7 +132,11 @@ export default function CaptionLanguageOverlay({
 
     return (
         <div onClick={handleBackdropClick} className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/45 backdrop-blur-sm font-sans px-[16px]">
-            <div className={`relative w-full max-w-[420px] rounded-[34px] border-[3px] p-[28px] shadow-2xl ${panelClass}`}>
+            <div
+                className={`relative w-full max-w-[420px] rounded-[34px] border-[3px] p-[28px] shadow-2xl ${panelClass}`}
+                onMouseDown={onHeaderMouseDown}
+                style={{ transform: `translate(${offset.x}px, ${offset.y}px)`, cursor: "grab", visibility: initialOffsetLoaded ? "visible" : "hidden" }}
+            >
                 <h2 className="text-[28px] font-bold mb-[10px] tracking-tight">Caption Language</h2>
                 <p className={`text-[14px] mb-[20px] ${isDark ? "text-gray-400" : "text-gray-500"}`}>Current: {activeLabel}</p>
 

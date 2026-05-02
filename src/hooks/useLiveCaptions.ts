@@ -67,9 +67,28 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
       if (msg.type === "PROXY_LOG") {
         console.log(`📡 [Sensa Background]: ${msg.message}`)
       }
+      
       if (msg.type === "CAPTION_UPDATE" && msg.text) {
         if (!showOriginalTextRef.current && msg.source === "original") return
-        setCaptions((prev) => [...prev, msg.text].slice(-4))
+        
+        setCaptions((prev) => {
+          // If the screen is empty, just add the first word
+          if (prev.length === 0) return [msg.text]
+
+          const newCaptions = [...prev]
+
+          // 🚨 THE YOUTUBE FIX: Overwrite guesses, append final sentences!
+          if (msg.isFinal) {
+            // The sentence is complete, push it and start a new line
+            newCaptions.push(msg.text)
+          } else {
+            // It's just a guess! Overwrite the current bottom line to create a smooth typing effect
+            newCaptions[newCaptions.length - 1] = msg.text
+          }
+
+          // Keep only the last 4 lines on screen
+          return newCaptions.slice(-4)
+        })
       }
     }
 
