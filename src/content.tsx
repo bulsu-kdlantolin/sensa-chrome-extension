@@ -116,7 +116,8 @@ export default function FloatingDockManager() {
   const { captions, error: captionsError } = useLiveCaptions(
     isAuditoryModeActive,
     targetLanguage,
-    auditorySettings.showOriginalText
+    auditorySettings.showOriginalText,
+    isCaptionsActive  // Pass the UI toggle state so captions clear when turned off
   )
 
   useEffect(() => {
@@ -386,6 +387,7 @@ export default function FloatingDockManager() {
             captionTransparency / 100
           )}
           fontFamily={auditorySettings.fontFamily || DEFAULT_AUDITORY_SETTINGS.fontFamily}
+          showOriginalText={auditorySettings.showOriginalText}
         />
       )}
 

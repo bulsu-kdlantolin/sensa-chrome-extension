@@ -8,7 +8,7 @@ interface VisualSettingsModalProps {
 
 export default function VisualSettingsModal({ onClose }: VisualSettingsModalProps) {
   const { playHoverAudio, cancelHoverAudio } = useUIHoverAudio()
-  // State to track if the color picker bubble is visible
+  
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [highlightColor, setHighlightColor] = useState("#FFFE00")
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([])
@@ -16,6 +16,13 @@ export default function VisualSettingsModal({ onClose }: VisualSettingsModalProp
   const [selectedInputDeviceId, setSelectedInputDeviceId] = useState("default")
   const [selectedOutputDeviceId, setSelectedOutputDeviceId] = useState("default")
   const [isAutoscrollEnabled, setIsAutoscrollEnabled] = useState(true)
+  
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>("")
+  
+  // 🚨 NEW: State to control our custom Voice Dropdown
+  const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false)
+
   const getHoverHandlers = (label: string) => ({
     onMouseEnter: () => playHoverAudio(label),
     onMouseLeave: cancelHoverAudio
@@ -64,7 +71,7 @@ export default function VisualSettingsModal({ onClose }: VisualSettingsModalProp
 
   const onHeaderMouseDown = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement
-    if (target.closest("button, input, select, textarea")) return
+    if (target.closest("button, input, select, textarea, ul, li")) return
     e.preventDefault()
     draggingRef.current = true
     dragStartRef.current = { x: e.clientX, y: e.clientY }
@@ -72,20 +79,36 @@ export default function VisualSettingsModal({ onClose }: VisualSettingsModalProp
   }
 
   React.useEffect(() => {
-    chrome.storage.local.get(["sensa_visual_highlight_color", "sensa_visual_input_device_id", "sensa_visual_output_device_id", "sensa_visual_autoscroll_enabled"], (res) => {
-      if (typeof res.sensa_visual_highlight_color === "string") {
-        setHighlightColor(res.sensa_visual_highlight_color)
-      }
-      if (typeof res.sensa_visual_input_device_id === "string") {
-        setSelectedInputDeviceId(res.sensa_visual_input_device_id)
-      }
-      if (typeof res.sensa_visual_output_device_id === "string") {
-        setSelectedOutputDeviceId(res.sensa_visual_output_device_id)
-      }
-      if (typeof res.sensa_visual_autoscroll_enabled === "boolean") {
-        setIsAutoscrollEnabled(res.sensa_visual_autoscroll_enabled)
-      }
+    chrome.storage.local.get([
+      "sensa_visual_highlight_color", 
+      "sensa_visual_input_device_id", 
+      "sensa_visual_output_device_id", 
+      "sensa_visual_autoscroll_enabled",
+      "sensa_visual_voice_uri" 
+    ], (res) => {
+      if (typeof res.sensa_visual_highlight_color === "string") setHighlightColor(res.sensa_visual_highlight_color)
+      if (typeof res.sensa_visual_input_device_id === "string") setSelectedInputDeviceId(res.sensa_visual_input_device_id)
+      if (typeof res.sensa_visual_output_device_id === "string") setSelectedOutputDeviceId(res.sensa_visual_output_device_id)
+      if (typeof res.sensa_visual_autoscroll_enabled === "boolean") setIsAutoscrollEnabled(res.sensa_visual_autoscroll_enabled)
+      if (typeof res.sensa_visual_voice_uri === "string") setSelectedVoiceURI(res.sensa_visual_voice_uri)
     })
+  }, [])
+
+  React.useEffect(() => {
+    const loadVoices = () => {
+      const availableVoices = window.speechSynthesis.getVoices()
+      if (availableVoices.length > 0) {
+        setVoices(availableVoices)
+        setSelectedVoiceURI((prev) => {
+          if (prev) return prev
+          const defaultVoice = availableVoices.find(v => v.name.includes("Google US English")) || availableVoices[0]
+          return defaultVoice?.voiceURI || ""
+        })
+      }
+    }
+
+    loadVoices()
+    window.speechSynthesis.onvoiceschanged = loadVoices
   }, [])
 
   React.useEffect(() => {
@@ -93,22 +116,16 @@ export default function VisualSettingsModal({ onClose }: VisualSettingsModalProp
       if (!navigator.mediaDevices?.enumerateDevices) return
       try {
         await navigator.mediaDevices.getUserMedia({ audio: true })
-      } catch {
-        // Keep going: device labels may remain generic without permission.
-      }
+      } catch {}
       const devices = await navigator.mediaDevices.enumerateDevices()
       setInputDevices(devices.filter((d) => d.kind === "audioinput"))
       setOutputDevices(devices.filter((d) => d.kind === "audiooutput"))
     }
 
     loadDevices()
-    const handleDeviceChange = () => {
-      loadDevices()
-    }
+    const handleDeviceChange = () => loadDevices()
     navigator.mediaDevices?.addEventListener?.("devicechange", handleDeviceChange)
-    return () => {
-      navigator.mediaDevices?.removeEventListener?.("devicechange", handleDeviceChange)
-    }
+    return () => navigator.mediaDevices?.removeEventListener?.("devicechange", handleDeviceChange)
   }, [])
 
   const handleHighlightChange = (color: string) => {
@@ -131,14 +148,35 @@ export default function VisualSettingsModal({ onClose }: VisualSettingsModalProp
     chrome.storage.local.set({ sensa_visual_autoscroll_enabled: enabled })
   }
 
+  const handleVoiceChange = (voiceURI: string) => {
+    setSelectedVoiceURI(voiceURI)
+    const selected = voices.find((voice) => voice.voiceURI === voiceURI)
+    chrome.storage.local.set({
+      sensa_visual_voice_uri: voiceURI,
+      sensa_visual_voice_name: selected?.name || ""
+    })
+  }
+
   const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.target === event.currentTarget) onClose()
+  }
+
+  // 🚨 NEW: The hover-preview engine!
+  const previewVoice = (voice: SpeechSynthesisVoice) => {
+    // 1. Instantly kill any currently playing preview so they don't overlap
+    window.speechSynthesis.cancel()
+    
+    // 2. Create a new utterance using the voice's own name
+    const utterance = new SpeechSynthesisUtterance(voice.name)
+    utterance.voice = voice
+    
+    // 3. Speak it!
+    window.speechSynthesis.speak(utterance)
   }
 
   return (
     <div onClick={handleBackdropClick} className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/40 backdrop-blur-sm font-sans">
       
-      {/* Modal Container */}
       <div
         className="relative w-[440px] bg-white rounded-[40px] border-[3px] border-[#0A44FF] p-8 shadow-2xl text-black"
         onMouseDown={onHeaderMouseDown}
@@ -148,11 +186,8 @@ export default function VisualSettingsModal({ onClose }: VisualSettingsModalProp
           visibility: initialOffsetLoaded ? "visible" : "hidden"
         }}
       >
-        
-        {/* Header */}
         <h2 className="text-[28px] font-bold mb-8 tracking-tight">Settings</h2>
         
-        {/* Close Button (X) */}
         <button 
           onClick={onClose}
           className="absolute top-6 right-6 text-black hover:text-gray-500 transition-colors focus:outline-none"
@@ -164,35 +199,76 @@ export default function VisualSettingsModal({ onClose }: VisualSettingsModalProp
           </svg>
         </button>
 
-        {/* Settings List */}
         <div className="flex flex-col gap-5">
           
-          {/* Voice Guide Toggle (Left Aligned, Adjusted Circle) */}
           <div className="flex items-center justify-between">
             <span className="text-[17px] font-medium">Voice Guide</span>
             <div className="w-[190px] flex justify-start pl-1">
               <label className="relative inline-flex items-center cursor-pointer" {...getHoverHandlers("Voice Guide")}>
                 <input type="checkbox" className="sr-only peer" defaultChecked />
-                {/* Adjusted the after:translate-x to move the circle further right */}
                 <div className="w-12 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-[26px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3B82F6]"></div>
               </label>
             </div>
           </div>
 
-          {/* Voice Selection Dropdown */}
-          <div className="flex items-center justify-between">
+          {/* 🚨 THE UPGRADED CUSTOM VOICE DROPDOWN */}
+          <div className="flex items-center justify-between relative z-50">
             <span className="text-[17px] font-medium">Voice Selection</span>
             <div className="relative w-[190px]">
-              <select className="appearance-none w-full border border-gray-300 text-gray-700 py-2 px-3 rounded-xl text-sm focus:outline-none focus:border-[#3B82F6] cursor-pointer bg-white" {...getHoverHandlers("Voice Selection")}> 
-                <option>Google US English</option>
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-500">
-                <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-              </div>
+              
+              {/* The "Select" Button */}
+              <button 
+                type="button"
+                onClick={() => setIsVoiceDropdownOpen((prev) => !prev)}
+                className="w-full text-left border border-gray-300 text-gray-700 py-2 pl-3 pr-8 rounded-xl text-sm focus:outline-none focus:border-[#3B82F6] cursor-pointer bg-white"
+                {...getHoverHandlers("Voice Selection")}
+              >
+                <span className="block truncate">
+                  {voices.find(v => v.voiceURI === selectedVoiceURI)?.name || "Loading voices..."}
+                </span>
+                <div className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-500">
+                  <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                </div>
+              </button>
+
+              {/* The Floating Custom List */}
+              {isVoiceDropdownOpen && (
+                <>
+                  {/* Invisible backdrop to close the dropdown when clicking outside */}
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setIsVoiceDropdownOpen(false)
+                      window.speechSynthesis.cancel() // Stop talking when menu closes
+                    }} 
+                  />
+                  
+                  <ul className="absolute z-50 mt-1 w-full max-h-48 overflow-y-auto bg-white border border-gray-300 rounded-xl shadow-xl py-1 text-sm custom-scrollbar">
+                    {voices.map((voice) => (
+                      <li
+                        key={voice.voiceURI}
+                        onMouseEnter={() => previewVoice(voice)} // 🚨 Triggers the speech preview!
+                        onClick={() => {
+                          handleVoiceChange(voice.voiceURI)
+                          setIsVoiceDropdownOpen(false)
+                          window.speechSynthesis.cancel() // Stop previewing once selected
+                        }}
+                        className={`px-3 py-2 cursor-pointer truncate transition-colors ${
+                          selectedVoiceURI === voice.voiceURI 
+                            ? "bg-blue-100 text-blue-700 font-medium" 
+                            : "text-gray-700 hover:bg-blue-50 hover:text-blue-600"
+                        }`}
+                      >
+                        {voice.name}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
             </div>
           </div>
 
-          {/* Wake Word Input */}
           <div className="flex items-center justify-between">
             <span className="text-[17px] font-medium">Wake Word</span>
             <div className="relative w-[190px]">
@@ -212,14 +288,10 @@ export default function VisualSettingsModal({ onClose }: VisualSettingsModalProp
             </div>
           </div>
 
-          {/* Highlight Color Picker (Wrapped in a relative div for the popup) */}
           <div className="flex items-center justify-between relative">
             <span className="text-[17px] font-medium">Highlight color</span>
-            
             <div className="w-[190px] flex justify-start pl-1">
-              {/* WRAPPER: This ensures the popup arrow perfectly aligns with the center of the button */}
               <div className="relative flex items-center justify-center">
-                {/* The Color Circle Button */}
                 <button 
                   type="button"
                   onMouseDown={(event) => event.stopPropagation()}
@@ -233,8 +305,6 @@ export default function VisualSettingsModal({ onClose }: VisualSettingsModalProp
                   style={{ backgroundColor: highlightColor }}
                   aria-label="Pick highlight color"
                 />
-                
-                {/* The Floating Bubble (Renders if showColorPicker is true) */}
                 {showColorPicker && (
                   <ColorPickerPopup
                     isDark={false}
@@ -247,7 +317,6 @@ export default function VisualSettingsModal({ onClose }: VisualSettingsModalProp
             </div>
           </div>
 
-          {/* Autoscroll Reading Toggle (Left Aligned, Adjusted Circle) */}
           <div className="flex items-center justify-between">
             <span className="text-[17px] font-medium">Autoscroll reading</span>
             <div className="w-[190px] flex justify-start pl-1">
@@ -258,13 +327,11 @@ export default function VisualSettingsModal({ onClose }: VisualSettingsModalProp
                   checked={isAutoscrollEnabled}
                   onChange={(event) => handleAutoscrollToggle(event.target.checked)}
                 />
-                 {/* Adjusted the after:translate-x to move the circle further right */}
                 <div className="w-12 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-[26px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#3B82F6]"></div>
               </label>
             </div>
           </div>
 
-          {/* Input Device Dropdown */}
           <div className="flex items-center justify-between">
             <span className="text-[17px] font-medium">Input Device</span>
             <div className="relative w-[190px]">
@@ -286,7 +353,6 @@ export default function VisualSettingsModal({ onClose }: VisualSettingsModalProp
             </div>
           </div>
 
-          {/* Output Device Dropdown */}
           <div className="flex items-center justify-between">
             <span className="text-[17px] font-medium">Output Device</span>
             <div className="relative w-[190px]">
@@ -310,7 +376,6 @@ export default function VisualSettingsModal({ onClose }: VisualSettingsModalProp
 
         </div>
 
-        {/* Footer Button */}
         <div className="mt-10 flex justify-center">
           <button className="bg-[#4338CA] hover:bg-[#3730A3] text-white font-bold py-3 px-10 rounded-full transition-colors shadow-md text-sm" {...getHoverHandlers("Reset to default")}>
             Reset to default

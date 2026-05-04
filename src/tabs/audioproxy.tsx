@@ -194,7 +194,7 @@ export default function AudioProxy() {
                   chrome.runtime.sendMessage(
                     { type: "TRANSLATE_TEXT", text: rawText, targetLang: currentTargetLang },
                     (res) => {
-                      if (res?.ok && res.translated && res.translated !== rawText) {
+                      if (res?.ok && res.translated) {
                         chrome.runtime.sendMessage({ 
                           type: "FORWARD_TO_TAB", 
                           tabId: targetTabId, 

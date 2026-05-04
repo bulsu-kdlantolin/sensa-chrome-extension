@@ -210,8 +210,28 @@ export function useSpeech(readingSpeed: number, highlightColor: string, isOverla
   const isOverlaySuppressedRef = useRef(isOverlaySuppressed);
   const isPlayingRef = useRef(false);
   const isPausedRef = useRef(false);
+  const selectedVoiceURIRef = useRef<string>("");
 
   const sentenceOverlayRootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    chrome.storage.local.get(["sensa_visual_voice_uri"], (res) => {
+      if (typeof res.sensa_visual_voice_uri === "string") {
+        selectedVoiceURIRef.current = res.sensa_visual_voice_uri;
+      }
+    });
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.sensa_visual_voice_uri && typeof changes.sensa_visual_voice_uri.newValue === "string") {
+        selectedVoiceURIRef.current = changes.sensa_visual_voice_uri.newValue;
+      }
+    };
+
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    return () => {
+      chrome.storage.onChanged.removeListener(handleStorageChange);
+    };
+  }, []);
 
   useEffect(() => {
     isPlayingRef.current = isPlaying;
@@ -385,6 +405,14 @@ export function useSpeech(readingSpeed: number, highlightColor: string, isOverla
 
       const utterance = new SpeechSynthesisUtterance(speechText);
       utterance.rate = readingSpeed;
+
+      const availableVoices = window.speechSynthesis.getVoices();
+      if (availableVoices.length > 0) {
+        const preferredVoice = availableVoices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current);
+        if (preferredVoice) {
+          utterance.voice = preferredVoice;
+        }
+      }
 
       utterance.onstart = () => {
         if (sessionId !== speechSessionRef.current) return;
