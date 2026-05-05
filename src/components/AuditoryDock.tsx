@@ -1,7 +1,146 @@
-import React from "react"
+import React, { useEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { Tooltip } from "./Tooltip"
-import AudioVisualizer from "./AudioVisualizer"
 
+// ============================================================================
+// 🎯 ZERO-LAG SITE AUDIO VISUALIZER (Hunter-Seeker + TS Fixed)
+// ============================================================================
+const SiteAudioRadar = ({ isActive, isDark }: { isActive: boolean, isDark: boolean }) => {
+  const barsRef = useRef<(HTMLDivElement | null)[]>([])
+  const currentHeights = useRef([4, 6, 8, 6, 4])
+  const tickRef = useRef(0)
+
+  useEffect(() => {
+    let animationId: number
+    let audioCtx: AudioContext | null = null
+    let analyser: AnalyserNode | null = null
+    let dataArray: Uint8Array | null = null
+    let currentMediaEl: HTMLMediaElement | null = null
+    
+    // 🚨 TS FIX: Explicitly type this as a browser number, not a NodeJS Timeout
+    let hunterInterval: number | undefined
+
+    const colors = [
+      "rgba(253, 186, 116, 1)", 
+      "rgba(249, 115, 22, 1)",  
+      "rgba(255, 122, 47, 1)",  
+      "rgba(249, 115, 22, 1)",  
+      "rgba(253, 186, 116, 1)", 
+    ]
+
+    const shapeMask = [0.35, 0.7, 1.0, 0.7, 0.35]
+    const maxHeights = [10, 14, 20, 14, 10]
+    const idleHeights = [4, 6, 8, 6, 4]
+
+    const lerp = (start: number, end: number, amt: number) => (1 - amt) * start + amt * end
+
+    const attachToMedia = (mediaEl: HTMLMediaElement) => {
+      try {
+        if ((mediaEl as any)._sensaAnalyser) {
+          analyser = (mediaEl as any)._sensaAnalyser
+          dataArray = new Uint8Array(analyser!.frequencyBinCount)
+          currentMediaEl = mediaEl
+          return
+        }
+
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+        }
+        
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume()
+        }
+
+        analyser = audioCtx.createAnalyser()
+        analyser.fftSize = 256
+        analyser.smoothingTimeConstant = 0.4 
+        
+        const source = audioCtx.createMediaElementSource(mediaEl)
+        source.connect(analyser)
+        analyser.connect(audioCtx.destination) 
+        
+        ;(mediaEl as any)._sensaAnalyser = analyser
+        dataArray = new Uint8Array(analyser.frequencyBinCount)
+        currentMediaEl = mediaEl
+
+      } catch (e) {
+        console.warn("Sensa: Media is cross-origin protected or already bound.", e)
+      }
+    }
+
+    if (isActive) {
+      // 🚨 HUNTER-SEEKER: Uses window.setInterval to bypass the NodeJS TS error
+      hunterInterval = window.setInterval(() => {
+        const allMedia = Array.from(document.querySelectorAll("video, audio")) as HTMLMediaElement[]
+        const playingMedia = allMedia.find(m => !m.paused && m.currentTime > 0 && !m.muted) || allMedia[0]
+
+        if (playingMedia && playingMedia !== currentMediaEl) {
+          attachToMedia(playingMedia)
+        }
+      }, 1500)
+
+      const draw = () => {
+        tickRef.current += 0.05
+        const tick = tickRef.current
+        let energy = 0
+
+        if (isActive && analyser && dataArray) {
+          analyser.getByteFrequencyData(dataArray as any)
+          
+          let sum = 0;
+          for (let i = 2; i < 40; i++) sum += dataArray[i];
+          energy = (sum / 38) / 255; 
+        }
+
+        barsRef.current.forEach((bar, i) => {
+          if (!bar) return
+          let targetHeight = idleHeights[i]
+
+          if (isActive && energy > 0.01) {
+            const noiseSpike = (energy * 30) * shapeMask[i]
+            targetHeight = Math.min(maxHeights[i], idleHeights[i] + noiseSpike)
+          } else {
+            const breath = Math.sin(tick - i * 0.5) * 1.5
+            targetHeight = idleHeights[i] + breath
+          }
+
+          const isRising = targetHeight > currentHeights.current[i]
+          const amt = energy > 0.01 ? (isRising ? 0.5 : 0.15) : 0.05
+          currentHeights.current[i] = lerp(currentHeights.current[i], targetHeight, amt)
+
+          bar.style.height = `${currentHeights.current[i]}px`
+          bar.style.backgroundColor = colors[i]
+        })
+
+        animationId = requestAnimationFrame(draw)
+      }
+      draw()
+    }
+
+    return () => {
+      if (animationId) cancelAnimationFrame(animationId)
+      // Safely clear the browser interval
+      if (hunterInterval !== undefined) window.clearInterval(hunterInterval)
+    }
+  }, [isActive])
+
+  return (
+    <div className="flex items-center justify-center gap-[2px] w-full h-full">
+      {[0, 1, 2, 3, 4].map((index) => (
+        <div
+          key={index}
+          ref={(el) => (barsRef.current[index] = el)}
+          className="w-[3px] rounded-full transition-transform"
+          style={{ height: "4px", backgroundColor: "currentColor", willChange: "height" }}
+        />
+      ))}
+    </div>
+  )
+}
+
+// ============================================================================
+// YOUR ORIGINAL AUDITORY DOCK (100% untouched UI)
+// ============================================================================
 interface AuditoryDockProps {
   isDark: boolean
   isMinimized: boolean
@@ -26,11 +165,14 @@ export default function AuditoryDock({ isDark, isMinimized, isCaptionsActive, on
     <div className="flex flex-col gap-[12px]">
       {/* TOP PILL */}
       <div className={`flex flex-col items-center ${pillBg} rounded-full p-[6px] border-2 border-[#FF7A2F] shadow-lg gap-[8px]`}>
-        {/* 🎯 VISUAL SOUND RADAR: Animated Audio Visualizer */}
-        <button type="button" className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full ${hoverInactive} transition-colors ${iconColorInactive}`}>
+        
+        {/* 🎯 FIXED VISUAL SOUND RADAR (Toggle removed, permanently ON) */}
+        <div 
+          className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full ${hoverInactive} transition-colors ${iconColorInactive} cursor-default`}
+        >
           <Tooltip label="Audio Visualizer" isDark={isDark} />
           <div className="flex items-center justify-center h-[20px] w-[28px]">
-            <AudioVisualizer isActive={true} isDark={isDark} />
+            <SiteAudioRadar isActive={true} isDark={isDark} />
           </div>
           <svg viewBox="0 0 24 24" fill="currentColor" className="absolute w-[16px] h-[16px] opacity-20 pointer-events-none">
             <rect x="5" y="10" width="2" height="4" rx="1" />
@@ -38,7 +180,7 @@ export default function AuditoryDock({ isDark, isMinimized, isCaptionsActive, on
             <rect x="13" y="4" width="2" height="16" rx="1" />
             <rect x="17" y="8" width="2" height="8" rx="1" />
           </svg>
-        </button>
+        </div>
 
         <button
           type="button"
