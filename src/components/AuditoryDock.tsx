@@ -1,11 +1,10 @@
 import React, { useEffect, useRef, useState } from "react"
-import { createPortal } from "react-dom"
 import { Tooltip } from "./Tooltip"
 
 // ============================================================================
-// 🎯 ZERO-LAG SITE AUDIO VISUALIZER (Hunter-Seeker + TS Fixed)
+// 🎯 SITE-ONLY DUAL ENGINE: Unfiltered Transient + Game Audio Interceptor
 // ============================================================================
-const SiteAudioRadar = ({ isActive, isDark }: { isActive: boolean, isDark: boolean }) => {
+const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: boolean }) => {
   const barsRef = useRef<(HTMLDivElement | null)[]>([])
   const currentHeights = useRef([4, 6, 8, 6, 4])
   const tickRef = useRef(0)
@@ -15,89 +14,204 @@ const SiteAudioRadar = ({ isActive, isDark }: { isActive: boolean, isDark: boole
     let audioCtx: AudioContext | null = null
     let analyser: AnalyserNode | null = null
     let dataArray: Uint8Array | null = null
-    let currentMediaEl: HTMLMediaElement | null = null
-    
-    // 🚨 TS FIX: Explicitly type this as a browser number, not a NodeJS Timeout
     let hunterInterval: number | undefined
 
-    const colors = [
-      "rgba(253, 186, 116, 1)", 
-      "rgba(249, 115, 22, 1)",  
-      "rgba(255, 122, 47, 1)",  
-      "rgba(249, 115, 22, 1)",  
-      "rgba(253, 186, 116, 1)", 
-    ]
+    // 🚨 NEW: Variables to catch Copilot's intercepted game audio
+    let gameAudioArray: Uint8Array | null = null
+    let lastGameAudioTick = 0
 
     const shapeMask = [0.35, 0.7, 1.0, 0.7, 0.35]
     const maxHeights = [10, 14, 20, 14, 10]
     const idleHeights = [4, 6, 8, 6, 4]
 
+    // 🎨 The 3 State Palettes[cite: 1]
+    const palettes = {
+      orange: {
+        bars: ["rgba(253,186,116,1)", "rgba(249,115,22,1)", "rgba(255,122,47,1)", "rgba(249,115,22,1)", "rgba(253,186,116,1)"],
+        border: "#FF7A2F",
+        shadow: "" 
+      },
+      green: {
+        bars: ["#86EFAC", "#22C55E", "#16A34A", "#22C55E", "#86EFAC"],
+        border: "#22C55E",
+        shadow: "0 0 25px rgba(34, 197, 94, 0.8)"
+      },
+      red: {
+        bars: ["#FCA5A5", "#EF4444", "#DC2626", "#EF4444", "#FCA5A5"],
+        border: "#EF4444",
+        shadow: "0 0 25px rgba(239, 68, 68, 0.8)"
+      }
+    }
+
     const lerp = (start: number, end: number, amt: number) => (1 - amt) * start + amt * end
 
-    const attachToMedia = (mediaEl: HTMLMediaElement) => {
-      try {
-        if ((mediaEl as any)._sensaAnalyser) {
-          analyser = (mediaEl as any)._sensaAnalyser
-          dataArray = new Uint8Array(analyser!.frequencyBinCount)
-          currentMediaEl = mediaEl
-          return
+    // Listen for Copilot's Game Audio Interceptor
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'SENSA_GAME_AUDIO_FREQUENCY') {
+        if (!gameAudioArray || gameAudioArray.length !== event.data.frequencies.length) {
+          gameAudioArray = new Uint8Array(event.data.frequencies)
+        } else {
+          gameAudioArray.set(event.data.frequencies)
         }
+        lastGameAudioTick = Date.now() // Track when we last heard the game
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+
+    const attachToSiteMedia = (mediaEl: HTMLMediaElement) => {
+      try {
+        if ((mediaEl as any)._sensaConnected) return
 
         if (!audioCtx) {
           audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+          analyser = audioCtx.createAnalyser()
+          analyser.fftSize = 256
+          analyser.smoothingTimeConstant = 0.02 
+          
+          analyser.connect(audioCtx.destination)
+          dataArray = new Uint8Array(analyser.frequencyBinCount)
         }
         
-        if (audioCtx.state === 'suspended') {
-          audioCtx.resume()
-        }
+        if (audioCtx.state === 'suspended') audioCtx.resume()
 
-        analyser = audioCtx.createAnalyser()
-        analyser.fftSize = 256
-        analyser.smoothingTimeConstant = 0.4 
-        
         const source = audioCtx.createMediaElementSource(mediaEl)
-        source.connect(analyser)
-        analyser.connect(audioCtx.destination) 
+        source.connect(analyser!) 
         
-        ;(mediaEl as any)._sensaAnalyser = analyser
-        dataArray = new Uint8Array(analyser.frequencyBinCount)
-        currentMediaEl = mediaEl
-
+        ;(mediaEl as any)._sensaConnected = true
       } catch (e) {
         console.warn("Sensa: Media is cross-origin protected or already bound.", e)
       }
     }
 
     if (isActive) {
-      // 🚨 HUNTER-SEEKER: Uses window.setInterval to bypass the NodeJS TS error
       hunterInterval = window.setInterval(() => {
         const allMedia = Array.from(document.querySelectorAll("video, audio")) as HTMLMediaElement[]
-        const playingMedia = allMedia.find(m => !m.paused && m.currentTime > 0 && !m.muted) || allMedia[0]
-
-        if (playingMedia && playingMedia !== currentMediaEl) {
-          attachToMedia(playingMedia)
-        }
+        allMedia.forEach(media => {
+          if (!media.paused && media.currentTime > 0 && !media.muted) attachToSiteMedia(media)
+        })
       }, 1500)
+
+      let activeTheme: 'orange' | 'green' | 'red' = 'orange'
+      let themeHoldFrames = 0
+      let smoothedColor = "#FF7A2F" 
 
       const draw = () => {
         tickRef.current += 0.05
         const tick = tickRef.current
-        let energy = 0
 
-        if (isActive && analyser && dataArray) {
-          analyser.getByteFrequencyData(dataArray as any)
-          
-          let sum = 0;
-          for (let i = 2; i < 40; i++) sum += dataArray[i];
-          energy = (sum / 38) / 255; 
+        let visualizerEnergy = 0
+        let voiceMusicBaseline = 0
+        let greenPingPeak = 0
+        let redAlarmPeak = 0
+        let totalBroadbandEnergy = 0
+        let dominantFrequencyIndex = 20 
+
+        // 🚨 Choose which audio source to listen to.
+        // Guard against "source lock" by only prioritizing game audio when it has real signal.
+        let activeData: Uint8Array | null = null
+
+        const hasGamePacket = gameAudioArray && Date.now() - lastGameAudioTick < 100
+        let gameSignal = 0
+        if (hasGamePacket && gameAudioArray) {
+          let gameSum = 0
+          for (let i = 2; i < 40; i++) gameSum += gameAudioArray[i]
+          gameSignal = gameSum / 38
         }
 
+        // Only trust interceptor data if it is actively carrying sound.
+        if (hasGamePacket && gameAudioArray && gameSignal > 3) {
+          activeData = gameAudioArray
+        } else if (analyser && dataArray) {
+          // Fallback to standard DOM media (YouTube/videos/music players)
+          analyser.getByteFrequencyData(dataArray as any)
+          activeData = dataArray
+        } else if (hasGamePacket && gameAudioArray) {
+          // Last-resort fallback for pages with only WebAudio game sound.
+          activeData = gameAudioArray
+        }
+
+        if (activeData) {
+          // Overall Volume (For Visualizer)
+          let sum = 0;
+          for (let i = 2; i < 40; i++) sum += activeData[i]
+          visualizerEnergy = (sum / 38) / 255 
+
+          // 1. Establish the "Noise Floor"
+          for (let i = 2; i < 11; i++) voiceMusicBaseline += activeData[i]  
+          voiceMusicBaseline = Math.max(1, voiceMusicBaseline / 9) 
+
+          // 2. Scan for specific UI Pings and Alarms
+          for (let i = 12; i < 26; i++) greenPingPeak = Math.max(greenPingPeak, activeData[i]) 
+          for (let i = 28; i < 60; i++) redAlarmPeak = Math.max(redAlarmPeak, activeData[i])   
+
+          // 3. Scan for "Violent Sounds"
+          for (let i = 2; i < 70; i++) totalBroadbandEnergy += activeData[i]
+          totalBroadbandEnergy /= 68
+
+          // 4. Calculate dominant frequency for color mapping
+          let weightedSum = 0, totalWeight = 0
+          for (let i = 2; i < 90; i++) {
+            weightedSum += i * activeData[i]
+            totalWeight += activeData[i]
+          }
+          if (totalWeight > 0) {
+            dominantFrequencyIndex = weightedSum / totalWeight
+          }
+        }
+
+        // ==========================================
+        // 🎨 FREQUENCY-BASED COLOR MAPPING[cite: 1]
+        // ==========================================
+        let targetColor = "#FF7A2F" 
+
+        if (dominantFrequencyIndex < 15) {
+          targetColor = "#FF9660"
+        } else if (dominantFrequencyIndex < 30) {
+          targetColor = "#FFB347"
+        } else if (dominantFrequencyIndex < 50) {
+          targetColor = "#FFD700"
+        } else if (dominantFrequencyIndex < 70) {
+          targetColor = "#FF8C00"
+        } else {
+          targetColor = "#FF4444"
+        }
+
+        smoothedColor = targetColor 
+
+        // ==========================================
+        // RADAR TRIGGER LOGIC[cite: 1]
+        // ==========================================
+        const isViolentSound = totalBroadbandEnergy > 160 
+        
+        if ((redAlarmPeak > 60 && redAlarmPeak > voiceMusicBaseline * 1.3) || isViolentSound) {
+          activeTheme = 'red'
+          themeHoldFrames = 50 
+        } 
+        else if (greenPingPeak > 60 && greenPingPeak > voiceMusicBaseline * 1.25 && !isViolentSound) {
+          if (activeTheme !== 'red' || themeHoldFrames === 0) {
+            activeTheme = 'green'
+            themeHoldFrames = 50 
+          }
+        }
+
+        if (themeHoldFrames > 0) {
+          themeHoldFrames--
+        } else {
+          activeTheme = 'orange'
+        }
+
+        const currentStyle = palettes[activeTheme]
+
+        // ==========================================
+        // UI UPDATE 1: COLOR CHANGING BARS[cite: 1]
+        // ==========================================
         barsRef.current.forEach((bar, i) => {
           if (!bar) return
           let targetHeight = idleHeights[i]
 
-          if (isActive && energy > 0.01) {
-            const noiseSpike = (energy * 30) * shapeMask[i]
+          if (visualizerEnergy > 0.01) {
+            const noiseSpike = (visualizerEnergy * 28) * shapeMask[i] 
             targetHeight = Math.min(maxHeights[i], idleHeights[i] + noiseSpike)
           } else {
             const breath = Math.sin(tick - i * 0.5) * 1.5
@@ -105,11 +219,24 @@ const SiteAudioRadar = ({ isActive, isDark }: { isActive: boolean, isDark: boole
           }
 
           const isRising = targetHeight > currentHeights.current[i]
-          const amt = energy > 0.01 ? (isRising ? 0.5 : 0.15) : 0.05
+          const amt = visualizerEnergy > 0.01 ? (isRising ? 0.9 : 0.12) : 0.05
           currentHeights.current[i] = lerp(currentHeights.current[i], targetHeight, amt)
 
           bar.style.height = `${currentHeights.current[i]}px`
-          bar.style.backgroundColor = colors[i]
+          bar.style.backgroundColor = smoothedColor
+        })
+
+        // ==========================================
+        // UI UPDATE 2: DOCK BORDERS[cite: 1]
+        // ==========================================
+        const dockPills = document.querySelectorAll('.sensa-dock-pill') as NodeListOf<HTMLElement>
+        dockPills.forEach(pill => {
+          pill.style.borderColor = smoothedColor
+          if (visualizerEnergy > 0.05) {
+            pill.style.boxShadow = `0 0 20px ${smoothedColor}70`
+          } else {
+            pill.style.boxShadow = ''
+          }
         })
 
         animationId = requestAnimationFrame(draw)
@@ -118,9 +245,14 @@ const SiteAudioRadar = ({ isActive, isDark }: { isActive: boolean, isDark: boole
     }
 
     return () => {
+      window.removeEventListener('message', handleMessage)
       if (animationId) cancelAnimationFrame(animationId)
-      // Safely clear the browser interval
       if (hunterInterval !== undefined) window.clearInterval(hunterInterval)
+      document.querySelectorAll('.sensa-dock-pill').forEach((pill) => {
+        const htmlPill = pill as HTMLElement
+        htmlPill.style.borderColor = ''
+        htmlPill.style.boxShadow = ''
+      })
     }
   }, [isActive])
 
@@ -130,8 +262,8 @@ const SiteAudioRadar = ({ isActive, isDark }: { isActive: boolean, isDark: boole
         <div
           key={index}
           ref={(el) => (barsRef.current[index] = el)}
-          className="w-[3px] rounded-full transition-transform"
-          style={{ height: "4px", backgroundColor: "currentColor", willChange: "height" }}
+          className="w-[3px] rounded-full transition-colors duration-150"
+          style={{ height: "4px", backgroundColor: "currentColor", willChange: "height, background-color" }}
         />
       ))}
     </div>
@@ -163,16 +295,14 @@ export default function AuditoryDock({ isDark, isMinimized, isCaptionsActive, on
 
   return (
     <div className="flex flex-col gap-[12px]">
+      
       {/* TOP PILL */}
-      <div className={`flex flex-col items-center ${pillBg} rounded-full p-[6px] border-2 border-[#FF7A2F] shadow-lg gap-[8px]`}>
+      <div className={`sensa-dock-pill transition-all duration-300 flex flex-col items-center ${pillBg} rounded-full p-[6px] border-2 border-[#FF7A2F] shadow-lg gap-[8px]`}>
         
-        {/* 🎯 FIXED VISUAL SOUND RADAR (Toggle removed, permanently ON) */}
-        <div 
-          className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full ${hoverInactive} transition-colors ${iconColorInactive} cursor-default`}
-        >
+        <div className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full ${hoverInactive} transition-colors ${iconColorInactive} cursor-default`}>
           <Tooltip label="Audio Visualizer" isDark={isDark} />
           <div className="flex items-center justify-center h-[20px] w-[28px]">
-            <SiteAudioRadar isActive={true} isDark={isDark} />
+            <SiteAudioSystem isActive={true} isDark={isDark} />
           </div>
           <svg viewBox="0 0 24 24" fill="currentColor" className="absolute w-[16px] h-[16px] opacity-20 pointer-events-none">
             <rect x="5" y="10" width="2" height="4" rx="1" />
@@ -204,7 +334,7 @@ export default function AuditoryDock({ isDark, isMinimized, isCaptionsActive, on
 
       {/* MIDDLE PILL */}
       {!isMinimized && (
-        <div className={`flex flex-col items-center ${pillBg} rounded-full p-[6px] border-2 border-[#FF7A2F] shadow-lg gap-[6px]`}>
+        <div className={`sensa-dock-pill transition-all duration-300 flex flex-col items-center ${pillBg} rounded-full p-[6px] border-2 border-[#FF7A2F] shadow-lg gap-[6px]`}>
           <button
             onClick={onOpenCaptionLanguage}
             className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full ${hoverInactive} transition-colors ${iconColorInactive}`}
@@ -265,7 +395,7 @@ export default function AuditoryDock({ isDark, isMinimized, isCaptionsActive, on
       )}
 
       {/* BOTTOM PILL */}
-      <div className={`flex flex-col items-center ${pillBg} rounded-full p-[6px] border-2 border-[#FF7A2F] shadow-lg gap-[8px]`}>
+      <div className={`sensa-dock-pill transition-all duration-300 flex flex-col items-center ${pillBg} rounded-full p-[6px] border-2 border-[#FF7A2F] shadow-lg gap-[8px]`}>
         <button 
           onClick={onMinimizeToggle}
           className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full ${hoverInactive} transition-colors ${iconColorInactive}`}

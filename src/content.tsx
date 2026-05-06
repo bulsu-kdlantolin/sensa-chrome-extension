@@ -16,6 +16,28 @@ import { useSpeech } from "./hooks/useSpeech"
 import { useVoiceNavigation } from "./hooks/useVoiceNavigation"
 import { useLiveCaptions } from "./hooks/useLiveCaptions"
 
+import { audioInterceptorScript } from "./audioInterceptor"
+
+// ==========================================
+// 🎮 INJECT WEB AUDIO API INTERCEPTOR
+// ==========================================
+const injectAudioInterceptor = () => {
+  const script = document.createElement('script')
+  script.textContent = audioInterceptorScript
+  if (document.documentElement) {
+    document.documentElement.prepend(script)
+  } else {
+    document.head?.appendChild(script)
+  }
+  setTimeout(() => script.remove(), 100)
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', injectAudioInterceptor)
+} else {
+  injectAudioInterceptor()
+}
+
 export const config: PlasmoCSConfig = {
   matches: ["<all_urls>"]
 }
