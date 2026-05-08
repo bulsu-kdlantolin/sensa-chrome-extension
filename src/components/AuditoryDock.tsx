@@ -16,15 +16,16 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
     let dataArray: Uint8Array | null = null
     let hunterInterval: number | undefined
 
-    // 🚨 NEW: Variables to catch Copilot's intercepted game audio
     let gameAudioArray: Uint8Array | null = null
     let lastGameAudioTick = 0
 
     const shapeMask = [0.35, 0.7, 1.0, 0.7, 0.35]
     const maxHeights = [10, 14, 20, 14, 10]
     const idleHeights = [4, 6, 8, 6, 4]
+    
+    // The default border color based on theme to reset to when quiet
+    const borderBaseColor = isDark ? 'rgba(255,122,47,0.4)' : 'rgba(255,122,47,0.5)'
 
-    // 🎨 The 3 State Palettes[cite: 1]
     const palettes = {
       orange: {
         bars: ["rgba(253,186,116,1)", "rgba(249,115,22,1)", "rgba(255,122,47,1)", "rgba(249,115,22,1)", "rgba(253,186,116,1)"],
@@ -45,7 +46,6 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
 
     const lerp = (start: number, end: number, amt: number) => (1 - amt) * start + amt * end
 
-    // Listen for Copilot's Game Audio Interceptor
     const handleMessage = (event: MessageEvent) => {
       if (event.data && event.data.type === 'SENSA_GAME_AUDIO_FREQUENCY') {
         if (!gameAudioArray || gameAudioArray.length !== event.data.frequencies.length) {
@@ -53,7 +53,7 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
         } else {
           gameAudioArray.set(event.data.frequencies)
         }
-        lastGameAudioTick = Date.now() // Track when we last heard the game
+        lastGameAudioTick = Date.now() 
       }
     }
 
@@ -107,8 +107,6 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
         let totalBroadbandEnergy = 0
         let dominantFrequencyIndex = 20 
 
-        // 🚨 Choose which audio source to listen to.
-        // Guard against "source lock" by only prioritizing game audio when it has real signal.
         let activeData: Uint8Array | null = null
 
         const hasGamePacket = gameAudioArray && Date.now() - lastGameAudioTick < 100
@@ -119,37 +117,29 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
           gameSignal = gameSum / 38
         }
 
-        // Only trust interceptor data if it is actively carrying sound.
         if (hasGamePacket && gameAudioArray && gameSignal > 3) {
           activeData = gameAudioArray
         } else if (analyser && dataArray) {
-          // Fallback to standard DOM media (YouTube/videos/music players)
           analyser.getByteFrequencyData(dataArray as any)
           activeData = dataArray
         } else if (hasGamePacket && gameAudioArray) {
-          // Last-resort fallback for pages with only WebAudio game sound.
           activeData = gameAudioArray
         }
 
         if (activeData) {
-          // Overall Volume (For Visualizer)
           let sum = 0;
           for (let i = 2; i < 40; i++) sum += activeData[i]
           visualizerEnergy = (sum / 38) / 255 
 
-          // 1. Establish the "Noise Floor"
           for (let i = 2; i < 11; i++) voiceMusicBaseline += activeData[i]  
           voiceMusicBaseline = Math.max(1, voiceMusicBaseline / 9) 
 
-          // 2. Scan for specific UI Pings and Alarms
           for (let i = 12; i < 26; i++) greenPingPeak = Math.max(greenPingPeak, activeData[i]) 
           for (let i = 28; i < 60; i++) redAlarmPeak = Math.max(redAlarmPeak, activeData[i])   
 
-          // 3. Scan for "Violent Sounds"
           for (let i = 2; i < 70; i++) totalBroadbandEnergy += activeData[i]
           totalBroadbandEnergy /= 68
 
-          // 4. Calculate dominant frequency for color mapping
           let weightedSum = 0, totalWeight = 0
           for (let i = 2; i < 90; i++) {
             weightedSum += i * activeData[i]
@@ -160,9 +150,6 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
           }
         }
 
-        // ==========================================
-        // 🎨 FREQUENCY-BASED COLOR MAPPING[cite: 1]
-        // ==========================================
         let targetColor = "#FF7A2F" 
 
         if (dominantFrequencyIndex < 15) {
@@ -179,9 +166,6 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
 
         smoothedColor = targetColor 
 
-        // ==========================================
-        // RADAR TRIGGER LOGIC[cite: 1]
-        // ==========================================
         const isViolentSound = totalBroadbandEnergy > 160 
         
         if ((redAlarmPeak > 60 && redAlarmPeak > voiceMusicBaseline * 1.3) || isViolentSound) {
@@ -201,11 +185,6 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
           activeTheme = 'orange'
         }
 
-        const currentStyle = palettes[activeTheme]
-
-        // ==========================================
-        // UI UPDATE 1: COLOR CHANGING BARS[cite: 1]
-        // ==========================================
         barsRef.current.forEach((bar, i) => {
           if (!bar) return
           let targetHeight = idleHeights[i]
@@ -226,14 +205,12 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
           bar.style.backgroundColor = smoothedColor
         })
 
-        // ==========================================
-        // UI UPDATE 2: DOCK BORDERS[cite: 1]
-        // ==========================================
+        // 🚨 TARGETING THE ISOLATED GLOW LAYER TO PREVENT BROWSER GLITCHING
         const dockPills = document.querySelectorAll('.sensa-dock-pill') as NodeListOf<HTMLElement>
         dockPills.forEach(pill => {
           pill.style.borderColor = smoothedColor
           if (visualizerEnergy > 0.05) {
-            pill.style.boxShadow = `0 0 20px ${smoothedColor}70`
+            pill.style.boxShadow = `0 0 24px ${smoothedColor}70` 
           } else {
             pill.style.boxShadow = ''
           }
@@ -250,19 +227,19 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
       if (hunterInterval !== undefined) window.clearInterval(hunterInterval)
       document.querySelectorAll('.sensa-dock-pill').forEach((pill) => {
         const htmlPill = pill as HTMLElement
-        htmlPill.style.borderColor = ''
+        htmlPill.style.borderColor = borderBaseColor
         htmlPill.style.boxShadow = ''
       })
     }
   }, [isActive])
 
   return (
-    <div className="flex items-center justify-center gap-[2px] w-full h-full">
+    <div className="flex items-center justify-center gap-[2.5px] !w-[28px] !h-[20px] shrink-0">
       {[0, 1, 2, 3, 4].map((index) => (
         <div
           key={index}
           ref={(el) => (barsRef.current[index] = el)}
-          className="w-[3px] rounded-full transition-colors duration-150"
+          className="!w-[3.5px] rounded-full transition-colors duration-150"
           style={{ height: "4px", backgroundColor: "currentColor", willChange: "height, background-color" }}
         />
       ))}
@@ -271,7 +248,7 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
 }
 
 // ============================================================================
-// YOUR ORIGINAL AUDITORY DOCK (100% untouched UI)
+// MAIN AUDITORY DOCK COMPONENT (Deaf/HoH Optimized)
 // ============================================================================
 interface AuditoryDockProps {
   isDark: boolean
@@ -288,23 +265,61 @@ interface AuditoryDockProps {
   onClose: () => void
 }
 
-export default function AuditoryDock({ isDark, isMinimized, isCaptionsActive, onToggleCaptions, onMinimizeToggle, onOpenCaptionLanguage, onOpenTextSize, onOpenCaptionTransparency, isFocusMode, onToggleFocusMode, onOpenSettings, onClose }: AuditoryDockProps) {
-  const pillBg = isDark ? "bg-gray-900" : "bg-white"
-  const iconColorInactive = isDark ? "text-gray-300" : "text-black"
-  const hoverInactive = isDark ? "hover:bg-gray-800" : "hover:bg-gray-100"
+export default function AuditoryDock({
+  isDark,
+  isMinimized,
+  isCaptionsActive,
+  onToggleCaptions,
+  onMinimizeToggle,
+  onOpenCaptionLanguage,
+  onOpenTextSize,
+  onOpenCaptionTransparency,
+  isFocusMode,
+  onToggleFocusMode,
+  onOpenSettings,
+  onClose
+}: AuditoryDockProps) {
+  
+  // 🚨 FIXED THE GLITCH: Added transform-gpu backface-hidden so the backdrop-blur never repaints.
+  // The border and box-shadow have been removed from here and moved to the `.sensa-dock-pill` layer.
+  const glassPanelClass = isDark 
+    ? "bg-[#1C1C1E]/85 backdrop-blur-3xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] transform-gpu backface-hidden" 
+    : "bg-white/90 backdrop-blur-3xl shadow-[0_8px_32px_rgba(0,0,0,0.1)] transform-gpu backface-hidden"
+    
+  const btnBaseClass = "relative group !w-[44px] !h-[44px] !min-w-[44px] !min-h-[44px] !p-0 !m-0 flex items-center justify-center rounded-full transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] shrink-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent box-border will-change-[background-color,transform] transform-gpu backface-hidden"
+  
+  const btnHoverClass = isDark 
+    ? "hover:bg-[#FF7A2F]/15 text-gray-200 hover:text-white" 
+    : "hover:bg-[#FF7A2F]/10 text-gray-700 hover:text-[#FF7A2F]"
+
+  const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 
   return (
-    <div className="flex flex-col gap-[12px]">
+    <div 
+      className="flex flex-col w-fit shrink-0 box-border relative z-50"
+      role="toolbar" 
+      aria-label="Auditory and Caption Controls"
+    >
       
-      {/* TOP PILL */}
-      <div className={`sensa-dock-pill transition-all duration-300 flex flex-col items-center ${pillBg} rounded-full p-[6px] border-2 border-[#FF7A2F] shadow-lg gap-[8px]`}>
+      {/* ========================================================= */}
+      {/* 🔝 TOP SECTION: VISUALIZER & CAPTIONS */}
+      {/* ========================================================= */}
+      <div className={`relative flex flex-col items-center rounded-[28px] p-2 gap-2 shrink-0 z-30 transition-all duration-300 ${glassPanelClass}`}>
         
-        <div className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full ${hoverInactive} transition-colors ${iconColorInactive} cursor-default`}>
-          <Tooltip label="Audio Visualizer" isDark={isDark} />
-          <div className="flex items-center justify-center h-[20px] w-[28px]">
-            <SiteAudioSystem isActive={true} isDark={isDark} />
-          </div>
-          <svg viewBox="0 0 24 24" fill="currentColor" className="absolute w-[16px] h-[16px] opacity-20 pointer-events-none">
+        {/* 🚨 ISOLATED GLOW LAYER: Prevents the backdrop-blur rendering bug */}
+        <div 
+          className="sensa-dock-pill absolute inset-0 rounded-[28px] border-2 pointer-events-none transition-colors duration-150" 
+          style={{ 
+            borderColor: isDark ? 'rgba(255,122,47,0.4)' : 'rgba(255,122,47,0.5)',
+            willChange: 'border-color, box-shadow' 
+          }} 
+        />
+
+        {/* Visualizer Frame */}
+        <div className={`${btnBaseClass} bg-transparent cursor-default relative z-10`}>
+          <Tooltip label="Sound Visualizer" isDark={isDark} isAuditory />
+          <SiteAudioSystem isActive={true} isDark={isDark} />
+          <svg viewBox="0 0 24 24" fill="currentColor" className={`absolute !w-[18px] !h-[18px] shrink-0 opacity-10 pointer-events-none ${isDark ? 'text-white' : 'text-black'}`}>
             <rect x="5" y="10" width="2" height="4" rx="1" />
             <rect x="9" y="7" width="2" height="10" rx="1" />
             <rect x="13" y="4" width="2" height="16" rx="1" />
@@ -316,110 +331,171 @@ export default function AuditoryDock({ isDark, isMinimized, isCaptionsActive, on
           type="button"
           onClick={onToggleCaptions}
           aria-pressed={isCaptionsActive}
-          className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full text-white shadow-md transition-all ${isCaptionsActive ? "bg-[#E86A25] ring-2 ring-white/90 ring-offset-2 ring-offset-[#FF7A2F]" : "bg-[#FF7A2F] hover:bg-[#E86A25] opacity-85"}`}
+          className={`${btnBaseClass} relative z-10 active:scale-90 ${
+            isCaptionsActive 
+              ? "bg-[#FF7A2F] text-white shadow-[0_0_24px_rgba(255,122,47,0.7)] ring-4 ring-[#FF7A2F]/30 scale-105" 
+              : `bg-[#FF7A2F] text-white/90 shadow-md hover:bg-[#E86A25] hover:shadow-lg hover:shadow-[#FF7A2F]/40 hover:scale-105`
+          }`}
         >
-          <Tooltip label={isCaptionsActive ? "Turn Off Caption" : "Turn On Caption"} isDark={isDark} />
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[20px] h-[20px]">
+          <Tooltip label={isCaptionsActive ? "Turn Off Captions" : "Turn On Captions"} isDark={isDark} isAuditory />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[22px] !h-[22px] shrink-0">
             <rect x="3" y="6" width="18" height="12" rx="2" />
             <path d="M10 10.5a2.5 2.5 0 0 0-3.5 0" />
             <path d="M10 13.5a2.5 2.5 0 0 1-3.5 0" />
             <path d="M17.5 10.5a2.5 2.5 0 0 0-3.5 0" />
             <path d="M17.5 13.5a2.5 2.5 0 0 1-3.5 0" />
           </svg>
+          {/* Active Indicator Badge */}
           {isCaptionsActive && (
-            <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-lime-300 border border-white" />
+            <span className="absolute top-0 right-0 !w-3 !h-3 rounded-full bg-white border-2 border-[#FF7A2F] shadow-[0_0_8px_white]" />
           )}
         </button>
       </div>
 
-      {/* MIDDLE PILL */}
-      {!isMinimized && (
-        <div className={`sensa-dock-pill transition-all duration-300 flex flex-col items-center ${pillBg} rounded-full p-[6px] border-2 border-[#FF7A2F] shadow-lg gap-[6px]`}>
-          <button
-            onClick={onOpenCaptionLanguage}
-            className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full ${hoverInactive} transition-colors ${iconColorInactive}`}
+      {/* ========================================================= */}
+      {/* ↔️ MIDDLE SECTION: THE FLAWLESS PHYSICS HACK */}
+      {/* ========================================================= */}
+      <div 
+        className={`grid w-full transform-gpu backface-hidden will-change-[grid-template-rows] ${springTransition} ${
+          isMinimized ? "grid-rows-[0fr] mt-0" : "grid-rows-[1fr] mt-3"
+        }`}
+      >
+        <div className="min-h-0 flex justify-center w-full">
+          <div 
+            className={`relative flex flex-col items-center rounded-[28px] p-2 gap-1.5 w-fit origin-top transform-gpu backface-hidden will-change-[opacity,transform] ${springTransition} ${glassPanelClass} ${
+              isMinimized 
+                ? "opacity-0 scale-75 -translate-y-4 pointer-events-none" 
+                : "opacity-100 scale-100 translate-y-0 pointer-events-auto"
+            }`}
           >
-            <Tooltip label="Caption Language" isDark={isDark} />
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[20px] h-[20px]">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
-              <path d="M2 12h20" />
-            </svg>
-          </button>
-          <button
-            onClick={onOpenTextSize}
-            className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full ${hoverInactive} transition-colors ${iconColorInactive}`}
-          >
-            <Tooltip label="Text Size" isDark={isDark} />
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[20px] h-[20px]">
-              <polyline points="4 7 4 4 20 4 20 7" />
-              <line x1="12" y1="4" x2="12" y2="20" />
-              <line x1="8" y1="20" x2="16" y2="20" />
-            </svg>
-          </button>
-          <button
-            onClick={onOpenCaptionTransparency}
-            className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full ${hoverInactive} transition-colors ${iconColorInactive}`}
-          >
-            <Tooltip label="Caption Transparency" isDark={isDark} />
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[20px] h-[20px]">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <rect x="7" y="13" width="10" height="4" rx="1" />
-            </svg>
-          </button>
-          <button
-            onClick={onToggleFocusMode}
-            className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full transition-colors ${isFocusMode ? "bg-[#FF7A2F] text-white shadow-md hover:bg-[#E86A25]" : `${hoverInactive} ${iconColorInactive}`}`}
-          >
-            <Tooltip label="Focus Mode" isDark={isDark} />
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[20px] h-[20px]">
-              <path d="M3 8V5a2 2 0 0 1 2-2h3" />
-              <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
-              <path d="M3 16v3a2 2 0 0 0 2 2h3" />
-              <path d="M21 16v3a2 2 0 0 1-2 2h-3" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full ${hoverInactive} transition-colors ${iconColorInactive}`}
-          >
-            <Tooltip label="Settings" isDark={isDark} />
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[24px] h-[24px]">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-          </button>
-        </div>
-      )}
+            {/* 🚨 ISOLATED GLOW LAYER */}
+            <div 
+              className="sensa-dock-pill absolute inset-0 rounded-[28px] border-2 pointer-events-none transition-colors duration-150" 
+              style={{ 
+                borderColor: isDark ? 'rgba(255,122,47,0.4)' : 'rgba(255,122,47,0.5)',
+                willChange: 'border-color, box-shadow' 
+              }} 
+            />
 
-      {/* BOTTOM PILL */}
-      <div className={`sensa-dock-pill transition-all duration-300 flex flex-col items-center ${pillBg} rounded-full p-[6px] border-2 border-[#FF7A2F] shadow-lg gap-[8px]`}>
-        <button 
+            <button
+              onClick={onOpenCaptionLanguage}
+              className={`${btnBaseClass} ${btnHoverClass} relative z-10 active:scale-90 hover:scale-105`}
+              aria-label="Caption Language"
+            >
+              <Tooltip label="Caption Language" isDark={isDark} isAuditory />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[22px] !h-[22px] shrink-0">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+                <path d="M2 12h20" />
+              </svg>
+            </button>
+
+            <button
+              onClick={onOpenTextSize}
+              className={`${btnBaseClass} ${btnHoverClass} relative z-10 active:scale-90 hover:scale-105`}
+              aria-label="Text Size"
+            >
+              <Tooltip label="Text Size" isDark={isDark} isAuditory />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[22px] !h-[22px] shrink-0">
+                <polyline points="4 7 4 4 20 4 20 7" />
+                <line x1="12" y1="4" x2="12" y2="20" />
+                <line x1="8" y1="20" x2="16" y2="20" />
+              </svg>
+            </button>
+
+            <button
+              onClick={onOpenCaptionTransparency}
+              className={`${btnBaseClass} ${btnHoverClass} relative z-10 active:scale-90 hover:scale-105`}
+              aria-label="Caption Transparency"
+            >
+              <Tooltip label="Caption Transparency" isDark={isDark} isAuditory />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[22px] !h-[22px] shrink-0">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <rect x="7" y="13" width="10" height="4" rx="1" />
+              </svg>
+            </button>
+
+            <button
+              onClick={onToggleFocusMode}
+              aria-pressed={isFocusMode}
+              className={`${btnBaseClass} relative z-10 active:scale-90 ${
+                isFocusMode 
+                  ? "bg-[#FF7A2F] text-white shadow-[0_0_24px_rgba(255,122,47,0.7)] ring-4 ring-[#FF7A2F]/30 scale-105" 
+                  : `${btnHoverClass} hover:scale-105`
+              }`}
+            >
+              <Tooltip label="Focus Mode" isDark={isDark} isAuditory />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[22px] !h-[22px] shrink-0">
+                <path d="M3 8V5a2 2 0 0 1 2-2h3" />
+                <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+                <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+                <path d="M21 16v3a2 2 0 0 1-2 2h-3" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className={`${btnBaseClass} ${btnHoverClass} relative z-10 active:scale-90 hover:scale-105`}
+              aria-label="Settings"
+            >
+              <Tooltip label="Settings" isDark={isDark} isAuditory />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[24px] !h-[24px] shrink-0">
+                <circle cx="12" cy="12" r="3" />
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================= */}
+      {/* 🔽 BOTTOM SECTION: WINDOW CONTROLS */}
+      {/* ========================================================= */}
+      <div className={`relative flex flex-col items-center rounded-[28px] p-2 gap-1.5 shrink-0 mt-3 z-20 transition-all duration-300 transform-gpu backface-hidden ${glassPanelClass}`}>
+        
+        {/* 🚨 ISOLATED GLOW LAYER */}
+        <div 
+          className="sensa-dock-pill absolute inset-0 rounded-[28px] border-2 pointer-events-none transition-colors duration-150" 
+          style={{ 
+            borderColor: isDark ? 'rgba(255,122,47,0.4)' : 'rgba(255,122,47,0.5)',
+            willChange: 'border-color, box-shadow' 
+          }} 
+        />
+
+        <button
+          type="button"
           onClick={onMinimizeToggle}
-          className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full ${hoverInactive} transition-colors ${iconColorInactive}`}
+          aria-expanded={!isMinimized}
+          className={`${btnBaseClass} ${btnHoverClass} relative z-10 active:scale-90 hover:scale-105 transform-gpu backface-hidden`}
+          aria-label={isMinimized ? "Expand Menu" : "Minimize Menu"}
         >
-          <Tooltip label={isMinimized ? "Expand" : "Minimize"} isDark={isDark} />
-          {isMinimized ? (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-[20px] h-[20px]">
-              <polyline points="7 15 12 10 17 15" />
-              <polyline points="7 9 12 4 17 9" />
-            </svg>
-          ) : (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-[20px] h-[20px]">
-              <polyline points="7 9 12 14 17 9" />
-              <polyline points="7 15 12 20 17 15" />
-            </svg>
-          )}
+          <Tooltip label={isMinimized ? "Expand" : "Minimize"} isDark={isDark} isAuditory />
+          
+          <svg 
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="2.5" 
+            strokeLinecap="round" 
+            strokeLinejoin="round" 
+            className={`!w-[22px] !h-[22px] shrink-0 transform-gpu backface-hidden will-change-transform ${springTransition} ${isMinimized ? "rotate-180" : "rotate-0"}`} 
+            aria-hidden="true"
+          >
+            <polyline points="7 15 12 10 17 15" />
+            <polyline points="7 9 12 4 17 9" />
+          </svg>
         </button>
 
-        <button 
+        <button
+          type="button"
           onClick={onClose}
-          className={`relative group w-[40px] h-[40px] flex items-center justify-center rounded-full ${hoverInactive} transition-colors ${iconColorInactive}`}
+          className={`${btnBaseClass} relative z-10 hover:bg-red-500 hover:text-white transition-colors text-gray-500 dark:text-gray-400 active:scale-90 hover:scale-105`}
+          aria-label="Close Toolbar"
         >
           <Tooltip label="Close" isRed isDark={isDark} />
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-[24px] h-[24px]">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[24px] !h-[24px] shrink-0" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
