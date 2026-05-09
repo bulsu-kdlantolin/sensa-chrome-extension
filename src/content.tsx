@@ -197,7 +197,16 @@ export default function FloatingDockManager() {
       }
     })
 
-    const handleRuntimeMessage = (message: { type?: string; mode?: "visual" | "auditory" | null }) => {
+    const handleRuntimeMessage = (
+      message: { type?: string; mode?: "visual" | "auditory" | null },
+      _sender: chrome.runtime.MessageSender,
+      sendResponse: (response?: any) => void
+    ) => {
+      if (message.type === "sensa-health-check") {
+        sendResponse({ ok: true, activeMode: activeModeRef.current })
+        return
+      }
+
       if (message.type !== "sensa-activate-mode") return
 
       syncActiveMode(message.mode ?? null)

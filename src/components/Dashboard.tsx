@@ -13,11 +13,23 @@ interface DashboardProps {
 
 export default function Dashboard({ selectedMode, theme, onModeChange, onThemeChange, onReset }: DashboardProps) {
   const [currentViewMode, setCurrentViewMode] = useState<"visual" | "auditory">("visual")
-  const [isUserSwitchAnimating, setIsUserSwitchAnimating] = useState(false)
-  const animationTimeoutRef = useRef<number | null>(null)
+  const [websiteLabel, setWebsiteLabel] = useState("Detecting...")
+  const [websiteStatus, setWebsiteStatus] = useState<"online" | "offline" | "unsupported">("offline")
+  const [extensionStatus, setExtensionStatus] = useState<"online" | "offline">("offline")
+  const [unavailableApis, setUnavailableApis] = useState<string[]>([])
+  
+  // 🚨 Replaced the clunky timeout hack with a clean mount flag
+  // This prevents the slider from animating on initial load, but allows pure CSS physics afterward
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    // Wait for initial render, then unlock transitions
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => setIsMounted(true))
+    })
+  }, [])
 
   // --- AUTO-SAVE LOGIC ---
-  // 1. Load the last visited tab when the popup opens
   useEffect(() => {
     chrome.storage.local.get(["sensa_last_tab"], (res) => {
       if (res.sensa_last_tab) {
@@ -28,18 +40,10 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
     })
   }, [selectedMode])
 
-  // 2. Save the tab to the database every time you click the switch
   const handleViewSwap = (newMode: "visual" | "auditory") => {
     if (newMode === currentViewMode) return
-    setIsUserSwitchAnimating(true)
-    if (animationTimeoutRef.current !== null) {
-      window.clearTimeout(animationTimeoutRef.current)
-    }
-    animationTimeoutRef.current = window.setTimeout(() => {
-      setIsUserSwitchAnimating(false)
-      animationTimeoutRef.current = null
-    }, 520)
     setCurrentViewMode(newMode)
+    
     // Tab switch is navigation only: deactivate running mode(s), do not auto-activate target mode.
     chrome.storage.local.set({
       sensa_last_tab: newMode,
@@ -51,20 +55,110 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
   }
 
   useEffect(() => {
-    return () => {
-      if (animationTimeoutRef.current !== null) {
-        window.clearTimeout(animationTimeoutRef.current)
+    let isComponentMounted = true
+
+    const checkApiConnectivity = async () => {
+      const unavailable: string[] = []
+      if (!navigator.onLine) return ["Network API"]
+
+      const probeApi = async (name: string, url: string) => {
+        const controller = new AbortController()
+        const timeoutId = window.setTimeout(() => controller.abort(), 4000)
+        try {
+          const response = await fetch(url, {
+            method: "GET",
+            cache: "no-store",
+            signal: controller.signal
+          })
+          if (response.status >= 500) unavailable.push(name)
+        } catch {
+          unavailable.push(name)
+        } finally {
+          window.clearTimeout(timeoutId)
+        }
       }
+
+      await probeApi("Connectivity API", "https://clients3.google.com/generate_204")
+      await probeApi("Google Fonts API", "https://www.googleapis.com/webfonts/v1/webfonts")
+      return unavailable
     }
-  }, [])
+
+    const updateStatuses = async () => {
+      let nextWebsiteLabel = "No active tab"
+      let nextWebsiteStatus: "online" | "offline" | "unsupported" = "offline"
+      let nextExtensionStatus: "online" | "offline" = "offline"
+      let nextBridgeOnline = false
+
+      try {
+        const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+        const activeTab = tabs?.[0]
+
+        if (activeTab?.url) {
+          try {
+            const parsed = new URL(activeTab.url)
+            const isWeb = parsed.protocol === "http:" || parsed.protocol === "https:"
+            nextWebsiteLabel = isWeb ? parsed.hostname : parsed.protocol.replace(":", "")
+            nextWebsiteStatus = isWeb ? "online" : "unsupported"
+          } catch {
+            nextWebsiteLabel = activeTab.url
+            nextWebsiteStatus = "unsupported"
+          }
+        }
+
+        if (typeof activeTab?.id === "number") {
+          try {
+            const response = await chrome.tabs.sendMessage(activeTab.id, { type: "sensa-health-check" })
+            nextBridgeOnline = !!response?.ok
+          } catch {
+            nextBridgeOnline = false
+          }
+        }
+      } catch {
+        nextWebsiteLabel = "Unavailable"
+        nextWebsiteStatus = "offline"
+      }
+
+      const apiUnavailable = await checkApiConnectivity()
+      const nextUnavailable = [
+        ...(nextBridgeOnline ? [] : ["Extension Bridge"]),
+        ...apiUnavailable
+      ]
+      nextExtensionStatus = nextUnavailable.length === 0 ? "online" : "offline"
+
+      if (!isComponentMounted) return
+      setWebsiteLabel(nextWebsiteLabel)
+      setWebsiteStatus(nextWebsiteStatus)
+      setExtensionStatus(nextExtensionStatus)
+      setUnavailableApis(nextUnavailable)
+    }
+
+    updateStatuses()
+
+    const intervalId = window.setInterval(updateStatuses, 15000)
+    const handleOnline = () => updateStatuses()
+    const handleOffline = () => updateStatuses()
+
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+
+    return () => {
+      isComponentMounted = false
+      window.clearInterval(intervalId)
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+    }
+  }, [currentViewMode])
 
   // Enforce Visual Mode scope: Always Light Mode
   const isAuditory = currentViewMode === "auditory"
   const isDark = isAuditory ? theme === "dark" : false
-  const modeTransitionClass = isUserSwitchAnimating ? "transition-colors duration-500" : "transition-none duration-0"
+
+  // 🚨 SYNCHRONIZED SPRING PHYSICS
+  const syncColors = isMounted ? "transition-colors duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]" : "transition-none"
+  const syncTransform = isMounted ? "transition-transform duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]" : "transition-none"
 
   return (
-    <div className={`w-[350px] h-[550px] flex flex-col font-sans relative overflow-hidden ${modeTransitionClass} ease-in-out ${isDark ? 'bg-gray-950 text-gray-200' : 'bg-white text-black'}`}>
+    <div className={`w-[350px] h-[550px] flex flex-col font-sans relative overflow-hidden ${syncColors} ${isDark ? 'bg-[#1C1C1E] text-gray-200' : 'bg-white text-black'}`}>
       
       {/* --- NAVBAR --- */}
       <div className="flex items-center justify-between px-4 pt-3 pb-2 z-20">
@@ -76,8 +170,8 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
         {isAuditory ? (
           <button
             onClick={() => onThemeChange(isDark ? "light" : "dark")}
-            className={`relative flex items-center w-16 h-8 rounded-full p-1 transition-colors duration-300 border focus:outline-none
-              ${isDark ? 'bg-gray-800 border-gray-600' : 'bg-slate-200 border-slate-300'}`}
+            className={`relative flex items-center w-16 h-8 rounded-full p-1 transition-colors duration-300 border focus:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50
+              ${isDark ? 'bg-[#2C2C2E] border-[#3C3C3E]' : 'bg-slate-200 border-slate-300'}`}
           >
             <div
               className={`absolute w-6 h-6 bg-white rounded-full shadow-md flex items-center justify-center transform transition-transform duration-300 ease-out
@@ -102,43 +196,41 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
               )}
             </div>
           </button>
-        ) : (
-          <button className="text-[#3B82F6] hover:text-blue-700 transition-colors focus:outline-none">
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z"/>
-            </svg>
-          </button>
-        )}
+        ) : null}
       </div>
 
       {/* --- DYNAMIC MODE SWITCHER PILL --- */}
       <div className="px-6 flex justify-center mb-4 z-20 mt-2">
-        <div className={`relative flex w-[85%] h-11 rounded-full p-[3px] border-2 ${modeTransitionClass}
-          ${isAuditory ? (isDark ? 'bg-gray-900 border-[#FF7A2F]' : 'bg-white border-[#FF7A2F]') : 'bg-white border-[#3B82F6]'}`}
+        <div className={`relative flex w-[85%] h-12 rounded-full p-[4px] border-[3px] ${syncColors}
+          ${isAuditory ? (isDark ? 'bg-[#2C2C2E] border-[#FF7A2F]' : 'bg-white border-[#FF7A2F]') : 'bg-white border-[#0A44FF]'}`}
         >
+          {/* Sliding Background */}
           <div
-            className={`absolute top-[3px] bottom-[3px] w-[calc(50%-3px)] rounded-full ${isUserSwitchAnimating ? "transition-all duration-500" : "transition-none duration-0"} ease-[cubic-bezier(0.4,0,0.2,1)] shadow-sm
-              ${isAuditory ? 'translate-x-[100%] bg-[#FF7A2F]' : 'translate-x-0 bg-[#3B82F6]'}`}
+            className={`absolute top-[3px] bottom-[3px] w-[calc(50%-4px)] rounded-full ${syncTransform} shadow-sm
+              ${isAuditory ? 'translate-x-[100%] bg-[#FF7A2F]' : 'translate-x-0 bg-[#0A44FF]'}`}
           />
           <button
             onClick={() => handleViewSwap("visual")}
-            className={`flex-1 relative z-10 font-bold text-sm ${isUserSwitchAnimating ? "transition-colors duration-300" : "transition-none duration-0"} focus:outline-none ${!isAuditory ? 'text-white' : (isDark ? 'text-gray-300' : 'text-black')}`}
+            className={`flex-1 relative z-10 font-bold text-[15px] ${syncColors} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#0A44FF]/50 rounded-full
+              ${!isAuditory ? 'text-white' : (isDark ? 'text-gray-300' : 'text-black')}`}
           >
             Visual
           </button>
           <button
             onClick={() => handleViewSwap("auditory")}
-            className={`flex-1 relative z-10 font-bold text-sm ${isUserSwitchAnimating ? "transition-colors duration-300" : "transition-none duration-0"} focus:outline-none ${isAuditory ? 'text-white' : 'text-black'}`}
+            className={`flex-1 relative z-10 font-bold text-[15px] ${syncColors} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#FF7A2F]/50 rounded-full
+              ${isAuditory ? 'text-white' : (isDark ? 'text-gray-300' : 'text-black')}`}
           >
             Auditory
           </button>
         </div>
       </div>
 
-      {/* --- FLEX SLIDER (NO STARTUP ANIMATION, YES TOGGLE ANIMATION) --- */}
-      <div className="flex-1 w-full relative overflow-hidden">
+      {/* --- FLEX SLIDER --- */}
+      {/* 🚨 REMOVED overflow-x-hidden HERE to destroy the invisible wall clipping the glow */}
+      <div className="flex-1 w-full relative z-10">
         <div
-          className={`absolute top-0 left-0 w-[200%] h-full flex ${isUserSwitchAnimating ? "transition-transform duration-500" : "transition-none duration-0"} ease-[cubic-bezier(0.4,0,0.2,1)]`}
+          className={`absolute top-0 left-0 w-[200%] h-full flex ${syncTransform}`}
           style={{ transform: isAuditory ? "translateX(-50%)" : "translateX(0)" }}>
           <div className="w-1/2 h-full flex shrink-0">
             <VisualMode />
@@ -151,24 +243,33 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
       {/* --- FOOTER --- */}
       <div className="px-6 flex flex-col items-center gap-2 mt-auto pb-4 z-20">
-        <p className={`text-sm font-bold ${modeTransitionClass} ${isAuditory ? 'text-[#FF7A2F]' : 'text-[#3B82F6]'}`}>
-          Website: <span className={`font-normal ml-1 ${isDark ? 'text-gray-300' : 'text-black'}`}>Google.com</span>
-        </p>
-        <p className={`text-sm font-bold flex items-center justify-center ${modeTransitionClass} ${isAuditory ? 'text-[#FF7A2F]' : 'text-[#3B82F6]'}`}>
-          Extension Status: 
-          <span className={`font-normal ml-2 flex items-center ${isDark ? 'text-green-500' : 'text-green-600'}`}>
-            Online <span className={`inline-block w-2.5 h-2.5 rounded-full ml-1.5 ${isDark ? 'bg-green-500' : 'bg-green-600'}`}></span>
+        <p className={`text-[14px] font-bold ${syncColors} ${isAuditory ? 'text-[#FF7A2F]' : 'text-[#0A44FF]'}`}>
+          Website:
+          <span className={`font-semibold ml-1.5 ${websiteStatus === "online" ? (isDark ? 'text-gray-200' : 'text-gray-800') : 'text-gray-500'}`}>
+            {websiteLabel}
           </span>
         </p>
+        <p className={`text-[14px] font-bold flex items-center justify-center ${syncColors} ${isAuditory ? 'text-[#FF7A2F]' : 'text-[#0A44FF]'}`}>
+          Status:
+          <span className={`font-semibold ml-2 flex items-center ${extensionStatus === "online" ? (isDark ? 'text-green-400' : 'text-green-600') : (isDark ? 'text-red-400' : 'text-red-600')}`}>
+            {extensionStatus === "online" ? "Online" : "Offline"}
+            <span className={`inline-block w-2 h-2 rounded-full ml-1.5 ${extensionStatus === "online" ? (isDark ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.5)]' : 'bg-green-500') : (isDark ? 'bg-red-400 animate-pulse' : 'bg-red-500 animate-pulse')}`}></span>
+          </span>
+        </p>
+        {extensionStatus === "offline" && unavailableApis.length > 0 && (
+          <p className={`text-xs text-center font-medium mt-1 ${isDark ? 'text-red-300' : 'text-red-600'}`}>
+            Unavailable: {unavailableApis.join(", ")}
+          </p>
+        )}
       </div>
 
       <div className="px-6 pb-6 pt-1 z-20">
         <button 
           onClick={onReset}
-          className={`w-full py-2 rounded-lg text-xs font-semibold ${modeTransitionClass} focus:outline-none
-            ${isDark ? 'bg-gray-800 text-gray-500 hover:bg-gray-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+          className={`w-full py-2.5 rounded-xl text-[13px] font-bold ${syncColors} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 active:scale-95 transition-transform
+            ${isDark ? 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-800'}`}
         >
-          Switch Accessibility Mode (Dev)
+          Reset Environment (Dev)
         </button>
       </div>
 

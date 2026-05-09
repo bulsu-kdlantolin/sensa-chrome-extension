@@ -37,51 +37,86 @@ export default function AuditoryMode({ isDark }: AuditoryModeProps) {
     })
   }
 
+  // Apple-style spring animation curve
+  const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
+
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-6 w-full h-full">
-      <div className="flex items-center justify-center gap-7 mb-8 w-full">
+    <div className="flex-1 flex flex-col items-center justify-center px-6 w-full h-full select-none relative overflow-visible bg-transparent">
+      
+      {/* 🚨 CSS Injection for Outward Radiating Wave Animation */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes pulse-glow {
+          0%, 100% { box-shadow: 0 0 22px rgba(255,122,47,0.35); }
+          50% { box-shadow: 0 0 54px rgba(255,122,47,0.72); }
+        }
+        @keyframes arc-fade-smooth {
+          0%, 100% { opacity: 0.2; transform: scale(0.95); }
+          50% { opacity: 1; transform: scale(1.06); }
+        }
         
-        {/* LEFT SOUNDWAVES */}
-        <div className={`transition-colors duration-300 shrink-0 flex items-center justify-center w-14 h-14 ${isCapturing ? 'text-[#FF5722]' : (isDark ? 'text-gray-700' : 'text-[#FAD5B4]')}`}>
-          <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full shrink-0">
-            <rect x="4" y="9" width="2.8" height="6" rx="1.4" />
-            <rect x="8.2" y="7" width="2.8" height="10" rx="1.4" />
-            <rect x="12.4" y="5" width="2.8" height="14" rx="1.4" />
-            <rect x="16.6" y="7.5" width="2.8" height="9" rx="1.4" />
+        .animate-pulse-glow { animation: pulse-glow 2.8s cubic-bezier(0.23,1,0.32,1) infinite; }
+        .arc-wave { transform-origin: center; transform-box: fill-box; }
+        
+        /* Radiating outwards: inner to outer */
+        .arc-1 { animation: arc-fade-smooth 2.2s cubic-bezier(0.23,1,0.32,1) infinite 0.0s; }
+        .arc-2 { animation: arc-fade-smooth 2.2s cubic-bezier(0.23,1,0.32,1) infinite 0.24s; }
+        .arc-3 { animation: arc-fade-smooth 2.2s cubic-bezier(0.23,1,0.32,1) infinite 0.48s; }
+      `}} />
+
+      {/* 🎙️ MAIN INTERACTION ZONE */}
+      <div className="flex items-center justify-center gap-7 mb-10 pt-4 z-10 w-full relative overflow-visible">
+        
+        {/* 🚨 Left Soundwave (Rotated 180deg to radiate outwards left) */}
+        <div className={`flex items-center justify-center shrink-0 transition-colors duration-500 ${isCapturing ? 'text-[#FF7A2F]' : (isDark ? 'text-gray-700' : 'text-gray-200')}`}>
+          <svg viewBox="-3 -3 30 30" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="4" className="w-[72px] h-[72px] rotate-180 drop-shadow-sm overflow-visible">
+            {/* Inner arc */}
+            <path d="M 6 8 A 6 6 0 0 1 6 16" className={isCapturing ? "arc-wave arc-1" : "opacity-30 transition-opacity duration-500"} />
+            {/* Middle arc */}
+            <path d="M 10 4 A 11 11 0 0 1 10 20" className={isCapturing ? "arc-wave arc-2" : "opacity-30 transition-opacity duration-500"} />
+            {/* Outer arc */}
+            <path d="M 14 0 A 16 16 0 0 1 14 24" className={isCapturing ? "arc-wave arc-3" : "opacity-30 transition-opacity duration-500"} />
           </svg>
         </div>
 
-        {/* CC BUTTON (Now uses handleToggle) */}
+        {/* 🚨 Hyper-Tactile CC Button */}
         <button
           style={{ WebkitTapHighlightColor: 'transparent' }}
           onClick={handleToggle}
-          className={`w-[130px] h-[130px] rounded-full flex items-center justify-center transition-all duration-300 relative group outline-none focus:outline-none focus:ring-0 shrink-0
+          aria-pressed={isCapturing}
+          aria-label={isCapturing ? "Deactivate" : "Activate"}
+          className={`w-[136px] h-[136px] shrink-0 rounded-full flex items-center justify-center relative group outline-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-offset-0 focus-visible:ring-[#FF7A2F]/50 transform-gpu active:scale-90 ${springTransition}
             ${isCapturing 
-              ? `bg-[#FF5722] shadow-[0_0_40px_rgba(255,87,34,0.7)] scale-105 ring-0 ${isDark ? 'dark:shadow-[0_0_40px_rgba(249,115,22,0.6)]' : ''}` 
-              : `bg-[#F78E48] ring-[10px] shadow-xl hover:scale-105 ${isDark ? 'ring-gray-800' : 'ring-[#FAD5B4]'}`
+              ? "bg-[#FF7A2F] scale-105 animate-pulse-glow" 
+              : `bg-[#FF7A2F] ring-[10px] ${isDark ? "ring-white/10" : "ring-[#FF7A2F]/10"} shadow-[0_16px_35px_rgba(0,0,0,0.15)] hover:scale-105 hover:bg-[#E86A25] ${isDark ? "hover:ring-white/15" : "hover:ring-[#FF7A2F]/20"}`
             }`}
         >
-          <div className={`w-14 h-12 bg-white rounded-lg flex items-center justify-center pointer-events-none select-none outline-none shadow-sm ${isCapturing ? 'shadow-[0_2px_8px_-2px_rgba(255,87,34,0.3)]' : 'shadow-[0_2px_8px_-2px_rgba(255,87,34,0.3)] dark:shadow-[0_2px_8px_-2px_rgba(249,115,22,0.3)]'}`}>
-            <span className={`font-black text-2xl tracking-tighter transition-colors pointer-events-none ${isCapturing ? 'text-[#FF5722]' : 'text-[#F78E48]'}`}>
+          {/* Glassmorphic Inner Highlight to give the button 3D volume */}
+          <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
+
+          {/* The CC Icon - Made sleek and God-Tier */}
+          <div className={`w-[76px] h-[58px] bg-white rounded-[16px] flex items-center justify-center pointer-events-none select-none transition-transform group-hover:scale-110 duration-300 ${isCapturing ? 'drop-shadow-md' : 'shadow-[0_4px_12px_rgba(0,0,0,0.15)]'}`}>
+            <span className={`font-black text-[32px] tracking-tighter transition-colors pointer-events-none text-[#FF7A2F]`}>
               CC
             </span>
           </div>
         </button>
 
-        {/* RIGHT SOUNDWAVES */}
-        <div className={`transition-colors duration-300 shrink-0 flex items-center justify-center w-14 h-14 ${isCapturing ? 'text-[#FF5722]' : (isDark ? 'text-gray-700' : 'text-[#FAD5B4]')}`}>
-          <svg viewBox="0 0 24 24" fill="currentColor" className="w-full h-full shrink-0">
-            <rect x="4" y="7.5" width="2.8" height="9" rx="1.4" />
-            <rect x="8.2" y="5" width="2.8" height="14" rx="1.4" />
-            <rect x="12.4" y="7" width="2.8" height="10" rx="1.4" />
-            <rect x="16.6" y="9" width="2.8" height="6" rx="1.4" />
+        {/* 🚨 Right Soundwave (Normal orientation, radiating right) */}
+        <div className={`flex items-center justify-center shrink-0 transition-colors duration-500 ${isCapturing ? 'text-[#FF7A2F]' : (isDark ? 'text-gray-700' : 'text-gray-200')}`}>
+          <svg viewBox="-3 -3 30 30" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="4" className="w-[72px] h-[72px] drop-shadow-sm overflow-visible">
+            {/* Inner arc */}
+            <path d="M 6 8 A 6 6 0 0 1 6 16" className={isCapturing ? "arc-wave arc-1" : "opacity-30 transition-opacity duration-500"} />
+            {/* Middle arc */}
+            <path d="M 10 4 A 11 11 0 0 1 10 20" className={isCapturing ? "arc-wave arc-2" : "opacity-30 transition-opacity duration-500"} />
+            {/* Outer arc */}
+            <path d="M 14 0 A 16 16 0 0 1 14 24" className={isCapturing ? "arc-wave arc-3" : "opacity-30 transition-opacity duration-500"} />
           </svg>
         </div>
-
       </div>
 
-      <h2 className={`text-xl font-bold text-center whitespace-pre-line h-14 transition-colors duration-300 ${isCapturing ? 'text-[#FF5722]' : 'text-[#FCA571]'}`}>
-        {isCapturing ? "Click to\nDeactivate" : "Click to Activate"}
+      {/* 📝 INSTRUCTIONAL TEXT (Hardware Accelerated to fix rendering bug) */}
+      <h2 className={`relative z-20 transform-gpu text-[24px] font-black text-center whitespace-pre-line leading-tight tracking-tight transition-colors duration-300 ${isCapturing ? (isDark ? "text-white" : "text-[#FF7A2F]") : (isDark ? "text-gray-300" : "text-gray-800")}`}>
+        {isCapturing ? "Click to\nDeactivate" : "Click to\nActivate"}
       </h2>
     </div>
   )

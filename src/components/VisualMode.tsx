@@ -32,30 +32,51 @@ export default function VisualMode() {
     })
   }
 
+  // Apple-style spring animation curve
+  const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
+
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-6 w-full h-full">
-      <div className="flex items-center justify-center gap-5 mb-8">
+    <div className="flex-1 flex flex-col items-center justify-center px-6 w-full h-full bg-white select-none">
+      
+      {/* 🚨 CSS Injection for active soundwave bouncing */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes soundwave {
+          0%, 100% { transform: scaleY(0.5); opacity: 0.5; }
+          50% { transform: scaleY(1.2); opacity: 1; }
+        }
+        .animate-wave-1 { animation: soundwave 0.8s ease-in-out infinite 0.0s; }
+        .animate-wave-2 { animation: soundwave 0.8s ease-in-out infinite 0.2s; }
+        .animate-wave-3 { animation: soundwave 0.8s ease-in-out infinite 0.4s; }
+        .animate-wave-4 { animation: soundwave 0.8s ease-in-out infinite 0.6s; }
+      `}} />
+
+      <div className="flex items-center justify-center gap-6 mb-10 mt-4">
         
         {/* Left Soundwave */}
-        <div className={`flex items-center gap-1.5 transition-colors duration-300 ${isListening ? 'text-[#3B82F6]' : 'text-slate-300'}`}>
-          <div className="w-0.5 h-3 bg-current rounded-full"></div>
-          <div className="w-0.5 h-6 bg-current rounded-full"></div>
-          <div className="w-0.5 h-10 bg-current rounded-full"></div>
-          <div className="w-0.5 h-4 bg-current rounded-full"></div>
+        <div className={`flex items-center gap-2 transition-colors duration-500 ${isListening ? 'text-[#0A44FF]' : 'text-gray-200'}`}>
+          <div className={`w-[4px] h-3 bg-current rounded-full origin-center ${isListening ? 'animate-wave-1' : ''}`} />
+          <div className={`w-[4px] h-6 bg-current rounded-full origin-center ${isListening ? 'animate-wave-2' : ''}`} />
+          <div className={`w-[4px] h-10 bg-current rounded-full origin-center ${isListening ? 'animate-wave-3' : ''}`} />
+          <div className={`w-[4px] h-4 bg-current rounded-full origin-center ${isListening ? 'animate-wave-4' : ''}`} />
         </div>
 
-        {/* Microphone Button */}
+        {/* 🚨 Hyper-Tactile Microphone Button */}
         <button
           style={{ WebkitTapHighlightColor: 'transparent' }}
           onClick={handleToggle}
-          className={`w-32 h-32 rounded-full flex items-center justify-center transition-all duration-300 relative group outline-none focus:outline-none focus:ring-0 transform-gpu
+          aria-pressed={isListening}
+          aria-label={isListening ? "Deactivate Visual Mode" : "Activate Visual Mode"}
+          className={`w-[128px] h-[128px] rounded-full flex items-center justify-center relative group outline-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-offset-4 focus-visible:ring-[#0A44FF]/60 transform-gpu active:scale-90 ${springTransition}
             ${isListening 
-              ? "bg-[#3B82F6] shadow-[0_0_35px_rgba(59,130,246,0.6)] scale-105 ring-0" 
-              : "bg-[#3B82F6] ring-[6px] ring-blue-100 shadow-xl hover:scale-105"
+              ? "bg-[#0A44FF] shadow-[0_0_40px_rgba(10,68,255,0.7)] scale-105" 
+              : "bg-[#0A44FF] ring-[8px] ring-[#0A44FF]/10 shadow-[0_12px_30px_rgba(0,0,0,0.15)] hover:scale-105 hover:bg-[#0836CC] hover:ring-[#0A44FF]/20"
             }`}
         >
+          {/* Inner Glow to make it pop for low vision users */}
+          <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/20 to-transparent pointer-events-none" />
+
           {isListening ? (
-            <svg focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-14 h-14 pointer-events-none select-none">
+            <svg focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-[60px] h-[60px] pointer-events-none select-none drop-shadow-md">
               <line x1="2" y1="2" x2="22" y2="22" />
               <path d="M18.89 13.23A7.12 7.12 0 0 0 19 12v-2" />
               <path d="M5 10v2a7 7 0 0 0 12 5" />
@@ -64,7 +85,7 @@ export default function VisualMode() {
               <line x1="12" y1="19" x2="12" y2="22" />
             </svg>
           ) : (
-            <svg focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-14 h-14 pointer-events-none select-none">
+            <svg focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-[60px] h-[60px] pointer-events-none select-none drop-shadow-md">
               <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
               <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
               <line x1="12" y1="19" x2="12" y2="22" />
@@ -73,15 +94,16 @@ export default function VisualMode() {
         </button>
 
         {/* Right Soundwave */}
-        <div className={`flex items-center gap-1.5 transition-colors duration-300 ${isListening ? 'text-[#3B82F6]' : 'text-slate-300'}`}>
-          <div className="w-0.5 h-4 bg-current rounded-full"></div>
-          <div className="w-0.5 h-10 bg-current rounded-full"></div>
-          <div className="w-0.5 h-6 bg-current rounded-full"></div>
-          <div className="w-0.5 h-3 bg-current rounded-full"></div>
+        <div className={`flex items-center gap-2 transition-colors duration-500 ${isListening ? 'text-[#0A44FF]' : 'text-gray-200'}`}>
+          <div className={`w-[4px] h-4 bg-current rounded-full origin-center ${isListening ? 'animate-wave-4' : ''}`} />
+          <div className={`w-[4px] h-10 bg-current rounded-full origin-center ${isListening ? 'animate-wave-3' : ''}`} />
+          <div className={`w-[4px] h-6 bg-current rounded-full origin-center ${isListening ? 'animate-wave-2' : ''}`} />
+          <div className={`w-[4px] h-3 bg-current rounded-full origin-center ${isListening ? 'animate-wave-1' : ''}`} />
         </div>
       </div>
 
-      <h2 className="text-[#5B8AF0] text-xl font-bold text-center whitespace-pre-line h-14">
+      {/* 🚨 High Contrast Status Text */}
+      <h2 className={`text-[22px] font-black text-center whitespace-pre-line leading-tight tracking-tight transition-colors duration-300 ${isListening ? "text-[#0A44FF]" : "text-gray-800"}`}>
         {isListening ? "Click or Speak\nto Deactivate" : "Click or Speak\nto Activate"}
       </h2>
     </div>

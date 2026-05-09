@@ -360,7 +360,7 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
           {/* Show original toggle */}
           <div className="flex items-center justify-between min-h-[48px]">
             <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Original Text</span>
-            <div className="w-[220px] flex justify-end">
+            <div className="w-[220px] flex justify-start">
               <label className="relative inline-flex items-center cursor-pointer">
                 <input 
                   type="checkbox" 
@@ -377,7 +377,7 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
           {/* Text color */}
           <div className="flex items-center justify-between min-h-[48px] relative z-40">
             <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Text Color</span>
-            <div className="w-[220px] flex justify-end">
+            <div className="w-[220px] flex justify-start">
               <div className="relative flex items-center justify-center">
                 <button 
                   type="button" 
@@ -406,7 +406,7 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
           {/* Caption bg color */}
           <div className="flex items-center justify-between min-h-[48px] relative z-30">
             <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Background Color</span>
-            <div className="w-[220px] flex justify-end">
+            <div className="w-[220px] flex justify-start">
               <div className="relative flex items-center justify-center">
                 <button 
                   type="button" 
