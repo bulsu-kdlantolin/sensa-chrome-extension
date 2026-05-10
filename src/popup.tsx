@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react"
-// @ts-expect-error CSS is bundled by Plasmo at build time.
 import "./style.css"
 import ModeSelection from "./components/ModeSelection"
-import WelcomeOverlay from "./components/WelcomeOverlay"
+import VisualWelcomeOverlay from "./components/VisualWelcomeOverlay"
+import AuditoryWelcomeOverlay from "./components/AuditoryWelcomeOverlay"
 import Dashboard from "./components/Dashboard"
 import type { SensaUserProfile } from "./lib/storage"
 import { DEFAULT_PROFILE } from "./lib/storage"
@@ -14,53 +14,97 @@ export default function IndexPopup() {
 
   // 1. Boot up and load persistent data
   useEffect(() => {
-    chrome.storage.local.get(["sensa_user_profile"], (result) => {
-      if (result.sensa_user_profile) {
-        const profile = result.sensa_user_profile as SensaUserProfile
-        setUserProfile(profile)
-        setCurrentTheme(profile.globalSettings.theme) // Load current theme
-        
-        // Routing logic based on loaded profile
-        if (!profile.globalSettings.activeMode) {
-          setCurrentView("MODE_SELECTION")
-        } else if (!profile.globalSettings.hasSeenWelcome) {
-          setCurrentView("WELCOME")
-        } else {
-          setCurrentView("DASHBOARD")
-        }
-      } else {
-        // First time initialization
-        chrome.storage.local.set({ sensa_user_profile: DEFAULT_PROFILE }, () => {
+    let didLoad = false
+
+    const loadProfile = () => {
+      chrome.storage.local.get(["sensa_user_profile"], (result) => {
+        didLoad = true
+
+        if (chrome.runtime.lastError) {
+          console.error("Storage error:", chrome.runtime.lastError)
           setUserProfile(DEFAULT_PROFILE)
           setCurrentTheme(DEFAULT_PROFILE.globalSettings.theme)
           setCurrentView("MODE_SELECTION")
-        })
+          return
+        }
+
+        if (result.sensa_user_profile) {
+          const profile = result.sensa_user_profile as SensaUserProfile
+          setUserProfile(profile)
+          setCurrentTheme(profile.globalSettings.theme)
+
+          if (!profile.globalSettings.activeMode) {
+            setCurrentView("MODE_SELECTION")
+          } else if (!profile.globalSettings.hasSeenWelcome) {
+            setCurrentView("WELCOME")
+          } else {
+            setCurrentView("DASHBOARD")
+          }
+        } else {
+          chrome.storage.local.set({ sensa_user_profile: DEFAULT_PROFILE }, () => {
+            setUserProfile(DEFAULT_PROFILE)
+            setCurrentTheme(DEFAULT_PROFILE.globalSettings.theme)
+            setCurrentView("MODE_SELECTION")
+          })
+        }
+      })
+    }
+
+    loadProfile()
+
+    // Timeout fallback in case storage doesn't respond — use `didLoad` flag
+    const timeoutId = setTimeout(() => {
+      if (!didLoad) {
+        setUserProfile(DEFAULT_PROFILE)
+        setCurrentTheme(DEFAULT_PROFILE.globalSettings.theme)
+        setCurrentView("MODE_SELECTION")
       }
-    })
+    }, 2000)
+
+    return () => clearTimeout(timeoutId)
   }, [])
 
   // 2. Safely update persistent JSON database
-  const updateProfile = (updates: Partial<SensaUserProfile>) => {
-    if (!userProfile) return
-    const newProfile = { ...userProfile, ...updates }
-    chrome.storage.local.set({ sensa_user_profile: newProfile }, () => {
-      setUserProfile(newProfile)
+  const updateProfile = (updates: Partial<SensaUserProfile>) : Promise<void> => {
+    return new Promise((resolve) => {
+      if (!userProfile) {
+        // initialize if missing
+        const newProfile = { ...DEFAULT_PROFILE, ...updates }
+        chrome.storage.local.set({ sensa_user_profile: newProfile }, () => {
+          setUserProfile(newProfile)
+          resolve()
+        })
+        return
+      }
+
+      const newProfile = { ...userProfile, ...updates }
+      chrome.storage.local.set({ sensa_user_profile: newProfile }, () => {
+        setUserProfile(newProfile)
+        resolve()
+      })
     })
   }
 
   // 3. UI Handlers with persistent save
-  const handleSelectMode = (mode: "visual" | "auditory") => {
-    updateProfile({
+  const handleSelectMode = async (mode: "visual" | "auditory") => {
+    await updateProfile({
       globalSettings: { ...userProfile!.globalSettings, activeMode: mode }
     })
-    setCurrentView("WELCOME")
+    // Persist the last-opened tab so Dashboard hydrates into the selected mode
+    chrome.storage.local.set({ sensa_last_tab: mode }, () => {
+      setCurrentView("WELCOME")
+    })
   }
 
-  const handleGetStarted = () => {
-    updateProfile({
+  const handleGetStarted = async () => {
+    await updateProfile({
       globalSettings: { ...userProfile!.globalSettings, hasSeenWelcome: true }
     })
-    setCurrentView("DASHBOARD")
+    // Ensure Dashboard picks up the active mode immediately
+    const active = userProfile?.globalSettings.activeMode ?? null
+    chrome.storage.local.set({ sensa_last_tab: active }, () => {
+      setCurrentView("DASHBOARD")
+    })
   }
 
   // Handle persistent theme change
@@ -92,19 +136,31 @@ export default function IndexPopup() {
 
   // --- THE ROUTER ---
   if (currentView === "LOADING" || !userProfile) {
-    return <div className="w-[350px] h-[550px] bg-white flex items-center justify-center dark:bg-gray-950 dark:text-gray-300">Loading Data...</div>
+    return <div className="w-[350px] h-[550px] bg-white flex items-center justify-center text-gray-800">Loading Data...</div>
   }
   
-  if (currentView === "MODE_SELECTION") return <ModeSelection theme={currentTheme} onSelectMode={handleSelectMode} />
+  // MODE_SELECTION is ALWAYS first unless already completed the welcome flow
+  if (currentView === "MODE_SELECTION") {
+    return <ModeSelection theme={currentTheme} onSelectMode={handleSelectMode} />
+  }
   
-  if (currentView === "WELCOME") return <WelcomeOverlay theme={currentTheme} onGetStarted={handleGetStarted} />
+  if (currentView === "WELCOME") {
+    return userProfile.globalSettings.activeMode === "auditory"
+      ? <AuditoryWelcomeOverlay theme={currentTheme} onGetStarted={handleGetStarted} />
+      : <VisualWelcomeOverlay theme={currentTheme} onGetStarted={handleGetStarted} />
+  }
   
   // Dashboard is now an animating view manger. It calls popup.tsx for persistence
-  if (currentView === "DASHBOARD") return <Dashboard 
-    selectedMode={userProfile.globalSettings.activeMode}
-    theme={currentTheme}
-    onThemeChange={handleThemeChange} // Persistent theme handler
-    onReset={handleResetApp}
-    onModeChange={handleModeChange}
-  />
+  if (currentView === "DASHBOARD") {
+    return <Dashboard 
+      selectedMode={userProfile.globalSettings.activeMode}
+      theme={currentTheme}
+      onThemeChange={handleThemeChange} // Persistent theme handler
+      onReset={handleResetApp}
+      onModeChange={handleModeChange}
+    />
+  }
+
+  // Fallback: if no route matched, show MODE_SELECTION as safety default
+  return <ModeSelection theme={currentTheme} onSelectMode={handleSelectMode} />
 }

@@ -102,10 +102,11 @@ export default function VisualMode() {
         </div>
       </div>
 
-      {/* 🚨 High Contrast Status Text */}
-      <h2 className={`text-[22px] font-black text-center whitespace-pre-line leading-tight tracking-tight transition-colors duration-300 ${isListening ? "text-[#0A44FF]" : "text-gray-800"}`}>
-        {isListening ? "Click or Speak\nto Deactivate" : "Click or Speak\nto Activate"}
+      {/* 📝 SLEEK INSTRUCTIONAL TEXT */}
+      <h2 className={`relative z-20 transform-gpu text-[22px] font-semibold text-center whitespace-pre-line leading-relaxed tracking-wide transition-colors duration-500 ${isListening ? "text-[#0A44FF]" : "text-gray-500"}`}>
+        {isListening ? "Click or Speak to Deactivate" : "Click or Speak to Activate"}
       </h2>
+
     </div>
   )
 }

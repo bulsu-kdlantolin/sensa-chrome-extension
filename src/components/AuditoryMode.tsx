@@ -37,30 +37,37 @@ export default function AuditoryMode({ isDark }: AuditoryModeProps) {
     })
   }
 
-  // Apple-style spring animation curve
+  // Apple-style spring animation curve (for click/hover physics)
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-6 w-full h-full select-none relative overflow-visible bg-transparent">
       
-      {/* 🚨 CSS Injection for Outward Radiating Wave Animation */}
+      {/* 🚨 CSS Injection for Sequential Broadcast Ping Animation */}
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes pulse-glow {
-          0%, 100% { box-shadow: 0 0 22px rgba(255,122,47,0.35); }
-          50% { box-shadow: 0 0 54px rgba(255,122,47,0.72); }
-        }
-        @keyframes arc-fade-smooth {
-          0%, 100% { opacity: 0.2; transform: scale(0.95); }
-          50% { opacity: 1; transform: scale(1.06); }
+          0%, 100% { box-shadow: 0 0 20px rgba(255,122,47,0.3); }
+          50% { box-shadow: 0 0 55px rgba(255,122,47,0.8); }
         }
         
-        .animate-pulse-glow { animation: pulse-glow 2.8s cubic-bezier(0.23,1,0.32,1) infinite; }
-        .arc-wave { transform-origin: center; transform-box: fill-box; }
+        /* The discrete radar ping: sharp appear, sharp disappear, then sleep */
+        @keyframes arc-broadcast {
+          0%   { opacity: 0.15; transform: scale(0.95); }
+          15%  { opacity: 1; transform: scale(1.02); }
+          35%  { opacity: 0.15; transform: scale(1.05); }
+          100% { opacity: 0.15; transform: scale(1.05); }
+        }
         
-        /* Radiating outwards: inner to outer */
-        .arc-1 { animation: arc-fade-smooth 2.2s cubic-bezier(0.23,1,0.32,1) infinite 0.0s; }
-        .arc-2 { animation: arc-fade-smooth 2.2s cubic-bezier(0.23,1,0.32,1) infinite 0.24s; }
-        .arc-3 { animation: arc-fade-smooth 2.2s cubic-bezier(0.23,1,0.32,1) infinite 0.48s; }
+        /* Main button breathing */
+        .animate-pulse-glow { animation: pulse-glow 2.4s ease-in-out 0s infinite backwards; }
+        
+        /* Anchors the scaling physics perfectly to the SVG dot at (5, 12) */
+        .arc-wave { transform-origin: 5px 12px; }
+        
+        /* Sequential staggered ping: appears and disappears one by one */
+        .arc-1 { animation: arc-broadcast 2.4s ease-in-out 0.0s infinite backwards; }
+        .arc-2 { animation: arc-broadcast 2.4s ease-in-out 0.25s infinite backwards; }
+        .arc-3 { animation: arc-broadcast 2.4s ease-in-out 0.5s infinite backwards; }
       `}} />
 
       {/* 🎙️ MAIN INTERACTION ZONE */}
@@ -70,11 +77,11 @@ export default function AuditoryMode({ isDark }: AuditoryModeProps) {
         <div className={`flex items-center justify-center shrink-0 transition-colors duration-500 ${isCapturing ? 'text-[#FF7A2F]' : (isDark ? 'text-gray-700' : 'text-gray-200')}`}>
           <svg viewBox="-3 -3 30 30" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="4" className="w-[72px] h-[72px] rotate-180 drop-shadow-sm overflow-visible">
             {/* Inner arc */}
-            <path d="M 6 8 A 6 6 0 0 1 6 16" className={isCapturing ? "arc-wave arc-1" : "opacity-30 transition-opacity duration-500"} />
+            <path d="M 6 8 A 6 6 0 0 1 6 16" className={`arc-wave transition-opacity duration-500 ${isCapturing ? "arc-1" : "opacity-20"}`} />
             {/* Middle arc */}
-            <path d="M 10 4 A 11 11 0 0 1 10 20" className={isCapturing ? "arc-wave arc-2" : "opacity-30 transition-opacity duration-500"} />
+            <path d="M 10 4 A 11 11 0 0 1 10 20" className={`arc-wave transition-opacity duration-500 ${isCapturing ? "arc-2" : "opacity-20"}`} />
             {/* Outer arc */}
-            <path d="M 14 0 A 16 16 0 0 1 14 24" className={isCapturing ? "arc-wave arc-3" : "opacity-30 transition-opacity duration-500"} />
+            <path d="M 14 0 A 16 16 0 0 1 14 24" className={`arc-wave transition-opacity duration-500 ${isCapturing ? "arc-3" : "opacity-20"}`} />
           </svg>
         </div>
 
@@ -93,7 +100,7 @@ export default function AuditoryMode({ isDark }: AuditoryModeProps) {
           {/* Glassmorphic Inner Highlight to give the button 3D volume */}
           <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
 
-          {/* The CC Icon - Made sleek and God-Tier */}
+          {/* The CC Icon */}
           <div className={`w-[76px] h-[58px] bg-white rounded-[16px] flex items-center justify-center pointer-events-none select-none transition-transform group-hover:scale-110 duration-300 ${isCapturing ? 'drop-shadow-md' : 'shadow-[0_4px_12px_rgba(0,0,0,0.15)]'}`}>
             <span className={`font-black text-[32px] tracking-tighter transition-colors pointer-events-none text-[#FF7A2F]`}>
               CC
@@ -105,19 +112,20 @@ export default function AuditoryMode({ isDark }: AuditoryModeProps) {
         <div className={`flex items-center justify-center shrink-0 transition-colors duration-500 ${isCapturing ? 'text-[#FF7A2F]' : (isDark ? 'text-gray-700' : 'text-gray-200')}`}>
           <svg viewBox="-3 -3 30 30" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="4" className="w-[72px] h-[72px] drop-shadow-sm overflow-visible">
             {/* Inner arc */}
-            <path d="M 6 8 A 6 6 0 0 1 6 16" className={isCapturing ? "arc-wave arc-1" : "opacity-30 transition-opacity duration-500"} />
+            <path d="M 6 8 A 6 6 0 0 1 6 16" className={`arc-wave transition-opacity duration-500 ${isCapturing ? "arc-1" : "opacity-20"}`} />
             {/* Middle arc */}
-            <path d="M 10 4 A 11 11 0 0 1 10 20" className={isCapturing ? "arc-wave arc-2" : "opacity-30 transition-opacity duration-500"} />
+            <path d="M 10 4 A 11 11 0 0 1 10 20" className={`arc-wave transition-opacity duration-500 ${isCapturing ? "arc-2" : "opacity-20"}`} />
             {/* Outer arc */}
-            <path d="M 14 0 A 16 16 0 0 1 14 24" className={isCapturing ? "arc-wave arc-3" : "opacity-30 transition-opacity duration-500"} />
+            <path d="M 14 0 A 16 16 0 0 1 14 24" className={`arc-wave transition-opacity duration-500 ${isCapturing ? "arc-3" : "opacity-20"}`} />
           </svg>
         </div>
       </div>
 
-      {/* 📝 INSTRUCTIONAL TEXT (Hardware Accelerated to fix rendering bug) */}
-      <h2 className={`relative z-20 transform-gpu text-[24px] font-black text-center whitespace-pre-line leading-tight tracking-tight transition-colors duration-300 ${isCapturing ? (isDark ? "text-white" : "text-[#FF7A2F]") : (isDark ? "text-gray-300" : "text-gray-800")}`}>
-        {isCapturing ? "Click to\nDeactivate" : "Click to\nActivate"}
+      {/* 📝 SLEEK INSTRUCTIONAL TEXT */}
+      <h2 className={`relative z-20 transform-gpu text-[22px] font-semibold text-center whitespace-pre-line leading-relaxed tracking-wide transition-colors duration-500 ${isCapturing ? (isDark ? "text-white/90" : "text-[#FF7A2F]") : (isDark ? "text-gray-400" : "text-gray-500")}`}>
+        {isCapturing ? "Click to Deactivate" : "Click to Activate"}
       </h2>
+
     </div>
   )
 }
