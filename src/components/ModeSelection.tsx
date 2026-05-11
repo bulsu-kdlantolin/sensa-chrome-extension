@@ -12,7 +12,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 
   return (
-    <div className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] px-6 py-8 flex flex-col items-center justify-center font-sans select-none relative overflow-hidden transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-gray-200' : 'bg-gray-50 text-black'}`}>
+    <div className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] px-6 py-4 flex flex-col items-center justify-center font-sans select-none relative overflow-hidden transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-gray-200' : 'bg-gray-50 text-black'}`}>
       
       {/* 🚨 CSS INJECTION FOR AMBIENT DUAL-TONE ORBS */}
       <style dangerouslySetInnerHTML={{ __html: `
@@ -25,8 +25,32 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
           50% { transform: translate(-20px, -30px) scale(1.1); }
         }
         
+        @keyframes logo-light-flow {
+          0% {
+            filter: drop-shadow(0 0 0px transparent);
+            opacity: 0.9;
+          }
+          25% {
+            filter: drop-shadow(-8px -8px 12px rgba(10, 68, 255, 0.6));
+            opacity: 1;
+          }
+          50% {
+            filter: drop-shadow(0 0 20px rgba(10, 68, 255, 0.4));
+            opacity: 0.95;
+          }
+          75% {
+            filter: drop-shadow(8px 8px 12px rgba(255, 122, 47, 0.6));
+            opacity: 1;
+          }
+          100% {
+            filter: drop-shadow(0 0 0px transparent);
+            opacity: 0.9;
+          }
+        }
+        
         .animate-float-blue { animation: float-blue 8s ease-in-out infinite; }
         .animate-float-orange { animation: float-orange 8s ease-in-out infinite 0.5s; }
+        .animate-logo-light { animation: logo-light-flow 4s ease-in-out infinite; }
       `}} />
 
       {/* 🌌 AMBIENT DUAL-TONE BACKGROUND ENGINE */}
@@ -41,21 +65,21 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
       <div className="relative z-10 w-full flex flex-col items-center">
         
         {/* 🌟 Brand Header */}
-        <div className="flex flex-col items-center mb-8 transform-gpu">
+        <div className="flex flex-col items-center gap-0 mb-0 transform-gpu">
           <img 
             src={sensaLogo} 
             alt="Sensa Logo" 
-            className="w-20 h-20 object-contain drop-shadow-md mb-4" 
+            className="w-[120px] h-[120px] object-contain drop-shadow-md animate-logo-light" 
           />
           <h1 className={`text-[28px] font-black tracking-tight leading-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>
             Welcome to Sensa
           </h1>
-          <p className={`text-[15px] font-medium mt-1 text-center ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+          <p className={`text-[15px] font-medium text-center mb-5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
             Select your primary accessibility mode
           </p>
         </div>
 
-        <div className="w-full flex flex-col gap-5">
+        <div className="w-full flex flex-col gap-3">
 
           {/* ========================================================= */}
           {/* 👁️ VISUAL MODE CARD (Sensa Blue) */}

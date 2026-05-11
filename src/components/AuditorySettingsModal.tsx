@@ -375,7 +375,7 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
           </div>
 
           {/* Text color */}
-          <div className="flex items-center justify-between min-h-[48px] relative z-40">
+          <div className="flex items-center justify-between min-h-[48px] relative z-[100]">
             <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Text Color</span>
             <div className="w-[220px] flex justify-start">
               <div className="relative flex items-center justify-center">
@@ -404,7 +404,7 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
           </div>
 
           {/* Caption bg color */}
-          <div className="flex items-center justify-between min-h-[48px] relative z-30">
+          <div className="flex items-center justify-between min-h-[48px] relative z-[100]">
             <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Background Color</span>
             <div className="w-[220px] flex justify-start">
               <div className="relative flex items-center justify-center">

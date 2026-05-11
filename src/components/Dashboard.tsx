@@ -151,10 +151,10 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
     <div className={`w-[350px] h-[550px] flex flex-col font-sans relative overflow-hidden ${syncColors} ${isDark ? 'bg-[#1C1C1E] text-gray-200' : 'bg-gray-50 text-black'}`}>
       
       {/* --- 🚨 REFINED NAVBAR --- */}
-      <div className="flex items-center justify-between px-5 pt-5 pb-2 z-20">
-        <div className="flex items-center gap-3">
-          <img src={sensaLogo} alt="Sensa Logo" className="w-[50px] h-[50px] object-contain drop-shadow-sm" />
-          <h1 className="text-[24px] font-black tracking-tight leading-none mt-0.5">Sensa</h1>
+      <div className="flex items-center justify-between px-5 pt-3.5 pb-1 z-20">
+        <div className="flex items-center gap-2.5">
+          <img src={sensaLogo} alt="Sensa Logo" className="w-[58px] h-[58px] object-contain drop-shadow-sm shrink-0" />
+          <h1 className="text-[24px] font-black tracking-tight leading-none -translate-y-[1px]">Sensa</h1>
         </div>
         
         {/* THEME TOGGLE */}
@@ -162,7 +162,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
           <button
             onClick={() => onThemeChange(isDark ? "light" : "dark")}
             aria-label={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
-            className={`relative flex items-center w-[58px] h-[30px] rounded-full p-[3px] transition-colors duration-500 shrink-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50
+            className={`relative flex items-center self-center translate-y-[1px] w-[58px] h-[30px] rounded-full p-[3px] transition-colors duration-500 shrink-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50
               ${isDark ? 'bg-black/40 border border-white/10 shadow-inner' : 'bg-gray-200 border border-black/5 shadow-inner'}`}
           >
             <div className="absolute inset-0 flex justify-between items-center px-1.5 pointer-events-none">
@@ -242,39 +242,56 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
         </div>
       </div>
 
-      {/* --- 🚨 UPGRADED FOOTER (Dynamic Island Status Pill) --- */}
-      <div className="px-5 mt-auto pb-4 z-20 flex flex-col gap-3">
+      {/* --- 🚨 UPGRADED FOOTER (Extension Status & Radar Ping) --- */}
+      <div className="px-5 mt-auto pb-5 z-20 flex flex-col gap-3 items-center">
         
-        <div className={`w-full flex items-center justify-between px-4 py-2.5 rounded-[14px] transition-colors duration-500 ${isDark ? 'bg-[#2C2C2E]/60 border border-white/5' : 'bg-white border border-black/5 shadow-sm'}`}>
+        {/* CSS Injection for the Status Radar Ping */}
+        <style dangerouslySetInnerHTML={{ __html: `
+          @keyframes radar-ping {
+            0% { transform: scale(1); opacity: 0.8; }
+            70%, 100% { transform: scale(2.5); opacity: 0; }
+          }
+          .animate-radar-ping { animation: radar-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite; }
+        `}} />
+
+        <div className={`w-full flex items-center justify-center gap-4 px-5 py-3.5 rounded-[18px] transition-colors duration-500 text-center ${isDark ? 'bg-[#2C2C2E]/80 border border-white/5 shadow-[0_8px_24px_rgba(0,0,0,0.3)]' : 'bg-white border border-black/5 shadow-[0_8px_24px_rgba(0,0,0,0.06)]'}`}>
           
-          <div className="flex flex-col overflow-hidden">
-            <span className={`text-[9px] font-black uppercase tracking-widest ${syncColors} ${isAuditory ? 'text-[#FF7A2F]' : 'text-[#0A44FF]'}`}>
+          <div className="flex flex-col items-center overflow-hidden text-center min-w-0 flex-1">
+            <span className={`text-[10px] font-black uppercase tracking-widest ${syncColors} ${isAuditory ? 'text-[#FF7A2F]' : 'text-[#0A44FF]'}`}>
               Target Website
             </span>
-            <span className={`text-[13px] font-semibold mt-0.5 truncate max-w-[140px] ${syncColors} ${websiteStatus === "online" ? (isDark ? 'text-gray-200' : 'text-gray-800') : 'text-gray-400'}`}>
+            <span className={`text-[14px] font-bold mt-0.5 truncate max-w-[130px] ${syncColors} ${websiteStatus === "online" ? (isDark ? 'text-white' : 'text-gray-900') : 'text-gray-400'}`}>
               {websiteLabel}
             </span>
           </div>
 
-          <div className={`h-8 w-px mx-2 transition-colors duration-500 ${isDark ? 'bg-gray-600/30' : 'bg-gray-200'}`}></div>
+          <div className={`h-10 w-[2px] rounded-full mx-0 transition-colors duration-500 ${isDark ? 'bg-gray-600/40' : 'bg-gray-100'}`}></div>
 
-          <div className="flex flex-col items-end shrink-0">
-            <span className={`text-[9px] font-black uppercase tracking-widest ${syncColors} ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+          <div className="flex flex-col items-center text-center shrink-0 flex-1">
+            {/* 🚨 FIXED COPYWRITING: "Extension Status" */}
+            <span className={`text-[10px] font-black uppercase tracking-widest ${syncColors} ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Extension Status
             </span>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className={`text-[13px] font-semibold ${syncColors} ${extensionStatus === "online" ? (isDark ? 'text-green-400' : 'text-green-500') : 'text-red-500'}`}>
+            <div className="flex items-center justify-center gap-2 mt-0.5">
+              <span className={`text-[14px] font-bold ${syncColors} ${extensionStatus === "online" ? (isDark ? 'text-green-400' : 'text-green-600') : 'text-red-500'}`}>
                 {extensionStatus === "online" ? "Connected" : "Offline"}
               </span>
-              <span className={`w-2 h-2 rounded-full ${syncColors} ${extensionStatus === "online" ? (isDark ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.3)]' : 'bg-green-500') : 'bg-red-500 animate-pulse'}`}></span>
+              
+              {/* 🚨 THE RADAR PING INDICATOR */}
+              <div className="relative flex items-center justify-center w-2.5 h-2.5">
+                {/* Expanding Outer Ring */}
+                <span className={`absolute inline-flex w-full h-full rounded-full animate-radar-ping ${extensionStatus === "online" ? (isDark ? 'bg-green-400' : 'bg-green-500') : 'bg-red-500'}`}></span>
+                {/* Solid Inner Core */}
+                <span className={`relative inline-flex rounded-full w-2.5 h-2.5 ${extensionStatus === "online" ? (isDark ? 'bg-green-400 shadow-[0_0_10px_rgba(74,222,128,0.4)]' : 'bg-green-500') : 'bg-red-500'}`}></span>
+              </div>
+
             </div>
           </div>
         </div>
 
-        {/* Minimal Dev Link */}
         <button 
           onClick={onReset}
-          className={`self-center text-[11px] font-medium tracking-wide transition-colors ${isDark ? 'text-gray-600 hover:text-gray-400' : 'text-gray-400 hover:text-gray-600'} focus:outline-none`}
+          className={`self-center text-[12px] font-semibold tracking-wide transition-colors ${isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'} focus:outline-none`}
         >
           Reset Environment (Dev)
         </button>

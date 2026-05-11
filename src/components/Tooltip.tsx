@@ -29,9 +29,9 @@ export const Tooltip = ({ label, isDark, isRed, isAuditory }: TooltipProps) => {
     colors = "bg-[#1C1C1E] text-white border border-white/20"
     arrowColor = "border-l-[#1C1C1E]"
   } else if (isAuditory) {
-    // Light mode auditory theme: orange accent with dark text
-    colors = "bg-[#FFF4ED] text-[#CC5D1F] border border-[#FF7A2F]/30"
-    arrowColor = "border-l-[#FFF4ED]"
+    // Light mode auditory theme: white popup with orange accent text
+    colors = "bg-white text-[#CC5D1F] border border-[#FF7A2F]/25"
+    arrowColor = "border-l-white"
   } else {
     // Light mode visual theme: white bg with blue text
     colors = "bg-white text-[#0A44FF] border border-black/10"

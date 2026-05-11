@@ -167,12 +167,12 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
   }, [handleMainDrag, handleHueDrag]);
 
   const popupClass = isDark
-    ? "bg-gray-900 border-gray-700 shadow-[0_12px_40px_-10px_rgba(0,0,0,0.55)]"
+    ? "bg-[#1C1C1E] border-[#2C2C2E] shadow-[0_12px_40px_-10px_rgba(0,0,0,0.55)]"
     : "bg-white border-gray-100 shadow-[0_12px_40px_-10px_rgba(0,0,0,0.2)]"
-  const arrowClass = isDark ? "bg-gray-900 border-gray-700" : "bg-white border-gray-100"
+  const arrowClass = isDark ? "bg-[#1C1C1E] border-[#2C2C2E]" : "bg-white border-gray-100"
   const labelClass = isDark ? "text-gray-200" : "text-black"
   const inputClass = isDark
-    ? "border-gray-700 text-gray-100 bg-gray-800"
+    ? "border-[#3C3C3E] text-gray-100 bg-[#2C2C2E]"
     : "border-gray-200 text-gray-800 bg-gray-50"
   const actionButtonClass = accent === "orange"
     ? "bg-[#FF7A2F] hover:bg-[#F26A1B]"
@@ -212,7 +212,7 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
   return (
     <div
       ref={popupRef}
-      className={`absolute bottom-[calc(100%+16px)] left-1/2 -translate-x-1/2 z-[100000] w-[320px] rounded-[12px] border p-[16px] font-sans select-none cursor-default ${popupClass}`}
+      className={`absolute bottom-[calc(100%+16px)] left-1/2 -translate-x-1/2 z-[999999] w-[320px] rounded-[12px] border p-[16px] font-sans select-none cursor-default ${popupClass}`}
     >
       <div className={`absolute -bottom-[7px] left-1/2 -translate-x-1/2 w-[14px] h-[14px] rotate-45 border-b border-r pointer-events-none ${arrowClass}`}></div>
       
