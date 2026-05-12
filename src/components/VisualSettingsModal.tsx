@@ -21,6 +21,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const [selectedInputDeviceId, setSelectedInputDeviceId] = useState(DEFAULT_INPUT_DEVICE_ID)
   const [selectedOutputDeviceId, setSelectedOutputDeviceId] = useState(DEFAULT_OUTPUT_DEVICE_ID)
   const [isAutoscrollEnabled, setIsAutoscrollEnabled] = useState(true)
+  const [isHighlightMouseScreenReaderEnabled, setIsHighlightMouseScreenReaderEnabled] = useState(false)
   
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>("")
@@ -96,13 +97,15 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       "sensa_visual_input_device_id", 
       "sensa_visual_output_device_id", 
       "sensa_visual_autoscroll_enabled",
-      "sensa_visual_voice_uri" 
+      "sensa_visual_voice_uri",
+      "sensa_visual_highlight_mouse_screen_reader"
     ], (res) => {
       if (typeof res.sensa_visual_highlight_color === "string") setHighlightColor(res.sensa_visual_highlight_color)
       if (typeof res.sensa_visual_input_device_id === "string") setSelectedInputDeviceId(res.sensa_visual_input_device_id)
       if (typeof res.sensa_visual_output_device_id === "string") setSelectedOutputDeviceId(res.sensa_visual_output_device_id)
       if (typeof res.sensa_visual_autoscroll_enabled === "boolean") setIsAutoscrollEnabled(res.sensa_visual_autoscroll_enabled)
       if (typeof res.sensa_visual_voice_uri === "string") setSelectedVoiceURI(res.sensa_visual_voice_uri)
+      if (typeof res.sensa_visual_highlight_mouse_screen_reader === "boolean") setIsHighlightMouseScreenReaderEnabled(res.sensa_visual_highlight_mouse_screen_reader)
     })
   }, [])
 
@@ -160,6 +163,11 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     chrome.storage.local.set({ sensa_visual_autoscroll_enabled: enabled })
   }
 
+  const handleHighlightMouseScreenReaderToggle = (enabled: boolean) => {
+    setIsHighlightMouseScreenReaderEnabled(enabled)
+    chrome.storage.local.set({ sensa_visual_highlight_mouse_screen_reader: enabled })
+  }
+
   const handleVoiceChange = (voiceURI: string) => {
     setSelectedVoiceURI(voiceURI)
     const selected = voices.find((voice) => voice.voiceURI === voiceURI)
@@ -179,6 +187,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     setSelectedInputDeviceId(DEFAULT_INPUT_DEVICE_ID)
     setSelectedOutputDeviceId(DEFAULT_OUTPUT_DEVICE_ID)
     setIsAutoscrollEnabled(true)
+    setIsHighlightMouseScreenReaderEnabled(false)
     setSelectedVoiceURI(defaultVoiceURI)
 
     chrome.storage.local.set({
@@ -186,6 +195,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       sensa_visual_input_device_id: DEFAULT_INPUT_DEVICE_ID,
       sensa_visual_output_device_id: DEFAULT_OUTPUT_DEVICE_ID,
       sensa_visual_autoscroll_enabled: true,
+      sensa_visual_highlight_mouse_screen_reader: false,
       sensa_visual_voice_uri: defaultVoiceURI,
       sensa_visual_voice_name: defaultVoice?.name || ""
     })
@@ -383,6 +393,22 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
                   aria-label="Toggle Autoscroll"
                 />
                 <div className="w-14 h-8 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-6 peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-[#0A44FF] shadow-inner"></div>
+              </label>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between min-h-[48px]">
+            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Mouse Highlight Reader</span>
+            <div className="w-[200px] flex justify-start">
+              <label className="relative inline-flex items-center cursor-pointer" {...getHoverHandlers("Mouse Highlight Reader")}>
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={isHighlightMouseScreenReaderEnabled}
+                  onChange={(event) => handleHighlightMouseScreenReaderToggle(event.target.checked)}
+                  aria-label="Toggle Mouse Highlight Reader"
+                />
+                <div className={`w-14 h-8 rounded-full peer peer-checked:after:translate-x-6 peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all shadow-inner peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#0A44FF]/50 ${isDark ? 'peer-checked:bg-[#0A44FF] bg-gray-600' : 'peer-checked:bg-[#0A44FF] bg-gray-300'}`}></div>
               </label>
             </div>
           </div>

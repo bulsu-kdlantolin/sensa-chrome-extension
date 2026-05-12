@@ -6,8 +6,6 @@ interface AuditoryModeProps {
 
 export default function AuditoryMode({ isDark }: AuditoryModeProps) {
   const [isCapturing, setIsCapturing] = useState(false)
-  const [activationPhase, setActivationPhase] = useState<"idle" | "activating" | "active">("idle")
-  const [waveResetToken, setWaveResetToken] = useState(0)
 
   useEffect(() => {
     chrome.storage.local.get(["sensa_auditory_active"], (res) => {
@@ -27,15 +25,6 @@ export default function AuditoryMode({ isDark }: AuditoryModeProps) {
   const handleToggle = () => {
     const newState = !isCapturing
     setIsCapturing(newState)
-    if (newState) {
-      setActivationPhase("activating")
-      setWaveResetToken((value) => value + 1)
-      window.setTimeout(() => {
-        setActivationPhase((currentPhase) => (currentPhase === "activating" ? "active" : currentPhase))
-      }, 420)
-    } else {
-      setActivationPhase("idle")
-    }
     chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: newState ? "auditory" : null })
     chrome.storage.local.set({
       sensa_auditory_active: newState,
@@ -59,29 +48,23 @@ export default function AuditoryMode({ isDark }: AuditoryModeProps) {
           25% { opacity: 1; }
           50%, 100% { opacity: 0; }
         }
-
-        @keyframes auditory-arc-intro {
-          0% { opacity: 0; transform: scale(0.9); }
-          100% { opacity: 1; transform: scale(1); }
-        }
         
-        .animate-auditory-glow { animation: auditory-pulse-glow 2.4s ease-in-out infinite; }
-        .a-arc-1 { animation: auditory-arc 2.4s ease-in-out infinite 0.0s; }
-        .a-arc-2 { animation: auditory-arc 2.4s ease-in-out infinite 0.2s; }
-        .a-arc-3 { animation: auditory-arc 2.4s ease-in-out infinite 0.4s; }
-        .a-arc-intro { animation: auditory-arc-intro 420ms cubic-bezier(0.23, 1, 0.32, 1) forwards; }
+        .animate-auditory-glow { animation: auditory-pulse-glow 2.4s ease-in-out infinite backwards; }
+        
+        .a-arc-1 { animation: auditory-arc 2.4s ease-in-out infinite 0.0s backwards; }
+        .a-arc-2 { animation: auditory-arc 2.4s ease-in-out infinite 0.2s backwards; }
+        .a-arc-3 { animation: auditory-arc 2.4s ease-in-out infinite 0.4s backwards; }
       `}} />
 
       <div className="flex flex-col items-center justify-center w-full relative z-10">
 
         <div className="flex items-center justify-center gap-6 mb-10 mt-4 w-full relative overflow-visible">
           
-          {/* LEFT ARC-WAVES */}
           <div className={`flex items-center justify-center shrink-0 ${springTransition} ${isCapturing ? 'opacity-100 scale-100 text-[#FF7A2F]' : 'opacity-0 scale-75 pointer-events-none text-gray-300'}`}>
-              <svg key={`left-${isCapturing}-${waveResetToken}`} viewBox="-3 -3 30 30" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="4" className="w-[72px] h-[72px] rotate-180 overflow-visible">
-                <path d="M 6 8 A 6 6 0 0 1 6 16" className={`transition-opacity duration-300 ${isCapturing ? (activationPhase === "active" ? "a-arc-1" : "a-arc-intro opacity-100") : "opacity-0"}`} />
-                <path d="M 10 4 A 11 11 0 0 1 10 20" className={`transition-opacity duration-300 ${isCapturing ? (activationPhase === "active" ? "a-arc-2" : "a-arc-intro opacity-100") : "opacity-0"}`} />
-                <path d="M 14 0 A 16 16 0 0 1 14 24" className={`transition-opacity duration-300 ${isCapturing ? (activationPhase === "active" ? "a-arc-3" : "a-arc-intro opacity-100") : "opacity-0"}`} />
+            <svg viewBox="-3 -3 30 30" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="4" className="w-[72px] h-[72px] rotate-180 overflow-visible origin-center">
+              <path d="M 6 8 A 6 6 0 0 1 6 16" className={isCapturing ? "a-arc-1" : "opacity-0"} />
+              <path d="M 10 4 A 11 11 0 0 1 10 20" className={isCapturing ? "a-arc-2" : "opacity-0"} />
+              <path d="M 14 0 A 16 16 0 0 1 14 24" className={isCapturing ? "a-arc-3" : "opacity-0"} />
             </svg>
           </div>
 
@@ -90,14 +73,9 @@ export default function AuditoryMode({ isDark }: AuditoryModeProps) {
             onClick={handleToggle}
             aria-pressed={isCapturing}
             aria-label={isCapturing ? "Deactivate" : "Activate"}
-            className={`w-[136px] h-[136px] shrink-0 rounded-full flex items-center justify-center relative group outline-none focus-visible:outline-none transform-gpu active:scale-90 ${springTransition}
-              ${isCapturing 
-                ? "bg-[#FF7A2F] scale-105 shadow-[0_10px_40px_rgba(255,122,47,0.4)] ring-[0px] ring-[#FF7A2F]/0" 
-                : `bg-[#FF7A2F] scale-100 ring-[8px] ${isDark ? "ring-white/10" : "ring-[#FF7A2F]/10"} shadow-[0_16px_35px_rgba(0,0,0,0.15)] hover:scale-105 hover:bg-[#E86A25] ${isDark ? "hover:ring-white/15" : "hover:ring-[#FF7A2F]/20"}`
-              }`}
+            className={`w-[136px] h-[136px] shrink-0 rounded-full flex items-center justify-center relative group outline-none focus-visible:outline-none transform-gpu active:scale-90 ${springTransition} ${isCapturing ? "bg-[#FF7A2F] scale-105 shadow-[0_10px_40px_rgba(255,122,47,0.4)] ring-[0px] ring-[#FF7A2F]/0" : `bg-[#FF7A2F] scale-100 ring-[8px] ${isDark ? "ring-white/10" : "ring-[#FF7A2F]/10"} shadow-[0_16px_35px_rgba(0,0,0,0.15)] hover:scale-105 hover:bg-[#E86A25] ${isDark ? "hover:ring-white/15" : "hover:ring-[#FF7A2F]/20"}`}`}
           >
-            {/* GLOW LAYER: Smooth 1 second fade over the constant pulse */}
-            <div className={`absolute inset-0 rounded-full pointer-events-none transition-opacity duration-500 ease-out animate-auditory-glow ${isCapturing ? 'opacity-100' : 'opacity-0'}`} />
+            <div className={`absolute inset-0 rounded-full pointer-events-none transition-opacity duration-700 ease-out ${isCapturing ? 'opacity-100 animate-auditory-glow' : 'opacity-0'}`} />
 
             <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
 
@@ -110,14 +88,14 @@ export default function AuditoryMode({ isDark }: AuditoryModeProps) {
                 <span className="font-black text-[32px] tracking-tighter text-white">CC</span>
               </div>
             </div>
+            
           </button>
 
-          {/* RIGHT ARC-WAVES */}
           <div className={`flex items-center justify-center shrink-0 ${springTransition} ${isCapturing ? 'opacity-100 scale-100 text-[#FF7A2F]' : 'opacity-0 scale-75 pointer-events-none text-gray-300'}`}>
-            <svg key={`right-${isCapturing}-${waveResetToken}`} viewBox="-3 -3 30 30" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="4" className="w-[72px] h-[72px] overflow-visible">
-                <path d="M 6 8 A 6 6 0 0 1 6 16" className={`transition-opacity duration-300 ${isCapturing ? (activationPhase === "active" ? "a-arc-1" : "a-arc-intro opacity-100") : "opacity-0"}`} />
-                <path d="M 10 4 A 11 11 0 0 1 10 20" className={`transition-opacity duration-300 ${isCapturing ? (activationPhase === "active" ? "a-arc-2" : "a-arc-intro opacity-100") : "opacity-0"}`} />
-                <path d="M 14 0 A 16 16 0 0 1 14 24" className={`transition-opacity duration-300 ${isCapturing ? (activationPhase === "active" ? "a-arc-3" : "a-arc-intro opacity-100") : "opacity-0"}`} />
+            <svg viewBox="-3 -3 30 30" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="4" className="w-[72px] h-[72px] overflow-visible origin-center">
+              <path d="M 6 8 A 6 6 0 0 1 6 16" className={isCapturing ? "a-arc-1" : "opacity-0"} />
+              <path d="M 10 4 A 11 11 0 0 1 10 20" className={isCapturing ? "a-arc-2" : "opacity-0"} />
+              <path d="M 14 0 A 16 16 0 0 1 14 24" className={isCapturing ? "a-arc-3" : "opacity-0"} />
             </svg>
           </div>
         </div>
