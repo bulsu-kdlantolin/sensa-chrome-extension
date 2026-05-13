@@ -196,6 +196,7 @@ export default function VisualDock({
       className="flex flex-col w-fit shrink-0 box-border relative z-50"
       role="toolbar" 
       aria-label="Reading and Voice Controls"
+      data-sensa-visual-dock
     >
       
       {/* ========================================================= */}

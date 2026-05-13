@@ -2,6 +2,97 @@ import { useState, useEffect, useRef } from "react"
 import sensaLogo from "data-base64:../../assets/sensa-logo.png"
 import VisualMode from "./VisualMode"
 import AuditoryMode from "./AuditoryMode"
+// Small helper component: measured marquee label
+function WebsiteLabel({ label, isDark, syncColors, websiteStatus }: { label: string; isDark: boolean; syncColors: string; websiteStatus: string }) {
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const textRef = useRef<HTMLDivElement | null>(null)
+  const styleIdRef = useRef<string | null>(null)
+  const [shouldScroll, setShouldScroll] = useState(false)
+
+  useEffect(() => {
+    const container = containerRef.current
+    const text = textRef.current
+    if (!container || !text) return
+
+    const measure = () => {
+      const cw = container.clientWidth
+      const tw = text.scrollWidth
+      if (tw > cw + 8) {
+        setShouldScroll(true)
+
+        // Start with the text in its natural position (visible start), then move left
+        const distance = tw - cw + 8 // how much to move left so the whole text scrolls through
+        const speed = 25 // px per second (slower)
+        const pauseStart = 2.0 // seconds to pause before moving (longer initial pause)
+        const pauseEnd = 1.2 // seconds to hold at end
+        const moveDuration = Math.max(4, distance / speed)
+        const duration = moveDuration + pauseStart + pauseEnd
+        const id = `sensa-marquee-${Date.now()}`
+        styleIdRef.current = id
+
+        text.style.display = 'inline-block'
+        text.style.willChange = 'transform'
+        text.style.transform = `translateX(0)`
+        // Ensure left alignment so long text isn't centered and cut off
+        container.style.textAlign = 'left'
+        // Add a small left padding on the text so the first character isn't visually clipped
+        text.style.paddingLeft = '6px'
+
+        // Keyframes: hold at 0 for pauseStart, move left over moveDuration, then hold at end for pauseEnd
+        const moveStartPct = (pauseStart / duration) * 100
+        const moveEndPct = ((pauseStart + moveDuration) / duration) * 100
+        const keyframes = `@keyframes ${id} { 0% { transform: translateX(0); } ${moveStartPct}% { transform: translateX(0); } ${moveEndPct}% { transform: translateX(-${distance}px); } 100% { transform: translateX(-${distance}px); } }`
+        const styleEl = document.createElement('style')
+        styleEl.id = id
+        styleEl.textContent = keyframes
+        document.head.appendChild(styleEl)
+
+        // Apply animation: move left, hold briefly, then reset
+        text.style.animation = `${id} ${duration}s linear infinite`
+      } else {
+        setShouldScroll(false)
+        if (styleIdRef.current) {
+          const prev = document.getElementById(styleIdRef.current)
+          prev?.remove()
+          styleIdRef.current = null
+        }
+        text.style.animation = ''
+        text.style.transform = ''
+        text.style.display = ''
+        text.style.willChange = ''
+        container.style.textAlign = ''
+        text.style.paddingLeft = ''
+      }
+    }
+
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(container)
+    ro.observe(text)
+    window.addEventListener('orientationchange', measure)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('orientationchange', measure)
+      if (styleIdRef.current) {
+        const prev = document.getElementById(styleIdRef.current)
+        prev?.remove()
+        styleIdRef.current = null
+      }
+    }
+  }, [label])
+
+  return (
+    <div className={`relative w-[130px] h-[20px] overflow-hidden`} ref={containerRef}>
+      <div
+        ref={textRef}
+        className={`${syncColors} text-[14px] font-bold whitespace-nowrap ${websiteStatus === 'online' ? (isDark ? 'text-white' : 'text-gray-900') : 'text-gray-400'}`}
+        aria-label={label}
+      >
+        {label}
+      </div>
+    </div>
+  )
+}
 
 interface DashboardProps {
   selectedMode: "visual" | "auditory" | null
@@ -260,9 +351,18 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
             <span className={`text-[10px] font-black uppercase tracking-widest ${syncColors} ${isAuditory ? 'text-[#FF7A2F]' : 'text-[#0A44FF]'}`}>
               Target Website
             </span>
-            <span className={`text-[14px] font-bold mt-0.5 truncate max-w-[130px] ${syncColors} ${websiteStatus === "online" ? (isDark ? 'text-white' : 'text-gray-900') : 'text-gray-400'}`}>
-              {websiteLabel}
-            </span>
+            {/* Scrolling label: measures overflow and applies a looping marquee animation */}
+            <div ref={(el) => { /* placeholder for typing */ }} className="mt-1">
+              <div
+                ref={(el) => (null)}
+              />
+            </div>
+            <WebsiteLabel
+              label={websiteLabel}
+              isDark={isDark}
+              syncColors={syncColors}
+              websiteStatus={websiteStatus}
+            />
           </div>
 
           <div className={`h-10 w-[2px] rounded-full mx-0 transition-colors duration-500 ${isDark ? 'bg-gray-600/40' : 'bg-gray-100'}`}></div>

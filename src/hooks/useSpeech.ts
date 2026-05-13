@@ -211,19 +211,26 @@ export function useSpeech(readingSpeed: number, highlightColor: string, isOverla
   const isPlayingRef = useRef(false);
   const isPausedRef = useRef(false);
   const selectedVoiceURIRef = useRef<string>("");
+  const selectedVoiceNameRef = useRef<string>("");
 
   const sentenceOverlayRootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    chrome.storage.local.get(["sensa_visual_voice_uri"], (res) => {
+    chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
       if (typeof res.sensa_visual_voice_uri === "string") {
         selectedVoiceURIRef.current = res.sensa_visual_voice_uri;
+      }
+      if (typeof res.sensa_visual_voice_name === "string") {
+        selectedVoiceNameRef.current = res.sensa_visual_voice_name;
       }
     });
 
     const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
       if (changes.sensa_visual_voice_uri && typeof changes.sensa_visual_voice_uri.newValue === "string") {
         selectedVoiceURIRef.current = changes.sensa_visual_voice_uri.newValue;
+      }
+      if (changes.sensa_visual_voice_name && typeof changes.sensa_visual_voice_name.newValue === "string") {
+        selectedVoiceNameRef.current = changes.sensa_visual_voice_name.newValue;
       }
     };
 
@@ -408,7 +415,11 @@ export function useSpeech(readingSpeed: number, highlightColor: string, isOverla
 
       const availableVoices = window.speechSynthesis.getVoices();
       if (availableVoices.length > 0) {
-        const preferredVoice = availableVoices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current);
+        // Prefer voiceURI match, fallback to voice name match for compatibility
+        let preferredVoice = availableVoices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current);
+        if (!preferredVoice && selectedVoiceNameRef.current) {
+          preferredVoice = availableVoices.find((voice) => voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current));
+        }
         if (preferredVoice) {
           utterance.voice = preferredVoice;
         }

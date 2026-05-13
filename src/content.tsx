@@ -128,6 +128,10 @@ export default function FloatingDockManager() {
   const isAuditoryModeActive = activeMode === "auditory"
 
   const [highlightColor, setHighlightColor] = useState("#FFFE00")
+  const selectedVoiceURIRef = useRef<string>("")
+  const selectedVoiceNameRef = useRef<string>("")
+  const isYouTube = typeof window !== "undefined" && /(^|\.)youtube\.com$|(^|\.)youtu\.be$/.test(window.location.hostname)
+  const uiScale = isYouTube ? 1.08 : 1
   const { isPlaying, isPaused, togglePlayPause, next, prev, restart } = useSpeech(
     readingSpeed,
     highlightColor,
@@ -142,6 +146,26 @@ export default function FloatingDockManager() {
     auditorySettings.showOriginalText,
     isCaptionsActive  // Pass the UI toggle state so captions clear when turned off
   )
+
+  useEffect(() => {
+    // Load saved voice preferences and keep in sync
+    chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
+      if (typeof res.sensa_visual_voice_uri === "string") selectedVoiceURIRef.current = res.sensa_visual_voice_uri
+      if (typeof res.sensa_visual_voice_name === "string") selectedVoiceNameRef.current = res.sensa_visual_voice_name
+    })
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.sensa_visual_voice_uri && typeof changes.sensa_visual_voice_uri.newValue === "string") {
+        selectedVoiceURIRef.current = changes.sensa_visual_voice_uri.newValue
+      }
+      if (changes.sensa_visual_voice_name && typeof changes.sensa_visual_voice_name.newValue === "string") {
+        selectedVoiceNameRef.current = changes.sensa_visual_voice_name.newValue
+      }
+    }
+
+    chrome.storage.onChanged.addListener(handleStorageChange)
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange)
+  }, [])
 
   useEffect(() => {
     activeModeRef.current = activeMode
@@ -376,6 +400,17 @@ export default function FloatingDockManager() {
       window.speechSynthesis.cancel()
       const utterance = new SpeechSynthesisUtterance(selectedText)
       utterance.rate = readingSpeed
+
+      // Apply preferred voice if available (try URI first, then name)
+      const availableVoices = window.speechSynthesis.getVoices()
+      if (availableVoices.length > 0) {
+        let preferred = availableVoices.find((v) => v.voiceURI === selectedVoiceURIRef.current)
+        if (!preferred && selectedVoiceNameRef.current) {
+          preferred = availableVoices.find((v) => v.name === selectedVoiceNameRef.current || v.name?.includes(selectedVoiceNameRef.current))
+        }
+        if (preferred) utterance.voice = preferred
+      }
+
       window.speechSynthesis.speak(utterance)
     }
 
@@ -392,12 +427,15 @@ export default function FloatingDockManager() {
     const handleDocumentClick = (ev: MouseEvent) => {
       const target = ev.target as HTMLElement | null
       if (!target) return
-      // Ignore clicks on interactive form controls or our extension UI
-      if (target.closest('input, button, select, textarea, label, .sensa-popup, .sensa-modal')) return
+      // Ignore clicks on interactive form controls, our extension UI, or the visual dock
+      if (target.closest('input, button, select, textarea, label, .sensa-popup, .sensa-modal, [data-sensa-visual-dock]')) return
       const sel = window.getSelection()
       if (!sel || sel.toString().trim().length === 0) {
-        window.speechSynthesis.cancel()
-        lastSelectedText = ""
+        // Only cancel if highlight reader was actively reading something
+        if (lastSelectedText) {
+          window.speechSynthesis.cancel()
+          lastSelectedText = ""
+        }
       }
     }
 
@@ -423,7 +461,7 @@ export default function FloatingDockManager() {
 
   // Notice how the return now uses <> ... </> to group the Modal and the Dock separately
   return (
-    <>
+    <div style={{ zoom: uiScale } as React.CSSProperties}>
       {/* 1. THE SETTINGS MODAL (Floats dead center, outside the drag logic) */}
       {isVisualSettingsOpen && (
         <VisualSettingsModal onClose={() => setIsVisualSettingsOpen(false)} />
@@ -561,6 +599,6 @@ export default function FloatingDockManager() {
           />
         )}
       </div>
-    </>
+    </div>
   )
 }
