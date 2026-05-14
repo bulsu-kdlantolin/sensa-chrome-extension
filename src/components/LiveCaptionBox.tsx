@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react"
+import React, { useEffect, useRef, useState, useLayoutEffect } from "react"
 
 interface CaptionOffset { x: number; y: number }
 
@@ -19,6 +19,9 @@ interface LiveCaptionBoxProps {
   showOriginalText?: boolean
 }
 
+// 🚨 Industry Standard "Rule of Two"
+const MAX_VISIBLE_BLOCKS = 2 
+
 export default function LiveCaptionBox({
   captions, error, fontSize, textColor, bgColor, fontFamily, showOriginalText = true
 }: LiveCaptionBoxProps) {
@@ -27,6 +30,12 @@ export default function LiveCaptionBox({
   const dragStartRef = useRef({ x: 0, y: 0 })
   const offsetRef = useRef(offset)
 
+  // 🚨 THE FIX: Stripped down to exactly what the API gives us. No artificial timers.
+  const [displayBlocks, setDisplayBlocks] = useState<CaptionBlock[]>([])
+  const blockHeights = useRef(new Map<string, number>())
+  const blockRefs = useRef(new Map<string, HTMLDivElement | null>())
+
+  // --- DRAG LOGIC ---
   useEffect(() => {
     chrome.storage.local.get(["sensa_live_caption_offset"], (result) => {
       const savedOffset = result.sensa_live_caption_offset
@@ -38,27 +47,114 @@ export default function LiveCaptionBox({
 
   useEffect(() => { offsetRef.current = offset }, [offset])
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handleDragStart = (clientX: number, clientY: number) => {
     setIsDragging(true)
-    dragStartRef.current = { x: e.clientX - offset.x, y: e.clientY - offset.y }
+    dragStartRef.current = { x: clientX - offset.x, y: clientY - offset.y }
   }
+
+  const handleMouseDown = (e: React.MouseEvent) => handleDragStart(e.clientX, e.clientY)
+  const handleTouchStart = (e: React.TouchEvent) => handleDragStart(e.touches[0].clientX, e.touches[0].clientY)
 
   useEffect(() => {
     if (!isDragging) return
+    
     const handleMouseMove = (e: MouseEvent) => {
       setOffset({ x: e.clientX - dragStartRef.current.x, y: e.clientY - dragStartRef.current.y })
     }
-    const handleMouseUp = () => {
+    const handleTouchMove = (e: TouchEvent) => {
+      setOffset({ x: e.touches[0].clientX - dragStartRef.current.x, y: e.touches[0].clientY - dragStartRef.current.y })
+    }
+    
+    const handleDragEnd = () => {
       setIsDragging(false)
       chrome.storage.local.set({ sensa_live_caption_offset: offsetRef.current })
     }
+
     window.addEventListener("mousemove", handleMouseMove)
-    window.addEventListener("mouseup", handleMouseUp)
+    window.addEventListener("mouseup", handleDragEnd)
+    window.addEventListener("touchmove", handleTouchMove, { passive: false })
+    window.addEventListener("touchend", handleDragEnd)
+    
     return () => {
       window.removeEventListener("mousemove", handleMouseMove)
-      window.removeEventListener("mouseup", handleMouseUp)
+      window.removeEventListener("mouseup", handleDragEnd)
+      window.removeEventListener("touchmove", handleTouchMove)
+      window.removeEventListener("touchend", handleDragEnd)
     }
   }, [isDragging])
+
+  // --- DATA SYNC LOGIC ---
+  useEffect(() => {
+    if (!captions) return
+
+    // 🚨 THE FIX: Pure 1-to-1 mapping. Zero latency.
+    setDisplayBlocks((prev) => {
+      const nextMap = new Map(prev.map(b => [b.id, { ...b }]))
+      
+      captions.forEach(c => {
+        nextMap.set(c.id, {
+          id: c.id,
+          original: c.original,
+          translated: c.translated,
+          isFinal: c.isFinal
+        })
+      })
+
+      const ordered: CaptionBlock[] = captions.map(c => nextMap.get(c.id)!) 
+      prev.forEach(b => { if (!nextMap.has(b.id)) ordered.push(b) })
+      return ordered
+    })
+  }, [captions])
+
+  useLayoutEffect(() => {
+    displayBlocks.forEach(b => {
+      const el = blockRefs.current.get(b.id)
+      if (el) {
+        const h = el.offsetHeight
+        blockHeights.current.set(b.id, h)
+      }
+    })
+  }, [displayBlocks, fontSize])
+
+
+  // --- RENDER LOGIC ---
+  const renderOriginal = (b: CaptionBlock) => {
+    if (!b.original) return null
+    return (
+      <div style={{ 
+        width: "100%", 
+        whiteSpace: "pre-wrap", 
+        lineHeight: 1.25,
+        // 🚨 THE FIX: Ghost styling for interim text
+        color: textColor,
+        opacity: b.isFinal ? 0.75 : 0.45,
+        fontStyle: b.isFinal ? "normal" : "italic",
+        fontWeight: 500,
+        transition: "opacity 150ms ease, font-style 150ms ease"
+      }}>
+        {b.original}
+      </div>
+    )
+  }
+
+  const renderTranslation = (b: CaptionBlock) => {
+    if (!b.translated) return null
+    return (
+      <div style={{ 
+        // 🚨 THE FIX: Ghost styling for interim translations
+        opacity: b.isFinal ? 1 : 0.65,
+        fontStyle: b.isFinal ? "normal" : "italic",
+        transition: "opacity 150ms ease, font-style 150ms ease", 
+        color: textColor, 
+        fontWeight: 700, 
+        fontSize: `${fontSize}px`, 
+        lineHeight: 1.3,
+        letterSpacing: "-0.01em" 
+      }}>
+        {b.translated}
+      </div>
+    )
+  }
 
   return (
     <div
@@ -70,72 +166,68 @@ export default function LiveCaptionBox({
         bottom: "20px",
         transform: `translate(calc(-50% + ${offset.x}px), ${offset.y}px)`,
         width: "min(92vw, 760px)",
-        maxHeight: "42vh",
-        padding: "14px 16px",
-        borderRadius: "18px",
+        padding: "10px 14px", 
+        borderRadius: "14px",
         backgroundColor: bgColor,
         color: textColor,
-        fontSize: `${fontSize}px`,
         fontFamily: fontFamily || "system-ui, Arial, sans-serif",
-        boxShadow: "0 14px 36px rgba(0,0,0,0.34)",
+        boxShadow: "0 10px 25px rgba(0,0,0,0.25)",
         userSelect: "none",
         cursor: isDragging ? "grabbing" : "grab",
         zIndex: 999999,
         display: "flex",
         flexDirection: "column",
-        gap: "10px",
-        overflowY: "auto",
+        gap: "6px", 
+        overflowY: "hidden", 
         overflowX: "hidden",
-        backdropFilter: "blur(10px)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)", 
         border: "1px solid rgba(255,255,255,0.12)",
         wordBreak: "break-word",
-        overflowWrap: "anywhere"
+        overflowWrap: "anywhere",
+        textShadow: "0px 1px 3px rgba(0,0,0,0.4)" 
       }}
       onMouseDown={handleMouseDown}
+      onTouchStart={handleTouchStart}
     >
       {error ? (
-        <div style={{ color: "#FCA5A5", textAlign: "center", fontSize: "0.88em", lineHeight: 1.4 }}>{error}</div>
-      ) : captions.length === 0 ? (
-        <div style={{ opacity: 0.75, textAlign: "center", fontSize: "0.9em", lineHeight: 1.4 }}>Listening for speech...</div>
+        <div style={{ color: "#FCA5A5", textAlign: "center", fontSize: "0.9em", fontWeight: 500 }}>{error}</div>
+      ) : displayBlocks.length === 0 ? (
+        <div style={{ opacity: 0.6, textAlign: "center", fontSize: "0.9em", fontWeight: 500, fontStyle: "italic", padding: "4px 0" }}>
+          Listening for speech...
+        </div>
       ) : (
-        captions.map((block, index) => {
-          const isLatest = index === captions.length - 1
-          const opacity = isLatest ? 1 : Math.max(0.55, 1 - (captions.length - 1 - index) * 0.16)
+        displayBlocks.slice(-MAX_VISIBLE_BLOCKS).map((b, index, visibleBlocks) => {
+          const isLatest = index === visibleBlocks.length - 1
+          const opacity = isLatest ? 1 : 0.4 
+          const minH = blockHeights.current.get(b.id)
           return (
             <div
-              key={block.id}
+              key={b.id}
+              ref={el => blockRefs.current.set(b.id, el)}
               style={{
                 opacity,
-                transition: "opacity 180ms ease, transform 180ms ease",
+                transition: "opacity 300ms ease, transform 300ms ease",
                 display: "flex",
                 flexDirection: "column",
-                gap: "6px",
-                padding: "12px 14px",
-                borderRadius: "14px",
-                backgroundColor: isLatest ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                transform: isLatest ? "scale(1)" : "scale(0.995)"
+                gap: "2px", 
+                padding: "6px 10px", 
+                borderRadius: "8px",
+                backgroundColor: isLatest ? "rgba(255,255,255,0.06)" : "transparent",
+                transform: isLatest ? "scale(1)" : "scale(0.99)",
+                minHeight: minH ? `${minH}px` : undefined,
+                willChange: "opacity, transform"
               }}
             >
               {showOriginalText && (
-                <div style={{ fontSize: `${Math.max(12, fontSize * 0.78)}px`, opacity: 0.72, fontWeight: 500, lineHeight: 1.35 }}>
-                  {block.original}
+                <div style={{ fontSize: `${Math.max(11, fontSize * 0.75)}px` }}>
+                  {renderOriginal(b)}
                 </div>
               )}
 
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-                <span style={{ fontSize: "0.7em", letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.62, fontWeight: 700 }}>
-                  Translation
-                </span>
-                {block.isFinal && !block.translated && (
-                  <span style={{ fontSize: "0.82em", opacity: 0.65 }}>Translating...</span>
-                )}
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {renderTranslation(b)}
               </div>
-
-              <div style={{ fontSize: `${Math.max(15, fontSize * 1.02)}px`, fontWeight: 700, lineHeight: 1.45 }}>
-                {block.translated || (block.isFinal ? "..." : "")}
-              </div>
-
             </div>
           )
         })

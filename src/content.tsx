@@ -461,7 +461,26 @@ export default function FloatingDockManager() {
 
   // Notice how the return now uses <> ... </> to group the Modal and the Dock separately
   return (
-    <div style={{ zoom: uiScale } as React.CSSProperties}>
+    <>
+      {/* Overlays must be mounted outside the zoomed UI so their SVG coordinates match the viewport pixels */}
+      {isAuditoryActive && isFocusMode && <FocusModeOverlay intensity={0.7} />}
+
+      {isAuditoryActive && isCaptionsActive && (
+        <LiveCaptionBox
+          captions={captions}
+          error={captionsError}
+          fontSize={textSize}
+          textColor={auditorySettings.textColor || DEFAULT_AUDITORY_SETTINGS.textColor}
+          bgColor={colorWithOpacity(
+            auditorySettings.captionBgColor || DEFAULT_AUDITORY_SETTINGS.captionBgColor,
+            captionTransparency / 100
+          )}
+          fontFamily={auditorySettings.fontFamily || DEFAULT_AUDITORY_SETTINGS.fontFamily}
+          showOriginalText={auditorySettings.showOriginalText}
+        />
+      )}
+
+      <div style={{ zoom: uiScale } as React.CSSProperties}>
       {/* 1. THE SETTINGS MODAL (Floats dead center, outside the drag logic) */}
       {isVisualSettingsOpen && (
         <VisualSettingsModal onClose={() => setIsVisualSettingsOpen(false)} />
@@ -521,22 +540,7 @@ export default function FloatingDockManager() {
         />
       )}
 
-      {isAuditoryActive && isFocusMode && <FocusModeOverlay intensity={0.7} />}
-
-      {isAuditoryActive && isCaptionsActive && (
-        <LiveCaptionBox
-          captions={captions}
-          error={captionsError}
-          fontSize={textSize}
-          textColor={auditorySettings.textColor || DEFAULT_AUDITORY_SETTINGS.textColor}
-          bgColor={colorWithOpacity(
-            auditorySettings.captionBgColor || DEFAULT_AUDITORY_SETTINGS.captionBgColor,
-            captionTransparency / 100
-          )}
-          fontFamily={auditorySettings.fontFamily || DEFAULT_AUDITORY_SETTINGS.fontFamily}
-          showOriginalText={auditorySettings.showOriginalText}
-        />
-      )}
+      
 
       {/* 2. THE DRAGGABLE DOCK */}
       <div
@@ -600,5 +604,6 @@ export default function FloatingDockManager() {
         )}
       </div>
     </div>
+    </>
   )
 }

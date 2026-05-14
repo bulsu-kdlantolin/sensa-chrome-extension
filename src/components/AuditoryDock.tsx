@@ -1,5 +1,38 @@
 import React, { useEffect, useRef, useState } from "react"
-import { Tooltip } from "./Tooltip"
+
+// ============================================================================
+// 🎯 PREMIUM TOOLTIP (Fixed to pop out to the LEFT instead of off-screen)
+// ============================================================================
+export const Tooltip = ({ 
+  label, 
+  isDark, 
+  isRed = false,
+  isAuditory = false
+}: { 
+  label: string
+  isDark: boolean
+  isRed?: boolean
+  isAuditory?: boolean
+}) => {
+  return (
+    <span 
+      className={`
+        absolute right-full mr-3 px-3 py-1.5 text-xs font-semibold rounded-lg
+        opacity-0 pointer-events-none group-hover:opacity-100
+        transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]
+        whitespace-nowrap z-50 shadow-xl
+        translate-x-2 group-hover:translate-x-0
+        ${isDark 
+          ? 'bg-gradient-to-b from-[#2C2C2E]/95 to-[#1C1C1E]/95 backdrop-blur-xl text-white/90 border border-white/10' 
+          : 'bg-gradient-to-b from-white/95 to-gray-50/95 backdrop-blur-xl text-gray-800 border border-black/5'
+        }
+        ${isRed ? '!bg-gradient-to-b !from-red-500/95 !to-red-600/95 !text-white !border-red-400/20' : ''}
+      `}
+    >
+      {label}
+    </span>
+  )
+}
 
 // ============================================================================
 // 🎯 SITE-ONLY DUAL ENGINE: Unfiltered Transient + Game Audio Interceptor
@@ -23,26 +56,7 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
     const maxHeights = [10, 14, 20, 14, 10]
     const idleHeights = [4, 6, 8, 6, 4]
     
-    // The default border color based on theme to reset to when quiet
     const borderBaseColor = isDark ? 'rgba(255,122,47,0.4)' : 'rgba(255,122,47,0.5)'
-
-    const palettes = {
-      orange: {
-        bars: ["rgba(253,186,116,1)", "rgba(249,115,22,1)", "rgba(255,122,47,1)", "rgba(249,115,22,1)", "rgba(253,186,116,1)"],
-        border: "#FF7A2F",
-        shadow: "" 
-      },
-      green: {
-        bars: ["#86EFAC", "#22C55E", "#16A34A", "#22C55E", "#86EFAC"],
-        border: "#22C55E",
-        shadow: "0 0 25px rgba(34, 197, 94, 0.8)"
-      },
-      red: {
-        bars: ["#FCA5A5", "#EF4444", "#DC2626", "#EF4444", "#FCA5A5"],
-        border: "#EF4444",
-        shadow: "0 0 25px rgba(239, 68, 68, 0.8)"
-      }
-    }
 
     const lerp = (start: number, end: number, amt: number) => (1 - amt) * start + amt * end
 
@@ -205,12 +219,12 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
           bar.style.backgroundColor = smoothedColor
         })
 
-        // 🚨 TARGETING THE ISOLATED GLOW LAYER TO PREVENT BROWSER GLITCHING
         const dockPills = document.querySelectorAll('.sensa-dock-pill') as NodeListOf<HTMLElement>
         dockPills.forEach(pill => {
           pill.style.borderColor = smoothedColor
           if (visualizerEnergy > 0.05) {
-            pill.style.boxShadow = `0 0 24px ${smoothedColor}70` 
+            // Added premium inset shadow during audio playback
+            pill.style.boxShadow = `0 0 24px ${smoothedColor}70, inset 0 0 12px ${smoothedColor}20` 
           } else {
             pill.style.boxShadow = ''
           }
@@ -248,7 +262,7 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
 }
 
 // ============================================================================
-// MAIN AUDITORY DOCK COMPONENT (Deaf/HoH Optimized)
+// MAIN AUDITORY DOCK COMPONENT (Premium Theme Integration)
 // ============================================================================
 interface AuditoryDockProps {
   isDark: boolean
@@ -280,19 +294,32 @@ export default function AuditoryDock({
   onClose
 }: AuditoryDockProps) {
   
-  // 🚨 FIXED THE GLITCH: Added transform-gpu backface-hidden so the backdrop-blur never repaints.
-  // The border and box-shadow have been removed from here and moved to the `.sensa-dock-pill` layer.
+  // 🌟 PREMIUM GLASSMORPHISM: Merged your transform-gpu with Vercel's elegant gradients
   const glassPanelClass = isDark 
-    ? "bg-[#1C1C1E]/85 backdrop-blur-3xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] transform-gpu backface-hidden" 
-    : "bg-white/90 backdrop-blur-3xl shadow-[0_8px_32px_rgba(0,0,0,0.1)] transform-gpu backface-hidden"
+    ? "bg-gradient-to-b from-[#2A2A2E]/80 to-[#1C1C1E]/80 backdrop-blur-3xl shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.06)] transform-gpu backface-hidden" 
+    : "bg-gradient-to-b from-white/95 to-gray-50/90 backdrop-blur-3xl shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.9)] transform-gpu backface-hidden"
     
-  const btnBaseClass = "relative group !w-[44px] !h-[44px] !min-w-[44px] !min-h-[44px] !p-0 !m-0 flex items-center justify-center rounded-full transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] shrink-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent box-border will-change-[background-color,transform] transform-gpu backface-hidden"
+  // 🌟 PREMIUM SPRING PHYSICS: Applied the snappy cubic-bezier to your exact button dimensions
+  const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
+
+  const btnBaseClass = `relative group !w-[44px] !h-[44px] !min-w-[44px] !min-h-[44px] !p-0 !m-0 flex items-center justify-center rounded-full shrink-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent box-border will-change-[transform] transform-gpu backface-hidden ${springTransition}`
   
   const btnHoverClass = isDark 
-    ? "hover:bg-[#FF7A2F]/15 text-gray-200 hover:text-white" 
-    : "hover:bg-[#FF7A2F]/10 text-gray-700 hover:text-[#FF7A2F]"
+    ? "hover:bg-[#FF7A2F]/15 text-gray-300 hover:text-white" 
+    : "hover:bg-[#FF7A2F]/10 text-gray-600 hover:text-[#FF7A2F]"
 
-  const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
+  // 🌟 PREMIUM ACTIVE BUTTONS: Fiery Orange Gradient with outer/inner drop-shadows
+  const activeButtonClass = `
+    bg-gradient-to-br from-[#FF7A2F] to-[#E86A25] 
+    text-white shadow-[0_4px_20px_rgba(255,122,47,0.4),inset_0_1px_0_rgba(255,255,255,0.2)]
+    hover:shadow-[0_4px_25px_rgba(255,122,47,0.6),inset_0_1px_0_rgba(255,255,255,0.3)]
+    scale-105 ring-[0px] ring-[#FF7A2F]/0
+  `
+
+  // Subtle separator line
+  const dividerClass = isDark 
+    ? "w-6 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-0.5" 
+    : "w-6 h-px bg-gradient-to-r from-transparent via-black/10 to-transparent my-0.5"
 
   return (
     <div 
@@ -304,13 +331,13 @@ export default function AuditoryDock({
       {/* ========================================================= */}
       {/* 🔝 TOP SECTION: VISUALIZER & CAPTIONS */}
       {/* ========================================================= */}
-      <div className={`relative flex flex-col items-center rounded-[28px] p-2 gap-2 shrink-0 z-30 transition-all duration-300 ${glassPanelClass}`}>
+      <div className={`relative flex flex-col items-center rounded-[28px] p-2 gap-1.5 shrink-0 z-30 transition-all duration-300 ${glassPanelClass}`}>
         
-        {/* 🚨 ISOLATED GLOW LAYER: Prevents the backdrop-blur rendering bug */}
+        {/* ISOLATED GLOW LAYER */}
         <div 
-          className="sensa-dock-pill absolute inset-0 rounded-[28px] border-2 pointer-events-none transition-colors duration-150" 
+          className="sensa-dock-pill absolute inset-0 rounded-[28px] border-[1.5px] pointer-events-none transition-colors duration-150" 
           style={{ 
-            borderColor: isDark ? 'rgba(255,122,47,0.4)' : 'rgba(255,122,47,0.5)',
+            borderColor: isDark ? 'rgba(255,122,47,0.3)' : 'rgba(255,122,47,0.4)',
             willChange: 'border-color, box-shadow' 
           }} 
         />
@@ -327,14 +354,16 @@ export default function AuditoryDock({
           </svg>
         </div>
 
+        <div className={dividerClass} />
+
         <button
           type="button"
           onClick={onToggleCaptions}
           aria-pressed={isCaptionsActive}
           className={`${btnBaseClass} relative z-10 active:scale-90 ${
             isCaptionsActive 
-              ? "bg-[#FF7A2F] text-white shadow-[0_0_24px_rgba(255,122,47,0.7)] ring-4 ring-[#FF7A2F]/30 scale-105" 
-              : `bg-[#FF7A2F] text-white/90 shadow-md hover:bg-[#E86A25] hover:shadow-lg hover:shadow-[#FF7A2F]/40 hover:scale-105`
+              ? activeButtonClass 
+              : `bg-gradient-to-br from-[#FF7A2F] to-[#E86A25] text-white/90 shadow-[0_2px_12px_rgba(255,122,47,0.3)] hover:shadow-[0_4px_20px_rgba(255,122,47,0.5)] hover:scale-105`
           }`}
         >
           <Tooltip label={isCaptionsActive ? "Turn Off Captions" : "Turn On Captions"} isDark={isDark} isAuditory />
@@ -347,13 +376,15 @@ export default function AuditoryDock({
           </svg>
           {/* Active Indicator Badge */}
           {isCaptionsActive && (
-            <span className="absolute top-0 right-0 !w-3 !h-3 rounded-full bg-white border-2 border-[#FF7A2F] shadow-[0_0_8px_white]" />
+            <span className="absolute top-0 right-0 !w-3 !h-3 rounded-full bg-white shadow-[0_0_10px_white]">
+               <span className="absolute inset-0 rounded-full bg-white animate-ping opacity-75" />
+            </span>
           )}
         </button>
       </div>
 
       {/* ========================================================= */}
-      {/* ↔️ MIDDLE SECTION: THE FLAWLESS PHYSICS HACK */}
+      {/* ↔️ MIDDLE SECTION: SETTINGS */}
       {/* ========================================================= */}
       <div 
         className={`grid w-full transform-gpu backface-hidden will-change-[grid-template-rows] ${springTransition} ${
@@ -368,11 +399,11 @@ export default function AuditoryDock({
                 : "opacity-100 scale-100 translate-y-0 pointer-events-auto"
             }`}
           >
-            {/* 🚨 ISOLATED GLOW LAYER */}
+            {/* ISOLATED GLOW LAYER */}
             <div 
-              className="sensa-dock-pill absolute inset-0 rounded-[28px] border-2 pointer-events-none transition-colors duration-150" 
+              className="sensa-dock-pill absolute inset-0 rounded-[28px] border-[1.5px] pointer-events-none transition-colors duration-150" 
               style={{ 
-                borderColor: isDark ? 'rgba(255,122,47,0.4)' : 'rgba(255,122,47,0.5)',
+                borderColor: isDark ? 'rgba(255,122,47,0.3)' : 'rgba(255,122,47,0.4)',
                 willChange: 'border-color, box-shadow' 
               }} 
             />
@@ -415,12 +446,14 @@ export default function AuditoryDock({
               </svg>
             </button>
 
+            <div className={dividerClass} />
+
             <button
               onClick={onToggleFocusMode}
               aria-pressed={isFocusMode}
               className={`${btnBaseClass} relative z-10 active:scale-90 ${
                 isFocusMode 
-                  ? "bg-[#FF7A2F] text-white shadow-[0_0_24px_rgba(255,122,47,0.7)] ring-4 ring-[#FF7A2F]/30 scale-105" 
+                  ? activeButtonClass 
                   : `${btnHoverClass} hover:scale-105`
               }`}
             >
@@ -455,11 +488,11 @@ export default function AuditoryDock({
       {/* ========================================================= */}
       <div className={`relative flex flex-col items-center rounded-[28px] p-2 gap-1.5 shrink-0 mt-3 z-20 transition-all duration-300 transform-gpu backface-hidden ${glassPanelClass}`}>
         
-        {/* 🚨 ISOLATED GLOW LAYER */}
+        {/* ISOLATED GLOW LAYER */}
         <div 
-          className="sensa-dock-pill absolute inset-0 rounded-[28px] border-2 pointer-events-none transition-colors duration-150" 
+          className="sensa-dock-pill absolute inset-0 rounded-[28px] border-[1.5px] pointer-events-none transition-colors duration-150" 
           style={{ 
-            borderColor: isDark ? 'rgba(255,122,47,0.4)' : 'rgba(255,122,47,0.5)',
+            borderColor: isDark ? 'rgba(255,122,47,0.3)' : 'rgba(255,122,47,0.4)',
             willChange: 'border-color, box-shadow' 
           }} 
         />
@@ -488,10 +521,12 @@ export default function AuditoryDock({
           </svg>
         </button>
 
+        <div className={dividerClass} />
+
         <button
           type="button"
           onClick={onClose}
-          className={`${btnBaseClass} relative z-10 hover:bg-red-500 hover:text-white transition-colors text-gray-500 dark:text-gray-400 active:scale-90 hover:scale-105`}
+          className={`${btnBaseClass} relative z-10 transition-colors text-gray-500 hover:text-white dark:text-gray-400 active:scale-90 hover:scale-105 ${isDark ? 'hover:bg-red-500/80' : 'hover:bg-red-500/90'}`}
           aria-label="Close Toolbar"
         >
           <Tooltip label="Close" isRed isDark={isDark} />
