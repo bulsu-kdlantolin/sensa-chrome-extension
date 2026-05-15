@@ -506,15 +506,21 @@ export default function AuditoryDock({
         >
           <Tooltip label={isMinimized ? "Expand" : "Minimize"} isDark={isDark} isAuditory />
           
-          <svg 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
-            strokeWidth="2.5" 
-            strokeLinecap="round" 
-            strokeLinejoin="round" 
-            className={`!w-[22px] !h-[22px] shrink-0 transform-gpu backface-hidden will-change-transform ${springTransition} ${isMinimized ? "rotate-180" : "rotate-0"}`} 
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
             aria-hidden="true"
+            className="!w-[22px] !h-[22px] shrink-0 transform-gpu backface-hidden will-change-transform"
+            style={{
+              transform: `rotate(${isMinimized ? 180 : 0}deg) translateZ(0)` ,
+              transformOrigin: '50% 50%',
+              willChange: 'transform',
+              transition: 'transform 260ms cubic-bezier(0.2, 0.9, 0.2, 1)'
+            }}
           >
             <polyline points="7 15 12 10 17 15" />
             <polyline points="7 9 12 4 17 9" />
