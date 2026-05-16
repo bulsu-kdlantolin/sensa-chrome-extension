@@ -338,6 +338,13 @@ export default function CaptionLanguageOverlay({
           </button>
           <button
             onClick={() => {
+              // Persist auto-detect source and selected target
+              chrome.storage.local.set({ sensa_source_lang: "AUTO", sensa_target_lang: selectedLanguage, sensa_auditory_caption_language: selectedLanguage })
+              // Inform background/offscreen immediately so translations use the new target
+              try {
+                const tgt = (selectedLanguage.split("-")[0] || selectedLanguage).toUpperCase()
+                chrome.runtime.sendMessage({ type: "UPDATE_CAPTION_LANGUAGE", targetLang: tgt })
+              } catch (e) {}
               onLanguageChange?.(selectedLanguage)
               setIsMounted(false)
               setTimeout(onClose, 300)

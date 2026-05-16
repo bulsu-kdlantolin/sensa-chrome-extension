@@ -577,13 +577,16 @@ export default function FloatingDockManager() {
         )}
 
         {isAuditoryActive && (
-          <AuditoryDock 
+            <AuditoryDock 
             isDark={isDark} 
             isMinimized={isMinimized} 
             isCaptionsActive={isCaptionsActive}
             onToggleCaptions={() => setIsCaptionsActive((prev) => !prev)}
             onMinimizeToggle={() => setIsMinimized(!isMinimized)} 
-            onOpenCaptionLanguage={() => setIsCaptionLanguageOpen(true)}
+            onOpenCaptionLanguage={() => {
+              // Defer opening so the original click event doesn't immediately hit the modal backdrop
+              setTimeout(() => setIsCaptionLanguageOpen(true), 0)
+            }}
             onOpenTextSize={() => setIsTextSizeOpen(true)}
             onOpenCaptionTransparency={() => setIsCaptionTransparencyOpen(true)}
             isFocusMode={isFocusMode}
