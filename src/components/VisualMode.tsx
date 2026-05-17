@@ -1,7 +1,78 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 
 export default function VisualMode() {
   const [isListening, setIsListening] = useState(false)
+  const selectedVoiceURIRef = useRef("")
+  const selectedVoiceNameRef = useRef("")
+
+  const waitForVoices = () =>
+    new Promise<SpeechSynthesisVoice[]>((resolve) => {
+      const existingVoices = window.speechSynthesis.getVoices()
+      if (existingVoices.length > 0) {
+        resolve(existingVoices)
+        return
+      }
+
+      const timeoutId = window.setTimeout(() => {
+        window.speechSynthesis.removeEventListener("voiceschanged", handleVoicesChanged)
+        resolve(window.speechSynthesis.getVoices())
+      }, 1200)
+
+      const handleVoicesChanged = () => {
+        window.clearTimeout(timeoutId)
+        window.speechSynthesis.removeEventListener("voiceschanged", handleVoicesChanged)
+        resolve(window.speechSynthesis.getVoices())
+      }
+
+      window.speechSynthesis.addEventListener("voiceschanged", handleVoicesChanged)
+    })
+
+  const getStoredVoicePreference = () =>
+    new Promise<{ voiceURI: string; voiceName: string }>((resolve) => {
+      chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
+        resolve({
+          voiceURI: typeof res.sensa_visual_voice_uri === "string" ? res.sensa_visual_voice_uri : "",
+          voiceName: typeof res.sensa_visual_voice_name === "string" ? res.sensa_visual_voice_name : ""
+        })
+      })
+    })
+
+  const speakFeedback = async (message: string) => {
+    if (typeof window === "undefined" || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
+      return
+    }
+
+    const storedVoicePreference = await getStoredVoicePreference()
+    if (storedVoicePreference.voiceURI) {
+      selectedVoiceURIRef.current = storedVoicePreference.voiceURI
+    }
+    if (storedVoicePreference.voiceName) {
+      selectedVoiceNameRef.current = storedVoicePreference.voiceName
+    }
+
+    const availableVoices = await waitForVoices()
+    let preferredVoice = availableVoices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current)
+
+    if (!preferredVoice && selectedVoiceNameRef.current) {
+      preferredVoice = availableVoices.find(
+        (voice) => voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current)
+      )
+    }
+
+    if (!preferredVoice) {
+      return
+    }
+
+    window.speechSynthesis.cancel()
+
+    const utterance = new SpeechSynthesisUtterance(message)
+    utterance.voice = preferredVoice
+
+    utterance.rate = 1
+    utterance.pitch = 1
+    utterance.volume = 1
+    window.speechSynthesis.speak(utterance)
+  }
 
   // --- THE TWO-WAY BRIDGE ---
   useEffect(() => {
@@ -19,6 +90,31 @@ export default function VisualMode() {
     return () => chrome.storage.onChanged.removeListener(handleStorageChange)
   }, [])
 
+  useEffect(() => {
+    chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
+      if (typeof res.sensa_visual_voice_uri === "string") {
+        selectedVoiceURIRef.current = res.sensa_visual_voice_uri
+      }
+
+      if (typeof res.sensa_visual_voice_name === "string") {
+        selectedVoiceNameRef.current = res.sensa_visual_voice_name
+      }
+    })
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.sensa_visual_voice_uri && typeof changes.sensa_visual_voice_uri.newValue === "string") {
+        selectedVoiceURIRef.current = changes.sensa_visual_voice_uri.newValue
+      }
+
+      if (changes.sensa_visual_voice_name && typeof changes.sensa_visual_voice_name.newValue === "string") {
+        selectedVoiceNameRef.current = changes.sensa_visual_voice_name.newValue
+      }
+    }
+
+    chrome.storage.onChanged.addListener(handleStorageChange)
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange)
+  }, [])
+
   const handleToggle = () => {
     const newState = !isListening
     setIsListening(newState)
@@ -27,6 +123,8 @@ export default function VisualMode() {
       sensa_visual_active: newState,
       ...(newState ? { sensa_auditory_active: false } : {})
     })
+
+    void speakFeedback(newState ? "Visual mode activated" : "Visual mode deactivated")
   }
 
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"

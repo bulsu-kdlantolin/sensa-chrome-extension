@@ -132,6 +132,44 @@ export default function FloatingDockManager() {
   const selectedVoiceNameRef = useRef<string>("")
   const isYouTube = typeof window !== "undefined" && /(^|\.)youtube\.com$|(^|\.)youtu\.be$/.test(window.location.hostname)
   const uiScale = isYouTube ? 1.08 : 1
+
+  const speakOverlayFeedback = (message: string) => {
+    if (typeof window === "undefined" || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
+      return
+    }
+
+    chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
+      if (typeof res.sensa_visual_voice_uri === "string") {
+        selectedVoiceURIRef.current = res.sensa_visual_voice_uri
+      }
+      if (typeof res.sensa_visual_voice_name === "string") {
+        selectedVoiceNameRef.current = res.sensa_visual_voice_name
+      }
+
+      window.speechSynthesis.cancel()
+
+      const utterance = new SpeechSynthesisUtterance(message)
+      const availableVoices = window.speechSynthesis.getVoices()
+
+      if (availableVoices.length > 0) {
+        const preferredVoice =
+          availableVoices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
+          availableVoices.find((voice) => voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current)) ||
+          availableVoices[0]
+
+        if (preferredVoice) {
+          utterance.voice = preferredVoice
+          utterance.lang = preferredVoice.lang
+        }
+      }
+
+      utterance.rate = 1
+      utterance.pitch = 1
+      utterance.volume = 1
+      window.speechSynthesis.speak(utterance)
+    })
+  }
+
   const { isPlaying, isPaused, togglePlayPause, next, prev, restart } = useSpeech(
     readingSpeed,
     highlightColor,
@@ -483,7 +521,12 @@ export default function FloatingDockManager() {
       <div style={{ zoom: uiScale } as React.CSSProperties}>
       {/* 1. THE SETTINGS MODAL (Floats dead center, outside the drag logic) */}
       {isVisualSettingsOpen && (
-        <VisualSettingsModal onClose={() => setIsVisualSettingsOpen(false)} />
+        <VisualSettingsModal
+          onClose={() => {
+            setIsVisualSettingsOpen(false)
+            speakOverlayFeedback("Settings overlay closed")
+          }}
+        />
       )}
 
       {isReadingSpeedOpen && (
@@ -493,7 +536,10 @@ export default function FloatingDockManager() {
             setReadingSpeed(newSpeed)
             chrome.storage.local.set({ sensa_visual_reading_speed: newSpeed })
           }}
-          onClose={() => setIsReadingSpeedOpen(false)}
+          onClose={() => {
+            setIsReadingSpeedOpen(false)
+            speakOverlayFeedback("Reading speed overlay closed")
+          }}
         />
       )}
 
@@ -567,8 +613,14 @@ export default function FloatingDockManager() {
             onPrev={prev}                    // <-- NEW PROP
             onRestart={restart}
             onMinimizeToggle={() => setIsMinimized(!isMinimized)} 
-            onOpenReadingSpeed={() => setIsReadingSpeedOpen(true)}
-            onOpenSettings={() => setIsVisualSettingsOpen(true)} 
+            onOpenReadingSpeed={() => {
+              setIsReadingSpeedOpen(true)
+              speakOverlayFeedback("Reading speed overlay opened")
+            }}
+            onOpenSettings={() => {
+              setIsVisualSettingsOpen(true)
+              speakOverlayFeedback("Settings overlay opened")
+            }} 
             onClose={() => {
               deactivateDock()
               chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null })

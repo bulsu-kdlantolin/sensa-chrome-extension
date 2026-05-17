@@ -10,7 +10,7 @@ interface ReadingSpeedOverlayProps {
 
 export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeedChange, isDark = false }: ReadingSpeedOverlayProps) {
   const [speed, setSpeed] = useState(initialSpeed)
-  const { playHoverAudio, cancelHoverAudio } = useUIHoverAudio()
+  const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   
   // Dragging State
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
@@ -82,11 +82,21 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   const speedStops = [1, 1.25, 1.5, 1.75, 2]
 
   const handleDecrease = () => {
-    setSpeed((prev) => Math.max(0.5, prev - 0.25))
+    setSpeed((prev) => {
+      const next = Math.max(0.5, +(prev - 0.25).toFixed(2))
+      onSpeedChange?.(next)
+      playClickAudio(`${next.toFixed(2).replace(/\.00$/, '')}x`)
+      return next
+    })
   }
 
   const handleIncrease = () => {
-    setSpeed((prev) => Math.min(3, prev + 0.25))
+    setSpeed((prev) => {
+      const next = Math.min(3, +(prev + 0.25).toFixed(2))
+      onSpeedChange?.(next)
+      playClickAudio(`${next.toFixed(2).replace(/\.00$/, '')}x`)
+      return next
+    })
   }
 
   const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -188,6 +198,22 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
               onChange={(e) => {
                 handleSliderChange(e)
                 onSpeedChange?.(parseFloat(e.target.value))
+              }}
+              onMouseUp={() => {
+                onSpeedChange?.(speed)
+                playClickAudio(`${speed.toFixed(2).replace(/\.00$/, '')}x`)
+              }}
+              onTouchEnd={() => {
+                onSpeedChange?.(speed)
+                playClickAudio(`${speed.toFixed(2).replace(/\.00$/, '')}x`)
+              }}
+              onKeyUp={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                const k = (e as any).key as string
+                const keysToAnnounce = ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']
+                if (keysToAnnounce.includes(k)) {
+                  onSpeedChange?.(speed)
+                  playClickAudio(`${speed.toFixed(2).replace(/\.00$/, '')}x`)
+                }
               }}
               aria-label="Reading Speed"
               className="reading-speed-slider w-full h-[16px] rounded-full appearance-none cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50"

@@ -12,7 +12,8 @@ interface VisualSettingsModalProps {
 }
 
 export default function VisualSettingsModal({ onClose, isDark = false }: VisualSettingsModalProps) {
-  const { playHoverAudio, cancelHoverAudio } = useUIHoverAudio()
+  const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
+  const [isVoiceGuideEnabled, setIsVoiceGuideEnabled] = useState<boolean>(true)
   
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR)
@@ -48,6 +49,12 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   useEffect(() => {
     requestAnimationFrame(() => setIsMounted(true))
   }, [])
+
+  useEffect(() => {
+    if (isMounted) {
+      playClickAudio("Settings opened")
+    }
+  }, [isMounted, playClickAudio])
 
   useEffect(() => {
     offsetRef.current = offset
@@ -97,6 +104,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       "sensa_visual_input_device_id", 
       "sensa_visual_output_device_id", 
       "sensa_visual_autoscroll_enabled",
+      "sensa_visual_voice_guide_enabled",
       "sensa_visual_voice_uri",
       "sensa_visual_highlight_mouse_screen_reader"
     ], (res) => {
@@ -104,6 +112,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       if (typeof res.sensa_visual_input_device_id === "string") setSelectedInputDeviceId(res.sensa_visual_input_device_id)
       if (typeof res.sensa_visual_output_device_id === "string") setSelectedOutputDeviceId(res.sensa_visual_output_device_id)
       if (typeof res.sensa_visual_autoscroll_enabled === "boolean") setIsAutoscrollEnabled(res.sensa_visual_autoscroll_enabled)
+      if (typeof res.sensa_visual_voice_guide_enabled === "boolean") setIsVoiceGuideEnabled(res.sensa_visual_voice_guide_enabled)
       if (typeof res.sensa_visual_voice_uri === "string") setSelectedVoiceURI(res.sensa_visual_voice_uri)
       if (typeof res.sensa_visual_highlight_mouse_screen_reader === "boolean") setIsHighlightMouseScreenReaderEnabled(res.sensa_visual_highlight_mouse_screen_reader)
     })
@@ -144,28 +153,44 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   }, [])
 
   const handleHighlightChange = (color: string) => {
+    const normalizedNew = color.toUpperCase()
+    const normalizedPrev = (highlightColor || "").toUpperCase()
+    if (normalizedNew === normalizedPrev) return
     setHighlightColor(color)
     chrome.storage.local.set({ sensa_visual_highlight_color: color })
+    playClickAudio("Highlight color changed")
   }
 
   const handleInputDeviceChange = (deviceId: string) => {
     setSelectedInputDeviceId(deviceId)
     chrome.storage.local.set({ sensa_visual_input_device_id: deviceId })
+    const label = inputDevices.find(d => d.deviceId === deviceId)?.label || "Input device selected"
+    playClickAudio(label)
   }
 
   const handleOutputDeviceChange = (deviceId: string) => {
     setSelectedOutputDeviceId(deviceId)
     chrome.storage.local.set({ sensa_visual_output_device_id: deviceId })
+    const label = outputDevices.find(d => d.deviceId === deviceId)?.label || "Output device selected"
+    playClickAudio(label)
   }
 
   const handleAutoscrollToggle = (enabled: boolean) => {
     setIsAutoscrollEnabled(enabled)
     chrome.storage.local.set({ sensa_visual_autoscroll_enabled: enabled })
+    playClickAudio(enabled ? "Autoscroll reading enabled" : "Autoscroll reading disabled")
   }
 
   const handleHighlightMouseScreenReaderToggle = (enabled: boolean) => {
     setIsHighlightMouseScreenReaderEnabled(enabled)
     chrome.storage.local.set({ sensa_visual_highlight_mouse_screen_reader: enabled })
+    playClickAudio(enabled ? "Mouse highlight reader enabled" : "Mouse highlight reader disabled")
+  }
+
+  const handleVoiceGuideToggle = (enabled: boolean) => {
+    setIsVoiceGuideEnabled(enabled)
+    chrome.storage.local.set({ sensa_visual_voice_guide_enabled: enabled })
+    playClickAudio(enabled ? "Voice guide enabled" : "Voice guide disabled")
   }
 
   const handleVoiceChange = (voiceURI: string) => {
@@ -175,6 +200,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       sensa_visual_voice_uri: voiceURI,
       sensa_visual_voice_name: selected?.name || ""
     })
+    playClickAudio(`Voice set to ${selected?.name || 'selected voice'}`)
   }
 
   const handleResetToDefault = () => {
@@ -199,6 +225,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       sensa_visual_voice_uri: defaultVoiceURI,
       sensa_visual_voice_name: defaultVoice?.name || ""
     })
+    playClickAudio("Settings reset to default")
   }
 
   const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -209,6 +236,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   }
 
   const previewVoice = (voice: SpeechSynthesisVoice) => {
+    // Speak the voice name immediately using that voice (no extra "previewing" announcement).
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(voice.name)
     utterance.voice = voice
@@ -246,6 +274,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
         
         <button 
           onClick={() => {
+            playClickAudio("Closing settings")
             setIsMounted(false)
             setTimeout(onClose, 300)
           }}
@@ -266,7 +295,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Voice Guide</span>
             <div className="w-[200px] flex justify-start">
               <label className="relative inline-flex items-center cursor-pointer" {...getHoverHandlers("Voice Guide")}>
-                <input type="checkbox" className="sr-only peer" defaultChecked aria-label="Toggle Voice Guide" />
+                <input type="checkbox" className="sr-only peer" checked={isVoiceGuideEnabled} onChange={(e) => handleVoiceGuideToggle(e.target.checked)} aria-label="Toggle Voice Guide" />
                 <div className="w-14 h-8 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-6 peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-[#0A44FF] shadow-inner"></div>
               </label>
             </div>
@@ -277,7 +306,10 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             <div className="relative w-[200px]">
               <button 
                 type="button"
-                onClick={() => setIsVoiceDropdownOpen((prev) => !prev)}
+                onClick={() => {
+                  setIsVoiceDropdownOpen((prev) => !prev)
+                  playClickAudio("Voice selection")
+                }}
                 className={`w-full text-left border-2 ${inputBorder} ${textColor} ${inputBg} h-[48px] pl-4 pr-10 rounded-xl text-[15px] font-medium focus:outline-none focus:border-[#0A44FF] focus:ring-4 focus:ring-[#0A44FF]/30 cursor-pointer shadow-sm transition-all`}
                 aria-haspopup="listbox"
                 aria-expanded={isVoiceDropdownOpen}
@@ -301,7 +333,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
                       window.speechSynthesis.cancel()
                     }} 
                   />
-                  <ul 
+                    <ul 
                     className={`absolute z-50 mt-2 w-full max-h-60 overflow-y-auto ${modalBg} border-2 border-[#0A44FF] rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.3)] py-2 text-[15px] custom-scrollbar`}
                     role="listbox"
                   >
@@ -314,6 +346,9 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
                         onClick={() => {
                           handleVoiceChange(voice.voiceURI)
                           setIsVoiceDropdownOpen(false)
+                          // Announce selection using feedback system
+                          playClickAudio(`${voice.name} selected`)
+                          // stop any active preview
                           window.speechSynthesis.cancel()
                         }}
                         className={`px-4 py-3 cursor-pointer truncate transition-colors font-medium border-b border-gray-100 last:border-0 ${
@@ -354,7 +389,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
           </div>
 
           <div className="flex items-center justify-between relative min-h-[48px]">
-            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Highlight color</span>
+            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Highlight Color</span>
             <div className="w-[200px] flex justify-start">
               <div className="relative flex items-center justify-center">
                 <button 
@@ -382,7 +417,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
           </div>
 
           <div className="flex items-center justify-between min-h-[48px]">
-            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Autoscroll reading</span>
+            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Autoscroll Reading</span>
             <div className="w-[200px] flex justify-start">
               <label className="relative inline-flex items-center cursor-pointer" {...getHoverHandlers("Autoscroll reading")}>
                 <input
