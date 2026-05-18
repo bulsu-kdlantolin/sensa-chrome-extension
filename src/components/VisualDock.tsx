@@ -16,13 +16,12 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
     let analyser: AnalyserNode | null = null
     let stream: MediaStream | null = null
 
-    // 🎨 Visual Mode Blue Gradient
     const colors = [
-      "rgba(147, 197, 253, 1)", // Light Blue
-      "rgba(59, 130, 246, 1)",  // Core Blue
-      "rgba(10, 68, 255, 1)",   // Deep Vibrant Blue (Center)
-      "rgba(59, 130, 246, 1)",  // Core Blue
-      "rgba(147, 197, 253, 1)", // Light Blue
+      "rgba(147, 197, 253, 1)", 
+      "rgba(59, 130, 246, 1)",  
+      "rgba(10, 68, 255, 1)",   
+      "rgba(59, 130, 246, 1)",  
+      "rgba(147, 197, 253, 1)", 
     ]
 
     const shapeMask = [0.35, 0.7, 1.0, 0.7, 0.35]
@@ -34,7 +33,7 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
     const startMic = async () => {
       try {
         if (isActive) {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+          stream = await navigator.mediaDevices.getUserMedia({ audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true } })
           audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
           analyser = audioCtx.createAnalyser()
           analyser.fftSize = 64
@@ -88,6 +87,7 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
 
           animationId = requestAnimationFrame(draw)
         }
+    
         draw()
       } catch (err) {
         console.error("Mic access denied or failed.", err)
@@ -161,21 +161,18 @@ export default function VisualDock({
   onOpenSettings,
   onClose,
 }: VisualDockProps) {
-  const { playHoverAudio, cancelHoverAudio } = useUIHoverAudio()
+  const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   
-  // 🚨 Premium UI Design System Variables (High Contrast Glassmorphism)
   const glassPanelClass = isDark 
     ? "bg-[#1C1C1E]/85 backdrop-blur-3xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.6)]" 
     : "bg-white/90 backdrop-blur-3xl border border-black/10 shadow-[0_8px_32px_rgba(0,0,0,0.15)]"
     
-  // CSS ARMOR: Forced sizing to prevent YouTube from squashing it
   const btnBaseClass = "relative group !w-[44px] !h-[44px] !min-w-[44px] !min-h-[44px] !p-0 !m-0 flex items-center justify-center rounded-full transition-all duration-300 ease-out shrink-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent box-border"
   
   const btnHoverClass = isDark 
     ? "hover:bg-white/15 text-gray-200 hover:text-white" 
     : "hover:bg-black/10 text-gray-700 hover:text-black"
     
-  // Visual Mode Blue Accent
   const btnAccentClass = "bg-[#0A44FF] text-white shadow-md shadow-[#0A44FF]/30 hover:bg-[#0836CC] hover:shadow-lg hover:shadow-[#0A44FF]/50 hover:scale-105 active:scale-95"
 
   const readingSpeedLabel = `${readingSpeed.toFixed(2).replace(/\.00$/, "")}X`
@@ -187,11 +184,133 @@ export default function VisualDock({
     onBlur: cancelHoverAudio
   })
 
-  // Apple-style Spring Animation
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 
+  // 🚨 THE FIX: Store all commands and states in a Ref so the `useEffect` never restarts
+  const callbacksRef = useRef({
+    isVoiceCommandActive, onToggleVoiceCommand, onTogglePlay, onNext, onPrev, onRestart,
+    onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio
+  })
+
+  // Update the ref on every render silently
+  useEffect(() => {
+    callbacksRef.current = {
+      isVoiceCommandActive, onToggleVoiceCommand, onTogglePlay, onNext, onPrev, onRestart,
+      onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio
+    }
+  })
+
+  // 🚨 UNIFIED ENGINE: Empty dependency array `[]`. It starts once and NEVER stutters.
+  useEffect(() => {
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognitionCtor) return
+
+    const recognition = new SpeechRecognitionCtor()
+    recognition.continuous = true
+    recognition.interimResults = true 
+    recognition.lang = 'en-US'
+
+    let isComponentMounted = true
+    let restartTimer: number | null = null
+    const lastSpokenAtRef: { [k: string]: number } = {}
+    const cooldownMs = 700
+
+    const seenTooSoon = (key: string) => {
+      const now = Date.now()
+      const last = lastSpokenAtRef[key] || 0
+      if (now - last < cooldownMs) return true
+      lastSpokenAtRef[key] = now
+      return false
+    }
+
+    const scheduleRestart = () => {
+      if (!isComponentMounted) return
+      if (restartTimer) window.clearTimeout(restartTimer)
+      restartTimer = window.setTimeout(() => {
+        try { recognition.start() } catch (e) {}
+      }, 250)
+    }
+
+    recognition.onresult = (event: any) => {
+      // Pull the freshest functions directly from the Ref
+      const { 
+        isVoiceCommandActive, onToggleVoiceCommand, onTogglePlay, onNext, onPrev, 
+        onRestart, onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio 
+      } = callbacksRef.current
+
+      // Grab the most recent chunk of speech
+      const res = event.results[event.resultIndex]
+      if (!res) return
+      
+      const transcript = (res[0]?.transcript || '').trim().toLowerCase()
+      if (!transcript) return
+
+      // 1. WAKE WORD (Listens silently in the background)
+      if (!isVoiceCommandActive) {
+        if (/\bspeak\b/i.test(transcript) && !seenTooSoon('speak')) {
+          playClickAudio?.('Voice commands activated')
+          try { onToggleVoiceCommand() } catch {}
+        }
+        return
+      }
+
+      // 2. DEACTIVATE COMMAND
+      if (/(stop listening)/i.test(transcript) && !seenTooSoon('stoplistening')) {
+        playClickAudio?.('Voice commands deactivated')
+        try { onToggleVoiceCommand() } catch {}
+      }
+      // 3. MEDIA COMMANDS
+      else if (/\b(play|resume)\b/i.test(transcript) && !seenTooSoon('play')) {
+        playClickAudio?.('Play'); onTogglePlay();
+      } else if (/\b(pause|stop media)\b/i.test(transcript) && !seenTooSoon('pause')) {
+        playClickAudio?.('Pause'); onTogglePlay();
+      } else if (/\b(next|skip)\b/i.test(transcript) && !seenTooSoon('next')) {
+        playClickAudio?.('Next'); onNext();
+      } else if (/\b(previous|back|prev)\b/i.test(transcript) && !seenTooSoon('prev')) {
+        playClickAudio?.('Previous'); onPrev();
+      } else if (/\b(restart)\b/i.test(transcript) && !seenTooSoon('restart')) {
+        playClickAudio?.('Restart'); onRestart();
+      } else if (/\b(speed|reading speed)\b/i.test(transcript) && !seenTooSoon('speed')) {
+        playClickAudio?.('Reading speed'); onOpenReadingSpeed();
+      } else if (/\b(setting|settings)\b/i.test(transcript) && !seenTooSoon('settings')) {
+        playClickAudio?.('Settings'); onOpenSettings();
+      } else if (/\b(minimize|collapse)\b/i.test(transcript) && !seenTooSoon('minimize')) {
+        playClickAudio?.('Minimize'); onMinimizeToggle();
+      } else if (/\b(close|exit)\b/i.test(transcript) && !seenTooSoon('close')) {
+        playClickAudio?.('Close'); onClose();
+      } 
+      // 4. THE FORGIVING SCROLL COMMANDS
+      else if (["top", "tap", "stop", "pop", "to up"].some(w => transcript.includes(w)) && !seenTooSoon('top')) {
+        window.scrollTo({ top: 0, behavior: "smooth" })
+      } else if (["bottom", "button", "down below"].some(w => transcript.includes(w)) && !seenTooSoon('bottom')) {
+        window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })
+      } else if (/\bup\b/i.test(transcript) && !seenTooSoon('up')) {
+        window.scrollBy({ top: -600, behavior: "smooth" })
+      } else if (/\bdown\b/i.test(transcript) && !seenTooSoon('down')) {
+        window.scrollBy({ top: 600, behavior: "smooth" })
+      }
+    }
+
+    recognition.onerror = (event: any) => {
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") return
+      scheduleRestart()
+    }
+
+    recognition.onend = () => scheduleRestart()
+
+    try { recognition.start() } catch (e) {}
+
+    return () => {
+      isComponentMounted = false
+      if (restartTimer) window.clearTimeout(restartTimer)
+      try { recognition.stop() } catch (e) {}
+      recognition.onresult = null
+      recognition.onerror = null
+      recognition.onend = null
+    }
+  }, []) // 🚨 EMPTY DEPENDENCY ARRAY - Runs exactly once!
+
   return (
-    // We removed the main wrapper `gap-3` so we can animate the margins manually and fluidly
     <div 
       className="flex flex-col w-fit shrink-0 box-border relative z-50"
       role="toolbar" 
@@ -205,8 +324,8 @@ export default function VisualDock({
       <div className={`flex flex-col items-center rounded-[28px] p-2 gap-2 shrink-0 relative z-30 ${glassPanelClass}`}>
         <button 
           type="button" 
-          onClick={onToggleVoiceCommand}
           className={`${btnBaseClass} ${btnHoverClass} bg-transparent active:scale-95`} 
+          tabIndex={-1}
           aria-label="Voice Command Visualizer"
           {...getHoverHandlers("Audio Visualizer")}
         >
@@ -253,17 +372,14 @@ export default function VisualDock({
       </div>
 
       {/* ========================================================= */}
-      {/* ↔️ MIDDLE SECTION: THE FLAWLESS PHYSICS HACK */}
+      {/* ↔️ MIDDLE SECTION */}
       {/* ========================================================= */}
-      {/* 🚨 Outer Grid drives the layout shrink, pushing the bottom pill up perfectly */}
       <div 
         className={`grid w-full ${springTransition} ${
           isMinimized ? "grid-rows-[0fr] mt-0" : "grid-rows-[1fr] mt-3"
         }`}
       >
         <div className="min-h-0 flex justify-center w-full">
-          
-          {/* 🚨 Inner Div scales and fades out smoothly without overflowing or chopping icons */}
           <div 
             className={`flex flex-col items-center rounded-[28px] p-2 gap-1.5 w-fit origin-top ${springTransition} ${glassPanelClass} ${
               isMinimized 

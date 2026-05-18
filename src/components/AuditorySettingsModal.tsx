@@ -74,7 +74,7 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
     const loadDevices = async () => {
       if (!navigator.mediaDevices?.enumerateDevices) return
       try {
-        await navigator.mediaDevices.getUserMedia({ audio: true })
+        await navigator.mediaDevices.getUserMedia({ audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true } })
       } catch {}
       const devices = await navigator.mediaDevices.enumerateDevices()
       setOutputDevices(devices.filter((d) => d.kind === "audiooutput"))

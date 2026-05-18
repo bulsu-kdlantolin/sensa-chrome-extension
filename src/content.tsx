@@ -13,7 +13,6 @@ import FocusModeOverlay from "./components/FocusModeOverlay"
 import LiveCaptionBox from "./components/LiveCaptionBox"
 import type { SensaUserProfile } from "./lib/storage"
 import { useSpeech } from "./hooks/useSpeech"
-import { useVoiceNavigation } from "./hooks/useVoiceNavigation"
 import { useLiveCaptions } from "./hooks/useLiveCaptions"
 
 import { audioInterceptorScript } from "./audioInterceptor"
@@ -176,7 +175,6 @@ export default function FloatingDockManager() {
     isSettingsOverlayOpen,
     isVisualAutoscrollEnabled
   )
-  const { lastCommand } = useVoiceNavigation(isVoiceCommandActive, visualInputDeviceId)
   const targetLanguage = (captionLanguage.split("-")[0] ?? "EN").toUpperCase()
   const { captions, error: captionsError } = useLiveCaptions(
     isAuditoryModeActive,
