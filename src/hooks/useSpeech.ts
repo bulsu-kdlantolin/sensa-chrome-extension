@@ -32,6 +32,17 @@ interface SentenceSegment {
 
 const hasSpeakableContent = (text: string) => /\p{L}/u.test(text);
 
+const getSpeechRate = (readingSpeed: number) => {
+  if (!Number.isFinite(readingSpeed)) return 1;
+
+  // Keep the UI multiplier intact, but make the actual TTS curve less aggressive.
+  // This preserves 1x as normal speed while preventing 2x+ from becoming unintelligible.
+  const clamped = Math.max(0.75, Math.min(2.5, readingSpeed));
+  if (clamped <= 1) return clamped;
+
+  return 1 + (clamped - 1) * 0.4;
+};
+
 const normalizeSpeechSlice = (source: string) => {
   const normalizedToSource: number[] = [];
   let normalized = "";
@@ -411,7 +422,7 @@ export function useSpeech(readingSpeed: number, highlightColor: string, isOverla
       }
 
       const utterance = new SpeechSynthesisUtterance(speechText);
-      utterance.rate = readingSpeed;
+      utterance.rate = getSpeechRate(readingSpeed);
 
       const availableVoices = window.speechSynthesis.getVoices();
       if (availableVoices.length > 0) {
@@ -469,6 +480,8 @@ export function useSpeech(readingSpeed: number, highlightColor: string, isOverla
         currentCharOffsetRef.current = 0;
       };
 
+      setIsPlaying(true);
+      setIsPaused(false);
       window.speechSynthesis.speak(utterance);
     },
     [clearSentenceOverlay, findAdjacentSegment, isAutoscrollEnabled, readingSpeed, renderSegmentOverlay]

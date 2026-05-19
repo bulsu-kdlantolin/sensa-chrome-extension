@@ -86,6 +86,15 @@ const colorWithOpacity = (hex: string, opacity: number) => {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`
 }
 
+const getSpeechRate = (readingSpeed: number) => {
+  if (!Number.isFinite(readingSpeed)) return 1
+
+  const clamped = Math.max(0.75, Math.min(2.5, readingSpeed))
+  if (clamped <= 1) return clamped
+
+  return 1 + (clamped - 1) * 0.4
+}
+
 export default function FloatingDockManager() {
   const [activeMode, setActiveMode] = useState<"visual" | "auditory" | null>(null)
   const [userThemePref, setUserThemePref] = useState(false)
@@ -435,7 +444,7 @@ export default function FloatingDockManager() {
       // Cancel previous speech and read new selection
       window.speechSynthesis.cancel()
       const utterance = new SpeechSynthesisUtterance(selectedText)
-      utterance.rate = readingSpeed
+      utterance.rate = getSpeechRate(readingSpeed)
 
       // Apply preferred voice if available (try URI first, then name)
       const availableVoices = window.speechSynthesis.getVoices()
