@@ -1,5 +1,7 @@
 import { useEffect } from "react"
 
+const STT_WS_URL = "wss://sensa-chrome-extension-backend.onrender.com"
+
 export default function AudioProxy() {
   useEffect(() => {
     let socket: WebSocket | null = null
@@ -85,8 +87,8 @@ export default function AudioProxy() {
              log("-> Using default system audio output.")
           }
 
-          log("5. Connecting WebSocket to Node.js backend...")
-          socket = new WebSocket("ws://localhost:3000")
+          log("5. Connecting WebSocket to cloud backend...")
+          socket = new WebSocket(STT_WS_URL)
 
           socket.onopen = () => {
             log("6. WebSocket CONNECTED! Building Audio Graph...")
@@ -167,7 +169,7 @@ export default function AudioProxy() {
             }
           }
 
-          socket.onerror = () => log("❌ WEBSOCKET ERROR! Is the Node.js server running on port 3000?")
+          socket.onerror = () => log("❌ WEBSOCKET ERROR! Cloud backend connection failed.")
           socket.onclose = () => log("⚠️ WEBSOCKET CLOSED.")
 
           socket.onmessage = (event) => {

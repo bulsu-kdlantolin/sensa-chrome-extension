@@ -3,19 +3,21 @@ export interface STTConnection {
   close: () => void
 }
 
+const STT_WS_URL = "wss://sensa-chrome-extension-backend.onrender.com"
+
 export function connectToLocalServer(
   mediaStream: MediaStream,
   audioCtx: AudioContext,
   onTranscript: (text: string) => void
 ): STTConnection {
-  const socket = new WebSocket("ws://localhost:3000")
+  const socket = new WebSocket(STT_WS_URL)
 
   let isClosed = false
   let processor: ScriptProcessorNode | null = null
   let audioEl: HTMLAudioElement | null = null
 
   socket.addEventListener("open", () => {
-    console.log("🔌 Connected to Local Node.js Server!")
+    console.log("Connected to Sensa STT backend")
 
     // 1. STEALTH BYPASS: Play audio via HTML5 so you can actually hear it
     audioEl = new Audio()
@@ -70,7 +72,7 @@ export function connectToLocalServer(
     } catch (err) {}
   })
 
-  socket.addEventListener("error", () => console.error("Local WS Error"))
+  socket.addEventListener("error", () => console.error("STT WS Error"))
   
   return {
     socket,
