@@ -2,38 +2,13 @@ import React, { useEffect, useRef, useState } from "react"
 import { Tooltip } from "./Tooltip"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
-type MotionSpeed = "fast" | "normal" | "slow" | "spring"
-
-const motion = {
-  ease: "ease-[cubic-bezier(0.22,1,0.36,1)]",
-  transition: "transition-[transform,opacity,box-shadow,background-color,color,border-color,filter]",
-  layoutTransition: "transition-[grid-template-rows,opacity,transform,box-shadow,background-color,color,border-color,filter,margin-top]",
-  fast: "duration-100",
-  normal: "duration-180",
-  slow: "duration-280",
-  spring: "duration-700",
-  ms: {
-    fast: 100,
-    normal: 180,
-    slow: 280,
-    spring: 700,
-  },
-} as const
-
-const motionClass = (speed: MotionSpeed, layout = false) =>
-  `${layout ? motion.layoutTransition : motion.transition} ${motion[speed]} ${motion.ease}`
-
-const motionStyle = (properties: string[], speed: MotionSpeed) =>
-  properties.map((property) => `${property} ${motion.ms[speed]}ms cubic-bezier(0.22,1,0.36,1)`).join(", ")
-
 // ============================================================================
-// 🎙️ THE GOD-TIER MIC ICON (Ultra-Sensitive & Crisp)
+// 🎙️ THE GOD-TIER MIC ICON
 // ============================================================================
-const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
+const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {  
   const barsRef = useRef<(HTMLDivElement | null)[]>([])
   const currentHeights = useRef([4, 6, 8, 6, 4])
   const tickRef = useRef(0)
-  const barMotionSpeed: MotionSpeed = isActive ? "fast" : "normal"
 
   useEffect(() => {
     let animationId: number
@@ -43,7 +18,6 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
     let dataArray: Uint8Array<ArrayBuffer> | null = null
     let smoothedEnergy = 0
     
-    // 🚨 THE FIX: Dropped to 0.01 so it reacts instantly to even the quietest sounds
     const silenceGate = 0.01 
 
     const colors = [
@@ -69,7 +43,7 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
         audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
         analyser = audioCtx.createAnalyser()
         analyser.fftSize = 256
-        analyser.smoothingTimeConstant = 0.4 // Snappier reaction
+        analyser.smoothingTimeConstant = 0.4 
 
         const source = audioCtx.createMediaStreamSource(stream)
         source.connect(analyser)
@@ -90,7 +64,6 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
       }
 
       const rms = Math.sqrt(sum / dataArray.length)
-      // 🚨 THE FIX: Multiplier bumped to 8.0 to catch quiet voices effortlessly
       const boosted = Math.min(1, rms * 8.0) 
       smoothedEnergy = smoothedEnergy * 0.5 + boosted * 0.5 
 
@@ -155,7 +128,7 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
             height: "4px", 
             backgroundColor: "currentColor",
             willChange: "height, box-shadow, opacity, transform",
-            transition: motionStyle(["height", "box-shadow", "opacity", "transform"], barMotionSpeed)
+            transition: `all ${isActive ? 200 : 300}ms cubic-bezier(0.16,1,0.3,1)`
           }}
         />
       ))}
@@ -205,24 +178,28 @@ export default function VisualDock({
 }: VisualDockProps) {
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   const [isPlayOptimistic, setIsPlayOptimistic] = useState(isPlaying && !isPaused)
-  const iconMotionClass = `${motionClass("normal")} will-change-transform`
-  const buttonMotionClass = `${motionClass("fast")} hover:-translate-y-[2px] active:translate-y-0 active:scale-[0.97]`
-  const panelMotionClass = `${motionClass("spring", true)} will-change-[transform,opacity]`
   
-  const glassPanelClass = `${motionClass("slow")} backdrop-blur-3xl border ${isDark
+  const iconMotionClass = `transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform`
+  
+  // 🚨 THE FIX: All outer containers are now `rounded-full` to perfectly hug the circular buttons and eliminate pointed edges.
+  const glassPanelClass = `rounded-full backdrop-blur-3xl border transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isDark
     ? "bg-[#1C1C1E]/85 border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.6)]"
     : "bg-white/90 border-black/10 shadow-[0_8px_32px_rgba(0,0,0,0.15)]"
-  } ${isVoiceCommandActive ? "contrast-105 saturate-110" : "contrast-100 saturate-100"}`
+  } ${isVoiceCommandActive ? "contrast-105 saturate-110 drop-shadow-[0_0_22px_rgba(10,68,255,0.14)]" : "contrast-100 saturate-100 drop-shadow-none"}`
 
-  const middleGlassPanelClass = `${motionClass("slow")} backdrop-blur-3xl bg-white/90 dark:bg-[#1C1C1E]/88 ring-1 ring-black/5 dark:ring-white/10 ${isVoiceCommandActive ? "contrast-105 saturate-110" : "contrast-100 saturate-100"}`
+  const middleGlassPanelClass = `rounded-full backdrop-blur-3xl bg-white/90 dark:bg-[#1C1C1E]/88 ring-1 ring-black/5 dark:ring-white/10 ${isVoiceCommandActive ? "contrast-105 saturate-110" : "contrast-100 saturate-100"}`
     
-  const btnBaseClass = `${buttonMotionClass} relative group !w-[44px] !h-[44px] !min-w-[44px] !min-h-[44px] !p-0 !m-0 flex items-center justify-center rounded-full shrink-0 transform-gpu will-change-transform focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent box-border`
+  const btnBaseClass = `relative group !w-[44px] !h-[44px] !min-w-[44px] !min-h-[44px] !p-0 !m-0 flex items-center justify-center rounded-full shrink-0 transform-gpu will-change-transform focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent box-border transition-all duration-200 hover:-translate-y-[1.5px] active:translate-y-0 active:scale-[0.97]`
   
   const btnHoverClass = isDark 
     ? "hover:bg-white/15 text-gray-200 hover:text-white hover:shadow-[0_14px_28px_rgba(0,0,0,0.28)]"
     : "hover:bg-black/10 text-gray-700 hover:text-black hover:shadow-[0_14px_28px_rgba(0,0,0,0.12)]"
+
+  const settingsBtnHoverClass = isDark
+    ? "hover:bg-white/15 text-gray-200 hover:text-white hover:shadow-none"
+    : "hover:bg-black/10 text-gray-700 hover:text-black hover:shadow-none"
     
-  const btnAccentClass = `${motionClass("fast")} bg-[#0A44FF] text-white shadow-md shadow-[#0A44FF]/30 hover:bg-[#0836CC] hover:shadow-lg hover:shadow-[#0A44FF]/50`
+  const btnAccentClass = `transition-all duration-200 bg-[#0A44FF] text-white shadow-md shadow-[#0A44FF]/30 hover:bg-[#0836CC] hover:shadow-lg hover:shadow-[#0A44FF]/50`
 
   const readingSpeedLabel = `${readingSpeed.toFixed(2).replace(/\.00$/, "")}X`
 
@@ -242,19 +219,26 @@ export default function VisualDock({
     onTogglePlay()
   }
 
+  const handleToggleVoiceCommand = () => {
+    onToggleVoiceCommand()
+  }
+
   const callbacksRef = useRef({
     isVoiceCommandActive, isMinimized, isPlaying, isPaused, onToggleVoiceCommand, onTogglePlay, onNext, onPrev, onRestart,
     onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio
   })
+  const isVoiceCommandActiveRef = useRef(isVoiceCommandActive)
+  const startRecognitionRef = useRef<(() => void) | null>(null)
+  const stopRecognitionRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     callbacksRef.current = {
       isVoiceCommandActive, isMinimized, isPlaying, isPaused, onToggleVoiceCommand, onTogglePlay, onNext, onPrev, onRestart,
       onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio
     }
+    isVoiceCommandActiveRef.current = isVoiceCommandActive
   })
 
-  // 🚨 UNIFIED ENGINE: Perfected Index-Scoped Lock
   useEffect(() => {
     const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognitionCtor) return
@@ -266,19 +250,48 @@ export default function VisualDock({
 
     let isComponentMounted = true
     let restartTimer: number | null = null
+    let hasStartedOnce = false
+    let isRecognitionStarted = false
 
-    // 🚨 THE FIX: We track the current breath/sentence index.
     let currentResultIndex = -1
-    // We remember which commands we've ALREADY fired in this breath so they don't repeat.
     const executedCommandsInCurrentBreath = new Set<string>()
 
     const scheduleRestart = () => {
-      if (!isComponentMounted) return
+      if (!isComponentMounted || !isVoiceCommandActiveRef.current) return
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
-        try { recognition.start() } catch (e) {}
+        startRecognition()
       }, 250)
     }
+
+    const startRecognition = () => {
+      if (!isComponentMounted || isRecognitionStarted) return
+      try {
+        recognition.start()
+        isRecognitionStarted = true
+        hasStartedOnce = true
+      } catch (e) {
+        if (!hasStartedOnce) {
+          console.warn("VisualDock speech recognition start failed", e)
+        }
+      }
+    }
+
+    const stopRecognition = () => {
+      if (!isComponentMounted || !isRecognitionStarted) return
+      if (restartTimer) {
+        window.clearTimeout(restartTimer)
+        restartTimer = null
+      }
+      isRecognitionStarted = false
+      try {
+        recognition.stop()
+      } catch (e) {
+        // ignore
+      }
+    }
+    startRecognitionRef.current = startRecognition
+    stopRecognitionRef.current = stopRecognition
 
     recognition.onresult = (event: any) => {
       const { 
@@ -289,7 +302,6 @@ export default function VisualDock({
       const latestIndex = event.results.length - 1
       if (latestIndex < 0) return
 
-      // If the user took a breath and started a new sentence, reset the locks!
       if (latestIndex !== currentResultIndex) {
         currentResultIndex = latestIndex
         executedCommandsInCurrentBreath.clear()
@@ -298,22 +310,18 @@ export default function VisualDock({
       const rawTranscript = event.results[latestIndex][0]?.transcript || ""
       if (!rawTranscript) return
 
-      // Clean the transcript for perfect matching
       const paddedTranscript = ` ${rawTranscript.toLowerCase().replace(/[^a-z0-9\s]/gi, "")} `
 
-      // Helper function to instantly check and lock a command
       const checkAndLockCommand = (commandId: string, keywords: string[]) => {
-        if (executedCommandsInCurrentBreath.has(commandId)) return false // Already fired this breath
-        
+        if (executedCommandsInCurrentBreath.has(commandId)) return false 
         const isMatched = keywords.some(word => paddedTranscript.includes(` ${word} `))
         if (isMatched) {
-          executedCommandsInCurrentBreath.add(commandId) // Lock it so it never fires again this breath
+          executedCommandsInCurrentBreath.add(commandId) 
           return true
         }
         return false
       }
 
-      // 1. WAKE WORD (Always listening)
       if (!isVoiceCommandActive) {
         if (checkAndLockCommand('speak', ['speak', 'wake up', 'listen'])) {
           playClickAudio?.('Voice commands activated')
@@ -322,8 +330,6 @@ export default function VisualDock({
         return
       }
 
-      // 2. ACTIVE COMMANDS & HOMOPHONES
-      // We check "stop listening" first so "stop" doesn't accidentally trigger pause
       if (checkAndLockCommand('stoplistening', ['stop listening', 'stop voice', 'sleep', 'stop microphone'])) {
         playClickAudio?.('Voice commands deactivated')
         try { onToggleVoiceCommand() } catch {}
@@ -358,7 +364,6 @@ export default function VisualDock({
       else if (checkAndLockCommand('close', ['close', 'exit', 'quit', 'clothes'])) {
         playClickAudio?.('Close'); onClose();
       } 
-      // 3. SCROLLING
       else if (checkAndLockCommand('top', ['top', 'tap', 'stop', 'pop', 'to up', 'go up'])) {
         window.scrollTo({ top: 0, behavior: "smooth" })
       } 
@@ -378,13 +383,16 @@ export default function VisualDock({
       scheduleRestart()
     }
 
-    recognition.onend = () => scheduleRestart()
-
-    try { recognition.start() } catch (e) {}
+    recognition.onend = () => {
+      isRecognitionStarted = false
+      scheduleRestart()
+    }
 
     return () => {
       isComponentMounted = false
       if (restartTimer) window.clearTimeout(restartTimer)
+      startRecognitionRef.current = null
+      stopRecognitionRef.current = null
       try { recognition.stop() } catch (e) {}
       recognition.onresult = null
       recognition.onerror = null
@@ -392,9 +400,17 @@ export default function VisualDock({
     }
   }, []) 
 
+  useEffect(() => {
+    if (isVoiceCommandActive) {
+      startRecognitionRef.current?.()
+    } else {
+      stopRecognitionRef.current?.()
+    }
+  }, [isVoiceCommandActive])
+
   return (
     <div 
-      className={`flex flex-col w-fit shrink-0 box-border relative z-50 ${motionClass("slow")} ${isVoiceCommandActive ? "drop-shadow-[0_0_22px_rgba(10,68,255,0.14)]" : "drop-shadow-none"}`}
+      className="flex flex-col w-fit shrink-0 box-border relative z-50"
       role="toolbar" 
       aria-label="Reading and Voice Controls"
       data-sensa-visual-dock
@@ -403,7 +419,7 @@ export default function VisualDock({
       {/* ========================================================= */}
       {/* 🔝 TOP SECTION: MICROPHONE & VISUALIZER */}
       {/* ========================================================= */}
-      <div className={`flex flex-col items-center rounded-[28px] p-2 gap-2 shrink-0 relative z-30 ${glassPanelClass}`}>
+      <div className={`flex flex-col items-center p-2 gap-2 shrink-0 relative z-30 ${glassPanelClass}`}>
         <button 
           type="button" 
           className={`${btnBaseClass} ${btnHoverClass} bg-transparent`} 
@@ -417,9 +433,11 @@ export default function VisualDock({
 
         <button
           type="button"
-          onClick={onToggleVoiceCommand}
+          onClick={() => {
+            handleToggleVoiceCommand()
+          }}
           aria-pressed={isVoiceCommandActive}
-          className={`${btnBaseClass} text-white ${motionClass("normal")} ${isVoiceCommandActive 
+          className={`${btnBaseClass} text-white transition-all duration-300 ${isVoiceCommandActive 
             ? "shadow-[0_0_0_1px_rgba(10,68,255,0.18),0_0_24px_rgba(10,68,255,0.42)] ring-4 ring-[#0A44FF]/30 bg-[#0A44FF]"
             : "bg-[#0A44FF] shadow-md shadow-[#0A44FF]/30 hover:bg-[#0836CC] hover:shadow-lg hover:shadow-[#0A44FF]/50"
           }`}
@@ -453,19 +471,23 @@ export default function VisualDock({
       </div>
 
       {/* ========================================================= */}
-      {/* ↔️ MIDDLE SECTION */}
+      {/* ↔️ MIDDLE SECTION (The Core Ghosting Fix) */}
       {/* ========================================================= */}
       <div 
-        className={`grid w-full ${panelMotionClass} ${
+        // 🚨 THE FIX: This invisible clip-path bounds the top and bottom perfectly, eliminating ghosting as it shrinks, 
+        // but intentionally ignores the left/right bounds so your Tooltips have plenty of space to render!
+        className={`grid w-full relative z-10 [clip-path:inset(-50px_-200px_0px_-200px)] transition-all duration-[800ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
           isMinimized ? "grid-rows-[0fr] mt-0" : "grid-rows-[1fr] mt-3"
         }`}
       >
         <div className="min-h-0 flex justify-center w-full">
           <div 
-            className={`flex flex-col items-center rounded-full p-2 gap-1.5 w-fit origin-top ${panelMotionClass} ${middleGlassPanelClass} ${
+            // 🚨 THE FIX: When minimizing, this gently shrinks to 85% size and fades out in 300ms, 
+            // preventing the ugly "glitchy disappear" effect while the outer container takes 800ms to gracefully fold.
+            className={`flex flex-col items-center p-2 gap-1.5 w-fit origin-top transition-all ease-[cubic-bezier(0.16,1,0.3,1)] ${middleGlassPanelClass} ${
               isMinimized 
-                ? "opacity-0 scale-[0.94] -translate-y-3 pointer-events-none" 
-                : "opacity-100 scale-100 translate-y-0 pointer-events-auto"
+                ? "opacity-0 scale-[0.85] -translate-y-4 pointer-events-none duration-300" 
+                : "opacity-100 scale-100 translate-y-0 pointer-events-auto duration-[800ms]"
             }`}
           >
             <button
@@ -478,12 +500,12 @@ export default function VisualDock({
             >
               <Tooltip label={isPlayOptimistic ? "Pause" : "Play"} isDark={isDark} />
               {isPlayOptimistic ? (
-                <svg viewBox="0 0 24 24" fill="currentColor" className={`${motionClass("fast")} will-change-transform !w-[22px] !h-[22px] shrink-0`} aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor" className={`transition-transform duration-200 will-change-transform !w-[22px] !h-[22px] shrink-0`} aria-hidden="true">
                   <rect x="6" y="5" width="4" height="14" rx="1" />
                   <rect x="14" y="5" width="4" height="14" rx="1" />
                 </svg>
               ) : (
-                <svg viewBox="0 0 24 24" fill="currentColor" className={`${motionClass("fast")} will-change-transform !w-[24px] !h-[24px] ml-1 shrink-0`} aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor" className={`transition-transform duration-200 will-change-transform !w-[24px] !h-[24px] ml-1 shrink-0`} aria-hidden="true">
                   <polygon points="6 4 19 12 6 20 6 4" />
                 </svg>
               )}
@@ -532,7 +554,7 @@ export default function VisualDock({
               </svg>
             </button>
 
-            <div className={`!w-7 !h-px my-1.5 shrink-0 ${isDark ? 'bg-white/20' : 'bg-black/15'}`} role="separator" />
+            <div className={`!w-7 !h-px my-1.5 shrink-0 transition-colors duration-300 ${isDark ? 'bg-white/20' : 'bg-black/15'}`} role="separator" />
 
             <button
               type="button"
@@ -548,7 +570,7 @@ export default function VisualDock({
             <button
               type="button"
               onClick={onOpenSettings}
-              className={`${btnBaseClass} ${btnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""}`}
+              className={`${btnBaseClass} ${settingsBtnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""}`}
               aria-label="Open Settings"
               {...getHoverHandlers("Settings")}
             >
@@ -565,7 +587,7 @@ export default function VisualDock({
       {/* ========================================================= */}
       {/* 🔽 BOTTOM SECTION: WINDOW CONTROLS */}
       {/* ========================================================= */}
-      <div className={`flex flex-col items-center rounded-[28px] p-2 gap-1.5 shrink-0 mt-3 relative z-30 ${glassPanelClass}`}>
+      <div className={`flex flex-col items-center p-2 gap-1.5 shrink-0 mt-3 relative z-30 ${glassPanelClass}`}>
         <button
           type="button"
           onClick={onMinimizeToggle}
@@ -583,7 +605,7 @@ export default function VisualDock({
             strokeWidth="2.5" 
             strokeLinecap="round" 
             strokeLinejoin="round" 
-            className={`!w-[22px] !h-[22px] shrink-0 ${motionClass("normal")} ${isMinimized ? "rotate-180" : "rotate-0"}`} 
+            className={`!w-[22px] !h-[22px] shrink-0 transition-transform duration-[800ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${isMinimized ? "rotate-180" : "rotate-0"}`} 
             aria-hidden="true"
           >
             <polyline points="7 15 12 10 17 15" />
@@ -594,7 +616,7 @@ export default function VisualDock({
         <button
           type="button"
           onClick={onClose}
-          className={`${btnBaseClass} ${buttonMotionClass} hover:bg-red-500 hover:text-white text-gray-500 dark:text-gray-400 hover:shadow-[0_14px_28px_rgba(239,68,68,0.24)]`}
+          className={`${btnBaseClass} hover:bg-red-500 hover:text-white text-gray-500 dark:text-gray-400 hover:shadow-[0_14px_28px_rgba(239,68,68,0.24)]`}
           aria-label="Close Toolbar"
           {...getHoverHandlers("Close")}
         >

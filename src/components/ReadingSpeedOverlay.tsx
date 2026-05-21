@@ -116,73 +116,76 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     onSpeedChange?.(speed)
   }
 
-  // 🚨 High Contrast Theme Variables
-  const modalBg = isDark ? "bg-[#1C1C1E]" : "bg-white"
-  const textColor = isDark ? "text-white" : "text-black"
+  const modalBg = isDark ? "bg-[#141416]/80 backdrop-blur-3xl border-white/10" : "bg-white/80 backdrop-blur-3xl border-white/40"
+  const textColor = isDark ? "text-gray-100" : "text-gray-900"
   const secondaryText = isDark ? "text-gray-400" : "text-gray-500"
-  const borderColor = isDark ? "border-[#0A44FF]" : "border-[#0A44FF]"
-  const sliderUnfilled = isDark ? "#333333" : "#E5E7EB"
+  const inputBorder = isDark ? "border-white/10" : "border-black/5"
+  const inputBg = isDark ? "bg-[#2C2C2E]/60 hover:bg-[#2C2C2E]" : "bg-white/60 hover:bg-white"
+  const sliderUnfilled = isDark ? "#2F3136" : "#E5E7EB"
+  const quickChipClass = isDark ? "bg-white/10 text-gray-200 hover:bg-white/20" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+  const closeButtonClass = isDark
+    ? "bg-transparent hover:bg-white/10 text-gray-400 hover:text-gray-100 hover:shadow-[0_8px_20px_-12px_rgba(255,255,255,0.35)]"
+    : "bg-transparent hover:bg-black/5 text-gray-400 hover:text-gray-900 hover:shadow-[0_10px_20px_-12px_rgba(15,23,42,0.28)]"
 
   return (
     <div 
       onClick={handleBackdropClick} 
-      className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/60 backdrop-blur-md font-sans transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
+      className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/30 backdrop-blur-sm font-sans transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
       aria-modal="true"
       role="dialog"
     >
-      
-      {/* Modal Container */}
-      <div
-        className={`relative w-[440px] ${modalBg} rounded-[32px] border-4 ${borderColor} p-8 text-center shadow-[0_24px_60px_rgba(0,0,0,0.5)] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-90 translate-y-8'}`}
-        onMouseDown={onHeaderMouseDown}
-        style={{
-          transform: `translate(${offset.x}px, ${offset.y}px) scale(${isMounted ? 1 : 0.95})`,
-          cursor: draggingRef.current ? "grabbing" : "grab",
-          visibility: initialOffsetLoaded ? "visible" : "hidden"
-        }}
-      >
-        
-        {/* Visual Drag Handle */}
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-16 h-1.5 rounded-full bg-gray-400/30 pointer-events-none" />
+      <div className="relative">
+        <div className={`absolute inset-0 bg-gradient-to-tr from-[#0A44FF]/20 to-[#0099FF]/20 blur-[80px] rounded-full transition-opacity duration-500 ${isMounted ? 'opacity-100' : 'opacity-0'}`} />
 
-        {/* Header */}
-        <h2 className={`text-[28px] font-extrabold mb-8 tracking-tight ${textColor} mt-2`}>
-          Reading Speed
-        </h2>
-        
-        {/* Close Button (X) */}
-        <button 
-          onClick={() => {
-            setIsMounted(false)
-            setTimeout(onClose, 300)
+        <div
+          className={`relative w-[460px] ${modalBg} rounded-[32px] border p-8 text-center shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3),_0_0_2px_rgba(255,255,255,0.2)_inset] transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-[0.95] translate-y-4'}`}
+          onMouseDown={onHeaderMouseDown}
+          style={{
+            transform: `translate(${offset.x}px, ${offset.y}px) scale(${isMounted ? 1 : 0.95})`,
+            cursor: draggingRef.current ? "grabbing" : "grab",
+            visibility: initialOffsetLoaded ? "visible" : "hidden"
           }}
-          className={`absolute top-6 right-6 ${secondaryText} hover:${textColor} transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 rounded-full p-1`}
-          aria-label="Close"
-          {...getHoverHandlers("Close")}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-gray-400/30 pointer-events-none" />
 
-        {/* Large Speed Display */}
-        <div className="mb-8">
-          <span className={`text-[72px] font-black tracking-tighter leading-none ${textColor}`}>
-            {formattedSpeed}x
-          </span>
-        </div>
+          <div className="flex items-center justify-between mb-6 mt-2">
+            <h2 className="text-[26px] font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#0A44FF] to-[#0099FF]">
+              Reading Speed
+            </h2>
 
-        {/* Main Slider Controls */}
-        <div className="flex items-center gap-5 mb-10 px-2">
+            <button 
+              onClick={() => {
+                setIsMounted(false)
+                setTimeout(onClose, 300)
+              }}
+              className={`${closeButtonClass} transition-all duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 rounded-full p-2`}
+              aria-label="Close"
+              {...getHoverHandlers("Close")}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+
+          <div className={`mb-6 rounded-2xl border ${inputBorder} ${isDark ? 'bg-white/[0.03]' : 'bg-black/[0.02]'} px-6 py-5`}>
+            <div className={`text-[12px] uppercase tracking-[0.18em] font-semibold ${secondaryText}`}>Current speed</div>
+            <span className={`block mt-2 text-[64px] font-black tracking-tighter leading-none ${textColor}`}>
+              {formattedSpeed}x
+            </span>
+          </div>
+
+          <div className={`rounded-2xl border ${inputBorder} ${isDark ? 'bg-white/[0.03]' : 'bg-black/[0.02]'} p-5`}>
+            <div className="flex items-center gap-4 mb-6">
           {/* Minus Button */}
           <button 
             onClick={handleDecrease}
-            className="w-[56px] h-[56px] flex-shrink-0 flex items-center justify-center bg-[#0A44FF] hover:bg-[#0836CC] text-white rounded-full transition-transform active:scale-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg"
+            className="w-[52px] h-[52px] flex-shrink-0 flex items-center justify-center bg-gradient-to-r from-[#0A44FF] to-[#0099FF] hover:brightness-95 text-white rounded-full transition-all duration-200 active:scale-90 hover:-translate-y-0.5 hover:shadow-[0_16px_24px_-12px_rgba(10,68,255,0.65)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg"
             aria-label="Decrease speed"
             {...getHoverHandlers("Decrease speed")}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
           </button>
@@ -216,42 +219,40 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
                 }
               }}
               aria-label="Reading Speed"
-              className="reading-speed-slider w-full h-[16px] rounded-full appearance-none cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50"
+              className="reading-speed-slider w-full h-[14px] rounded-full appearance-none cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50"
               onMouseEnter={() => playHoverAudio("Reading Speed Slider")}
               onMouseLeave={cancelHoverAudio}
               style={{
-                // Visual Mode Deep Blue Fill
                 background: `linear-gradient(to right, #0A44FF 0%, #0A44FF ${((speed - 0.5) / (3 - 0.5)) * 100}%, ${sliderUnfilled} ${((speed - 0.5) / (3 - 0.5)) * 100}%, ${sliderUnfilled} 100%)`
               }}
             />
-            {/* 🚨 WCAG Custom Thumb Styling injected directly */}
             <style dangerouslySetInnerHTML={{ __html: `
               .reading-speed-slider::-webkit-slider-thumb {
                 appearance: none;
-                width: 36px;
-                height: 36px;
+                width: 28px;
+                height: 28px;
                 background: #FFFFFF;
-                border: 4px solid #0A44FF;
+                border: 3px solid #0A44FF;
                 border-radius: 50%;
                 cursor: pointer;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.3);
                 transition: transform 0.1s;
               }
               .reading-speed-slider::-webkit-slider-thumb:hover {
-                transform: scale(1.1);
+                transform: scale(1.08);
               }
               .reading-speed-slider::-moz-range-thumb {
-                width: 36px;
-                height: 36px;
+                width: 28px;
+                height: 28px;
                 background: #FFFFFF;
-                border: 4px solid #0A44FF;
+                border: 3px solid #0A44FF;
                 border-radius: 50%;
                 cursor: pointer;
                 box-shadow: 0 4px 12px rgba(0,0,0,0.3);
                 transition: transform 0.1s;
               }
               .reading-speed-slider::-moz-range-thumb:hover {
-                transform: scale(1.1);
+                transform: scale(1.08);
               }
             `}} />
           </div>
@@ -259,19 +260,18 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           {/* Plus Button */}
           <button 
             onClick={handleIncrease}
-            className="w-[56px] h-[56px] flex-shrink-0 flex items-center justify-center bg-[#0A44FF] hover:bg-[#0836CC] text-white rounded-full transition-transform active:scale-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg"
+            className="w-[52px] h-[52px] flex-shrink-0 flex items-center justify-center bg-gradient-to-r from-[#0A44FF] to-[#0099FF] hover:brightness-95 text-white rounded-full transition-all duration-200 active:scale-90 hover:-translate-y-0.5 hover:shadow-[0_16px_24px_-12px_rgba(10,68,255,0.65)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg"
             aria-label="Increase speed"
             {...getHoverHandlers("Increase speed")}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
           </button>
-        </div>
+            </div>
 
-        {/* Quick Select Pills (Minimum 44px height for WCAG) */}
-        <div className="flex justify-between gap-2.5">
+            <div className="flex justify-between gap-2.5">
           {speedStops.map((stop) => (
             <button
               key={stop}
@@ -281,27 +281,25 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
               }}
               aria-pressed={speed === stop}
               {...getHoverHandlers(`${stop}x`) }
-              className={`flex-1 h-[48px] rounded-full text-[16px] font-bold transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 ${
+              className={`flex-1 h-[42px] rounded-full text-[14px] font-semibold transition-all duration-200 border border-transparent hover:-translate-y-0.5 hover:shadow-[0_10px_20px_-14px_rgba(10,68,255,0.45)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 ${
                 speed === stop 
-                  ? "bg-[#0A44FF] text-white shadow-lg scale-105" 
-                  : isDark 
-                    ? "bg-white/10 text-gray-200 hover:bg-white/20"
-                    : "bg-gray-100 text-gray-800 hover:bg-gray-200"
+                  ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white shadow-lg scale-105 border-[#4FA5FF]/40" 
+                  : `${quickChipClass} hover:border-[#0A44FF]/20`
               }`}
             >
               {stop}x
             </button>
           ))}
-        </div>
+            </div>
+          </div>
 
-        {/* Footer Actions */}
-        <div className="mt-10 flex justify-end gap-4">
+          <div className="mt-8 flex justify-end gap-3">
           <button
             onClick={() => {
               setIsMounted(false)
               setTimeout(onClose, 300)
             }}
-            className={`px-6 py-3 rounded-full border-2 ${isDark ? 'border-gray-600 hover:bg-gray-800 text-white' : 'border-gray-300 hover:bg-gray-100 text-gray-800'} text-[16px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gray-400`}
+            className={`h-11 px-6 rounded-xl border ${inputBorder} ${inputBg} ${textColor} text-[14px] font-semibold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_20px_-14px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/40`}
             {...getHoverHandlers("Cancel")}
           >
             Cancel
@@ -312,13 +310,13 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
               setIsMounted(false)
               setTimeout(onClose, 300)
             }}
-            className="px-8 py-3 rounded-full bg-[#0A44FF] text-[16px] font-bold text-white hover:bg-[#0836CC] transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg"
+            className="h-11 px-7 rounded-xl bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-[14px] font-semibold text-white hover:brightness-95 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_26px_-14px_rgba(10,68,255,0.7)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 shadow-lg"
             {...getHoverHandlers("Apply")}
           >
             Apply
           </button>
+          </div>
         </div>
-
       </div>
     </div>
   )

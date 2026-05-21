@@ -6,6 +6,7 @@ interface ColorPickerPopupProps {
   onColorChange?: (color: string) => void
   isDark?: boolean
   accent?: "blue" | "orange"
+  placement?: "center" | "start" | "end"
 }
 
 // Math helpers for color conversion
@@ -60,7 +61,7 @@ const rgbToHsv = (r: number, g: number, b: number) => {
   return { h, s, v: max }
 }
 
-export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", onColorChange, isDark = false, accent = "blue" }: ColorPickerPopupProps) {
+export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", onColorChange, isDark = false, accent = "blue", placement = "center" }: ColorPickerPopupProps) {
   // State: Hue (0-1), Saturation (0-1), Value/Brightness (0-1)
   const [hsv, setHsv] = useState(() => {
     const parsed = hexToRgb(initialColor)
@@ -170,6 +171,18 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
     ? "bg-[#1C1C1E] border-[#2C2C2E] shadow-[0_12px_40px_-10px_rgba(0,0,0,0.55)]"
     : "bg-white border-gray-100 shadow-[0_12px_40px_-10px_rgba(0,0,0,0.2)]"
   const arrowClass = isDark ? "bg-[#1C1C1E] border-[#2C2C2E]" : "bg-white border-gray-100"
+  const placementClass =
+    placement === "end"
+      ? "right-0 left-auto translate-x-0"
+      : placement === "start"
+        ? "left-0 right-auto translate-x-0"
+        : "left-1/2 -translate-x-1/2"
+  const arrowPlacementClass =
+    placement === "end"
+      ? "right-[14px] left-auto -translate-x-0"
+      : placement === "start"
+        ? "left-[14px] right-auto -translate-x-0"
+        : "left-1/2 -translate-x-1/2"
   const labelClass = isDark ? "text-gray-200" : "text-black"
   const inputClass = isDark
     ? "border-[#3C3C3E] text-gray-100 bg-[#2C2C2E]"
@@ -212,9 +225,9 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
   return (
     <div
       ref={popupRef}
-      className={`absolute bottom-[calc(100%+16px)] left-1/2 -translate-x-1/2 z-[999999] w-[320px] rounded-[12px] border p-[16px] font-sans select-none cursor-default ${popupClass}`}
+      className={`absolute bottom-[calc(100%+16px)] z-[999999] w-[320px] rounded-[12px] border p-[16px] font-sans select-none cursor-default ${placementClass} ${popupClass}`}
     >
-      <div className={`absolute -bottom-[7px] left-1/2 -translate-x-1/2 w-[14px] h-[14px] rotate-45 border-b border-r pointer-events-none ${arrowClass}`}></div>
+      <div className={`absolute -bottom-[7px] w-[14px] h-[14px] rotate-45 border-b border-r pointer-events-none ${arrowPlacementClass} ${arrowClass}`}></div>
       
       {/* 1. Main Gradient Area (Saturation/Brightness) */}
       <div 

@@ -8,7 +8,7 @@ const DEFAULT_OUTPUT_DEVICE_ID = "default"
 
 interface VisualSettingsModalProps {
   onClose: () => void
-  isDark?: boolean // 🚨 Added isDark for theming consistency
+  isDark?: boolean
 }
 
 export default function VisualSettingsModal({ onClose, isDark = false }: VisualSettingsModalProps) {
@@ -28,7 +28,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>("")
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false)
 
-  // Mount animation state
   const [isMounted, setIsMounted] = useState(false)
 
   const getHoverHandlers = (label: string) => ({
@@ -38,7 +37,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     onBlur: cancelHoverAudio
   })
 
-  // Draggable offset state
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [initialOffsetLoaded, setInitialOffsetLoaded] = useState(false)
   const offsetRef = useRef(offset)
@@ -130,7 +128,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
         })
       }
     }
-
     loadVoices()
     window.speechSynthesis.onvoiceschanged = loadVoices
   }, [])
@@ -139,15 +136,12 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     const loadDevices = async () => {
       if (!navigator.mediaDevices?.enumerateDevices) return
       try {
-        await navigator.mediaDevices.getUserMedia({
-          audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true }
-        })
+        await navigator.mediaDevices.getUserMedia({ audio: true })
       } catch {}
       const devices = await navigator.mediaDevices.enumerateDevices()
       setInputDevices(devices.filter((d) => d.kind === "audioinput"))
       setOutputDevices(devices.filter((d) => d.kind === "audiooutput"))
     }
-
     loadDevices()
     const handleDeviceChange = () => loadDevices()
     navigator.mediaDevices?.addEventListener?.("devicechange", handleDeviceChange)
@@ -180,13 +174,13 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const handleAutoscrollToggle = (enabled: boolean) => {
     setIsAutoscrollEnabled(enabled)
     chrome.storage.local.set({ sensa_visual_autoscroll_enabled: enabled })
-    playClickAudio(enabled ? "Autoscroll reading enabled" : "Autoscroll reading disabled")
+    playClickAudio(enabled ? "Autoscroll enabled" : "Autoscroll disabled")
   }
 
   const handleHighlightMouseScreenReaderToggle = (enabled: boolean) => {
     setIsHighlightMouseScreenReaderEnabled(enabled)
     chrome.storage.local.set({ sensa_visual_highlight_mouse_screen_reader: enabled })
-    playClickAudio(enabled ? "Mouse highlight reader enabled" : "Mouse highlight reader disabled")
+    playClickAudio(enabled ? "Mouse reader enabled" : "Mouse reader disabled")
   }
 
   const handleVoiceGuideToggle = (enabled: boolean) => {
@@ -198,10 +192,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const handleVoiceChange = (voiceURI: string) => {
     setSelectedVoiceURI(voiceURI)
     const selected = voices.find((voice) => voice.voiceURI === voiceURI)
-    chrome.storage.local.set({
-      sensa_visual_voice_uri: voiceURI,
-      sensa_visual_voice_name: selected?.name || ""
-    })
+    chrome.storage.local.set({ sensa_visual_voice_uri: voiceURI, sensa_visual_voice_name: selected?.name || "" })
     playClickAudio(`Voice set to ${selected?.name || 'selected voice'}`)
   }
 
@@ -238,275 +229,263 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   }
 
   const previewVoice = (voice: SpeechSynthesisVoice) => {
-    // Speak the voice name immediately using that voice (no extra "previewing" announcement).
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(voice.name)
     utterance.voice = voice
     window.speechSynthesis.speak(utterance)
   }
 
-  // 🚨 High Contrast Theme Variables
-  const modalBg = isDark ? "bg-[#1C1C1E]" : "bg-white"
-  const textColor = isDark ? "text-white" : "text-black"
-  const labelColor = isDark ? "text-gray-200" : "text-gray-800"
-  const inputBg = isDark ? "bg-[#2C2C2E]" : "bg-gray-50"
-  const inputBorder = isDark ? "border-gray-600" : "border-gray-300"
+  const modalBg = isDark ? "bg-[#141416]/80 backdrop-blur-3xl border-white/10" : "bg-white/80 backdrop-blur-3xl border-white/40"
+  const textColor = isDark ? "text-gray-100" : "text-gray-900"
+  const labelColor = isDark ? "text-gray-200" : "text-gray-700"
+  const inputBg = isDark ? "bg-[#2C2C2E]/60 hover:bg-[#2C2C2E]" : "bg-white/60 hover:bg-white"
+  const inputBorder = isDark ? "border-white/10" : "border-black/5"
   const secondaryText = isDark ? "text-gray-400" : "text-gray-500"
+  const dividerClass = isDark ? "border-white/10" : "border-black/5"
+  const iconColor = isDark ? "text-[#0A44FF]" : "text-[#0A44FF]"
 
   return (
     <div 
       onClick={handleBackdropClick} 
-      className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/60 backdrop-blur-md font-sans transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
+      className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/30 backdrop-blur-sm font-sans transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
       role="dialog"
       aria-modal="true"
     >
-      <div
-        className={`relative w-[480px] ${modalBg} rounded-[32px] border-4 border-[#0A44FF] p-8 shadow-[0_24px_60px_rgba(0,0,0,0.5)] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-90 translate-y-8'}`}
-        onMouseDown={onHeaderMouseDown}
-        style={{
-          transform: `translate(${offset.x}px, ${offset.y}px) scale(${isMounted ? 1 : 0.95})`,
-          cursor: draggingRef.current ? "grabbing" : "grab",
-          visibility: initialOffsetLoaded ? "visible" : "hidden"
-        }}
-      >
-        {/* Visual Drag Handle */}
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-16 h-1.5 rounded-full bg-gray-400/40 pointer-events-none" />
+      <div className="relative">
+        {/* 🚨 THE FIX: Refined the gradient to a softer, deeper premium blue (#0099FF) */}
+        <div className={`absolute inset-0 bg-gradient-to-tr from-[#0A44FF]/20 to-[#0099FF]/20 blur-[80px] rounded-full transition-opacity duration-500 ${isMounted ? 'opacity-100' : 'opacity-0'}`} />
 
-        <h2 className={`text-[28px] font-extrabold mb-8 tracking-tight mt-2 ${textColor}`}>Settings</h2>
-        
-        <button 
-          onClick={() => {
-            playClickAudio("Closing settings")
-            setIsMounted(false)
-            setTimeout(onClose, 300)
+        <div
+          className={`relative w-[480px] ${modalBg} rounded-[32px] border p-8 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3),_0_0_2px_rgba(255,255,255,0.2)_inset] transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-[0.95] translate-y-4'}`}
+          onMouseDown={onHeaderMouseDown}
+          style={{
+            transform: `translate(${offset.x}px, ${offset.y}px) scale(${isMounted ? 1 : 0.95})`,
+            cursor: draggingRef.current ? "grabbing" : "grab",
+            visibility: initialOffsetLoaded ? "visible" : "hidden"
           }}
-          className={`absolute top-6 right-6 ${secondaryText} hover:${textColor} transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 rounded-full p-1`}
-          aria-label="Close settings"
-          {...getHoverHandlers("Close")}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-gray-400/30 pointer-events-none" />
 
-        <div className="flex flex-col gap-6">
-          
-          {/* 🚨 WCAG: 48px height toggles with high contrast text */}
-          <div className="flex items-center justify-between min-h-[48px]">
-            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Voice Guide</span>
-            <div className="w-[200px] flex justify-start">
-              <label className="relative inline-flex items-center cursor-pointer" {...getHoverHandlers("Voice Guide")}>
-                <input type="checkbox" className="sr-only peer" checked={isVoiceGuideEnabled} onChange={(e) => handleVoiceGuideToggle(e.target.checked)} aria-label="Toggle Voice Guide" />
-                <div className="w-14 h-8 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-6 peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-[#0A44FF] shadow-inner"></div>
+          <div className="flex justify-between items-center mb-8 mt-2">
+            <h2 className="text-[26px] font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#0A44FF] to-[#0099FF]">
+              Visual Settings
+            </h2>
+            <button 
+              onClick={() => {
+                playClickAudio("Closing settings")
+                setIsMounted(false)
+                setTimeout(onClose, 300)
+              }}
+              // 🚨 THE FIX: Set close button background to transparent so it isn't highlighted by default
+              className={`bg-transparent hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 hover:${textColor} transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 rounded-full p-2`}
+              aria-label="Close settings"
+              {...getHoverHandlers("Close")}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            
+            {/* 🚨 THE FIX: Moved getHoverHandlers to the outer ROW div so hovering anywhere horizontally triggers the audio */}
+            <div 
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
+              {...getHoverHandlers("Voice Guide")}
+              onClick={() => handleVoiceGuideToggle(!isVoiceGuideEnabled)}
+            >
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Voice Guide</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer pointer-events-none">
+                <input type="checkbox" className="sr-only peer" checked={isVoiceGuideEnabled} readOnly />
+                {/* 🚨 THE FIX: Swapped translate-x-full to exact translate-x-[20px] math to perfect the spacing */}
+                <div className={`w-12 h-7 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-[20px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-200 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] shadow-inner`}></div>
               </label>
             </div>
-          </div>
 
-          <div className="flex items-center justify-between relative z-50 min-h-[48px]">
-            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Voice Selection</span>
-            <div className="relative w-[200px]">
-              <button 
-                type="button"
-                onClick={() => {
-                  setIsVoiceDropdownOpen((prev) => !prev)
-                  playClickAudio("Voice selection")
-                }}
-                className={`w-full text-left border-2 ${inputBorder} ${textColor} ${inputBg} h-[48px] pl-4 pr-10 rounded-xl text-[15px] font-medium focus:outline-none focus:border-[#0A44FF] focus:ring-4 focus:ring-[#0A44FF]/30 cursor-pointer shadow-sm transition-all`}
-                aria-haspopup="listbox"
-                aria-expanded={isVoiceDropdownOpen}
-                {...getHoverHandlers("Voice Selection")}
-              >
-                <span className="block truncate">
-                  {voices.find(v => v.voiceURI === selectedVoiceURI)?.name || "Loading voices..."}
-                </span>
-                <div className={`pointer-events-none absolute inset-y-0 right-4 flex items-center ${secondaryText}`}>
-                  <svg className={`fill-current h-5 w-5 transition-transform ${isVoiceDropdownOpen ? "rotate-180" : ""}`} viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                </div>
-              </button>
-
-              {isVoiceDropdownOpen && (
-                <>
-                  <div 
-                    className="fixed inset-0 z-40" 
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setIsVoiceDropdownOpen(false)
-                      window.speechSynthesis.cancel()
-                    }} 
-                  />
-                    <ul 
-                    className={`absolute z-50 mt-2 w-full max-h-60 overflow-y-auto ${modalBg} border-2 border-[#0A44FF] rounded-xl shadow-[0_10px_30px_rgba(0,0,0,0.3)] py-2 text-[15px] custom-scrollbar`}
-                    role="listbox"
-                  >
-                    {voices.map((voice) => (
-                      <li
-                        key={voice.voiceURI}
-                        role="option"
-                        aria-selected={selectedVoiceURI === voice.voiceURI}
-                        onMouseEnter={() => previewVoice(voice)}
-                        onClick={() => {
-                          handleVoiceChange(voice.voiceURI)
-                          setIsVoiceDropdownOpen(false)
-                          // Announce selection using feedback system
-                          playClickAudio(`${voice.name} selected`)
-                          // stop any active preview
-                          window.speechSynthesis.cancel()
-                        }}
-                        className={`px-4 py-3 cursor-pointer truncate transition-colors font-medium border-b border-gray-100 last:border-0 ${
-                          selectedVoiceURI === voice.voiceURI 
-                            ? "bg-[#0A44FF]/10 text-[#0A44FF] font-bold" 
-                            : isDark 
-                              ? "text-gray-200 hover:bg-white/10" 
-                              : "text-gray-700 hover:bg-[#0A44FF]/5 hover:text-[#0A44FF]"
-                        }`}
-                      >
-                        {voice.name}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between min-h-[48px]">
-            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Wake Word</span>
-            <div className="relative w-[200px]">
-              <input 
-                type="text" 
-                defaultValue="Sensa" 
-                aria-label="Wake Word"
-                className={`w-full border-2 ${inputBorder} ${textColor} ${inputBg} h-[48px] pl-4 pr-10 rounded-xl text-[15px] font-medium focus:outline-none focus:border-[#0A44FF] focus:ring-4 focus:ring-[#0A44FF]/30 shadow-sm transition-all`}
-                {...getHoverHandlers("Wake Word")}
-              />
-              <div className={`absolute inset-y-0 right-4 flex items-center pointer-events-none ${secondaryText}`}>
-                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                  <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                  <line x1="12" y1="19" x2="12" y2="22" />
-                </svg>
+            <div 
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative z-50 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
+              {...getHoverHandlers("Voice Selection")}
+            >
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Voice Selection</span>
               </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between relative min-h-[48px]">
-            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Highlight Color</span>
-            <div className="w-[200px] flex justify-start">
-              <div className="relative flex items-center justify-center">
+              <div className="relative w-[190px]">
                 <button 
                   type="button"
-                  onMouseDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    setShowColorPicker((prev) => !prev)
-                  }}
-                  className="w-[44px] h-[44px] border-4 border-gray-200 rounded-full cursor-pointer shadow-md focus:outline-none focus:ring-4 focus:ring-[#0A44FF]/50 transition-transform active:scale-90"
+                  onClick={(e) => { e.stopPropagation(); setIsVoiceDropdownOpen((prev) => !prev); playClickAudio("Voice selection") }}
+                  className={`w-full text-left border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
+                  aria-haspopup="listbox"
+                  aria-expanded={isVoiceDropdownOpen}
+                >
+                  <span className="block truncate">{voices.find(v => v.voiceURI === selectedVoiceURI)?.name || "Loading..."}</span>
+                  <div className={`pointer-events-none absolute inset-y-0 right-3 flex items-center ${secondaryText}`}>
+                    <svg className={`fill-current h-4 w-4 transition-transform duration-300 ${isVoiceDropdownOpen ? "rotate-180" : ""}`} viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                  </div>
+                </button>
+
+                {isVoiceDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }} />
+                    <ul className={`absolute right-0 z-50 mt-2 w-[240px] max-h-56 overflow-y-auto ${modalBg} border ${inputBorder} rounded-xl shadow-2xl py-2 text-[13px] custom-scrollbar`} role="listbox">
+                      {voices.map((voice) => (
+                        <li
+                          key={voice.voiceURI} role="option" aria-selected={selectedVoiceURI === voice.voiceURI}
+                          onMouseEnter={() => previewVoice(voice)}
+                          onClick={() => { handleVoiceChange(voice.voiceURI); setIsVoiceDropdownOpen(false); playClickAudio(`${voice.name} selected`); window.speechSynthesis.cancel() }}
+                          // 🚨 THE FIX: Removed margin, added full block padding so the entire horizontal row triggers the hover preview
+                          className={`px-4 py-3 cursor-pointer block w-full text-left truncate transition-colors font-medium border-b ${dividerClass} last:border-0 ${selectedVoiceURI === voice.voiceURI ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white" : isDark ? "text-gray-200 hover:bg-[#0A44FF]/20 hover:text-[#0A44FF]" : "text-gray-700 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF]"}`}
+                        >
+                          {voice.name}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div 
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
+              {...getHoverHandlers("Wake Word")}
+            >
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Wake Word</span>
+              </div>
+              <div className="relative w-[190px]">
+                <input 
+                  type="text" defaultValue="Sensa" aria-label="Wake Word"
+                  className={`w-full border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-10 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 transition-all hover:shadow-md`}
+                />
+                <div className={`absolute inset-y-0 right-4 flex items-center pointer-events-none ${secondaryText}`}>
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 opacity-50"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="22" /></svg>
+                </div>
+              </div>
+            </div>
+
+            <div 
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
+              {...getHoverHandlers("Highlight color")}
+            >
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Highlight Color</span>
+              </div>
+              <div className="relative flex items-center justify-end w-[190px]">
+                <button 
+                  type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); setShowColorPicker((prev) => !prev) }}
+                  className="w-10 h-10 rounded-full cursor-pointer shadow-[0_4px_12px_rgba(0,0,0,0.15)] border-2 border-white/40 ring-2 ring-black/5 focus:outline-none focus:ring-4 focus:ring-[#0A44FF]/50 transition-all active:scale-90 hover:scale-105"
                   style={{ backgroundColor: highlightColor }}
                   aria-label="Pick highlight color"
-                  {...getHoverHandlers("Highlight color")}
                 />
                 {showColorPicker && (
                   <ColorPickerPopup
-                    isDark={isDark}
-                    initialColor={highlightColor}
-                    onColorChange={handleHighlightChange}
-                    onClose={() => setShowColorPicker(false)}
+                    isDark={isDark} initialColor={highlightColor}
+                    onColorChange={handleHighlightChange} onClose={() => setShowColorPicker(false)}
+                    placement="end"
                   />
                 )}
               </div>
             </div>
-          </div>
 
-          <div className="flex items-center justify-between min-h-[48px]">
-            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Autoscroll Reading</span>
-            <div className="w-[200px] flex justify-start">
-              <label className="relative inline-flex items-center cursor-pointer" {...getHoverHandlers("Autoscroll reading")}>
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={isAutoscrollEnabled}
-                  onChange={(event) => handleAutoscrollToggle(event.target.checked)}
-                  aria-label="Toggle Autoscroll"
-                />
-                <div className="w-14 h-8 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-6 peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-[#0A44FF] shadow-inner"></div>
+            <div 
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
+              {...getHoverHandlers("Autoscroll reading")}
+              onClick={() => handleAutoscrollToggle(!isAutoscrollEnabled)}
+            >
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Autoscroll Reading</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer pointer-events-none">
+                <input type="checkbox" className="sr-only peer" checked={isAutoscrollEnabled} readOnly />
+                <div className={`w-12 h-7 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-[20px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-200 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] shadow-inner`}></div>
               </label>
             </div>
-          </div>
 
-          <div className="flex items-center justify-between min-h-[48px]">
-            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Mouse Highlight Reader</span>
-            <div className="w-[200px] flex justify-start">
-              <label className="relative inline-flex items-center cursor-pointer" {...getHoverHandlers("Mouse Highlight Reader")}>
-                <input
-                  type="checkbox"
-                  className="sr-only peer"
-                  checked={isHighlightMouseScreenReaderEnabled}
-                  onChange={(event) => handleHighlightMouseScreenReaderToggle(event.target.checked)}
-                  aria-label="Toggle Mouse Highlight Reader"
-                />
-                <div className={`w-14 h-8 rounded-full peer peer-checked:after:translate-x-6 peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all shadow-inner peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#0A44FF]/50 ${isDark ? 'peer-checked:bg-[#0A44FF] bg-gray-600' : 'peer-checked:bg-[#0A44FF] bg-gray-300'}`}></div>
+            <div 
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
+              {...getHoverHandlers("Mouse Highlight Reader")}
+              onClick={() => handleHighlightMouseScreenReaderToggle(!isHighlightMouseScreenReaderEnabled)}
+            >
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg>
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Mouse Reader</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer pointer-events-none">
+                <input type="checkbox" className="sr-only peer" checked={isHighlightMouseScreenReaderEnabled} readOnly />
+                <div className={`w-12 h-7 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-[20px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-200 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] shadow-inner`}></div>
               </label>
             </div>
-          </div>
 
-          <div className="flex items-center justify-between min-h-[48px]">
-            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Input Device</span>
-            <div className="relative w-[200px]">
-              <select
-                value={selectedInputDeviceId}
-                onChange={(event) => handleInputDeviceChange(event.target.value)}
-                aria-label="Input Device"
-                className={`appearance-none w-full border-2 ${inputBorder} ${textColor} ${inputBg} h-[48px] pl-4 pr-10 rounded-xl text-[14px] font-medium focus:outline-none focus:border-[#0A44FF] focus:ring-4 focus:ring-[#0A44FF]/30 cursor-pointer shadow-sm transition-all`}
-                {...getHoverHandlers("Input Device")}>
-                <option value="default">Default - Microphone</option>
-                {inputDevices.map((device, index) => (
-                  <option key={device.deviceId || `input-${index}`} value={device.deviceId}>
-                    {device.label || `Microphone ${index + 1}`}
-                  </option>
-                ))}
-              </select>
-              <div className={`pointer-events-none absolute inset-y-0 right-4 flex items-center ${secondaryText}`}>
-                <svg className="fill-current h-5 w-5" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+            <div 
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
+              {...getHoverHandlers("Input Device")}
+            >
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49m-8.48 0a6 6 0 0 1 0-8.49m11.31-2.82a10 10 0 0 1 0 14.14m-14.14 0a10 10 0 0 1 0-14.14"/></svg>
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Input Device</span>
+              </div>
+              <div className="relative w-[190px]">
+                <select
+                  value={selectedInputDeviceId} onChange={(e) => handleInputDeviceChange(e.target.value)} aria-label="Input Device"
+                  className={`appearance-none w-full border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
+                >
+                  <option value="default">Default - Microphone</option>
+                  {inputDevices.map((d, i) => <option key={d.deviceId || `in-${i}`} value={d.deviceId}>{d.label || `Microphone ${i + 1}`}</option>)}
+                </select>
+                <div className={`pointer-events-none absolute inset-y-0 right-3 flex items-center ${secondaryText}`}>
+                  <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex items-center justify-between min-h-[48px]">
-            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Output Device</span>
-            <div className="relative w-[200px]">
-              <select
-                value={selectedOutputDeviceId}
-                onChange={(event) => handleOutputDeviceChange(event.target.value)}
-                aria-label="Output Device"
-                className={`appearance-none w-full border-2 ${inputBorder} ${textColor} ${inputBg} h-[48px] pl-4 pr-10 rounded-xl text-[14px] font-medium focus:outline-none focus:border-[#0A44FF] focus:ring-4 focus:ring-[#0A44FF]/30 cursor-pointer shadow-sm transition-all`}
-                {...getHoverHandlers("Output Device")}>
-                <option value="default">Default - Speaker</option>
-                {outputDevices.map((device, index) => (
-                  <option key={device.deviceId || `output-${index}`} value={device.deviceId}>
-                    {device.label || `Speaker ${index + 1}`}
-                  </option>
-                ))}
-              </select>
-              <div className={`pointer-events-none absolute inset-y-0 right-4 flex items-center ${secondaryText}`}>
-                <svg className="fill-current h-5 w-5" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+            <div 
+              className={`flex items-center justify-between py-3 px-3 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
+              {...getHoverHandlers("Output Device")}
+            >
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Output Device</span>
+              </div>
+              <div className="relative w-[190px]">
+                <select
+                  value={selectedOutputDeviceId} onChange={(e) => handleOutputDeviceChange(e.target.value)} aria-label="Output Device"
+                  className={`appearance-none w-full border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
+                >
+                  <option value="default">Default - Speaker</option>
+                  {outputDevices.map((d, i) => <option key={d.deviceId || `out-${i}`} value={d.deviceId}>{d.label || `Speaker ${i + 1}`}</option>)}
+                </select>
+                <div className={`pointer-events-none absolute inset-y-0 right-3 flex items-center ${secondaryText}`}>
+                  <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                </div>
               </div>
             </div>
+
+          </div>
+
+          <div className="mt-8 flex justify-center">
+            <button 
+              type="button"
+              onClick={handleResetToDefault}
+              // 🚨 THE FIX: Upgraded hover state to cast a premium, subtle blue glow.
+              className={`flex items-center gap-2 bg-transparent hover:bg-[#0A44FF]/10 hover:text-[#0A44FF] hover:border-[#0A44FF]/30 dark:hover:bg-[#0A44FF]/20 dark:hover:border-[#0A44FF]/40 ${textColor} border ${inputBorder} font-semibold h-11 px-8 rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 text-[14px] tracking-wide hover:shadow-sm`}
+              {...getHoverHandlers("Reset to default")}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
+              Restore Defaults
+            </button>
           </div>
 
         </div>
-
-        <div className="mt-10 flex justify-center">
-          <button 
-            type="button"
-            onClick={handleResetToDefault}
-            className="bg-[#0A44FF] hover:bg-[#0836CC] text-white font-bold h-[48px] px-12 rounded-full transition-colors shadow-lg shadow-[#0A44FF]/30 active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 text-[16px] tracking-wide" 
-            {...getHoverHandlers("Reset to default")}
-          >
-            Reset to default
-          </button>
-        </div>
-
       </div>
     </div>
   )

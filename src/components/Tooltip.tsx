@@ -16,7 +16,7 @@ export const Tooltip = ({ label, isDark, isRed, isAuditory }: TooltipProps) => {
   const animation = "opacity-0 invisible scale-90 translate-x-2 group-hover:opacity-100 group-hover:visible group-hover:scale-100 group-hover:translate-x-0 transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]"
   
   // 3. TYPOGRAPHY: High contrast, highly legible.
-  const typography = "px-4 py-2.5 rounded-xl text-[15px] font-bold tracking-wide whitespace-nowrap shadow-[0_12px_40px_rgba(0,0,0,0.25)]"
+  const typography = "px-4 py-2.5 rounded-xl text-[15px] font-bold tracking-wide whitespace-nowrap shadow-none ring-1 ring-black/5"
 
   // 4. ACCESSIBILITY COLORS: Solid, ultra-high contrast.
   let colors = ""
