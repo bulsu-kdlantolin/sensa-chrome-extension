@@ -199,6 +199,7 @@ export default function VisualDock({
     ? "hover:bg-white/15 text-gray-200 hover:text-white hover:shadow-none"
     : "hover:bg-black/10 text-gray-700 hover:text-black hover:shadow-none"
     
+  const closeBtnClass = `${btnBaseClass} text-gray-500 dark:text-gray-400 transition-all duration-200 active:scale-90 hover:scale-105 ${isDark ? 'hover:bg-red-500/80 hover:text-white' : 'hover:bg-red-500/90 hover:text-white'}`
   const btnAccentClass = `transition-all duration-200 bg-[#0A44FF] text-white shadow-md shadow-[#0A44FF]/30 hover:bg-[#0836CC] hover:shadow-lg hover:shadow-[#0A44FF]/50`
 
   const readingSpeedLabel = `${readingSpeed.toFixed(2).replace(/\.00$/, "")}X`
@@ -616,12 +617,12 @@ export default function VisualDock({
         <button
           type="button"
           onClick={onClose}
-          className={`${btnBaseClass} hover:bg-red-500 hover:text-white text-gray-500 dark:text-gray-400 hover:shadow-[0_14px_28px_rgba(239,68,68,0.24)]`}
+          className={closeBtnClass}
           aria-label="Close Toolbar"
           {...getHoverHandlers("Close")}
         >
           <Tooltip label="Close" isRed isDark={isDark} />
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`${iconMotionClass} !w-[24px] !h-[24px] shrink-0`} aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`${iconMotionClass} w-5 h-5 shrink-0`} aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>

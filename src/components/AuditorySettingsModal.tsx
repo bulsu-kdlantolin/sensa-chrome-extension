@@ -13,7 +13,6 @@ interface AuditorySettingsState {
   showOriginalText: boolean
   textColor: string
   captionBgColor: string
-  outputDevice: string
 }
 
 const DEFAULT_SETTINGS: AuditorySettingsState = {
@@ -21,7 +20,6 @@ const DEFAULT_SETTINGS: AuditorySettingsState = {
   showOriginalText: true,
   textColor: "#000000",
   captionBgColor: "#FFFFFF",
-  outputDevice: "default"
 }
 
 const FALLBACK_FONTS = [
@@ -33,9 +31,9 @@ const FALLBACK_FONTS = [
 ]
 
 export default function AuditorySettingsModal({ isDark, onClose }: AuditorySettingsModalProps) {
+  // Hover/click audio removed for Auditory settings (not needed here)
   const [settings, setSettings] = useState<AuditorySettingsState>(DEFAULT_SETTINGS)
   const [activeColorPicker, setActiveColorPicker] = useState<"text" | "bg" | null>(null)
-  const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([])
   
   // Font picker specific states
   const [googleFonts, setGoogleFonts] = useState<Array<{ family: string }>>([])
@@ -54,10 +52,19 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
   const dragStartRef = useRef({ x: 0, y: 0 })
   const offsetStartRef = useRef({ x: 0, y: 0 })
 
+  const getHoverHandlers = (label: string) => ({
+    onMouseEnter: () => {},
+    onMouseLeave: () => {},
+    onFocus: () => {},
+    onBlur: () => {}
+  })
+
   // Trigger entrance animation
   useEffect(() => {
     requestAnimationFrame(() => setIsMounted(true))
   }, [])
+
+  // audio notification on open removed for auditory settings
 
   // load saved settings
   useEffect(() => {
@@ -69,24 +76,9 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
     })
   }, [])
 
-  // enumerate audio output devices
-  useEffect(() => {
-    const loadDevices = async () => {
-      if (!navigator.mediaDevices?.enumerateDevices) return
-      try {
-        await navigator.mediaDevices.getUserMedia({ audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true } })
-      } catch {}
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      setOutputDevices(devices.filter((d) => d.kind === "audiooutput"))
-    }
+  // (audio output devices removed for auditory settings - not needed)
 
-    loadDevices()
-    const onChange = () => loadDevices()
-    navigator.mediaDevices?.addEventListener?.("devicechange", onChange)
-    return () => navigator.mediaDevices?.removeEventListener?.("devicechange", onChange)
-  }, [])
-
-  // Fetch ALL Google Fonts securely (No Limits!)
+  // Fetch ALL Google Fonts
   useEffect(() => {
     const key = process.env.PLASMO_PUBLIC_GOOGLE_FONTS_API_KEY
     let cancelled = false
@@ -114,9 +106,7 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
       }
     })()
 
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [])
 
   const persistSettings = (updates: Partial<AuditorySettingsState>) => {
@@ -176,15 +166,12 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
         }
       }
     }
-
     document.addEventListener("mousedown", onGlobalClick)
     return () => document.removeEventListener("mousedown", onGlobalClick)
   }, [fontDropdownOpen, settings.fontFamily])
 
   // Dragging logic
-  useEffect(() => {
-    offsetRef.current = offset
-  }, [offset])
+  useEffect(() => { offsetRef.current = offset }, [offset])
 
   useEffect(() => {
     chrome.storage.local.get(["sensa_auditory_settings_offset"], (result) => {
@@ -219,7 +206,7 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
 
   const onHeaderMouseDown = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement
-    if (target.closest("button, input, select, textarea")) return
+    if (target.closest("button, input, select, textarea, ul, li")) return
     e.preventDefault()
     draggingRef.current = true
     dragStartRef.current = { x: e.clientX, y: e.clientY }
@@ -233,167 +220,162 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
     }
   }
 
-  // 🚨 High Contrast Theme Variables
-  const modalBg = isDark ? "bg-[#1C1C1E]" : "bg-white"
-  const textColor = isDark ? "text-white" : "text-black"
-  const labelColor = isDark ? "text-gray-200" : "text-gray-800"
-  const inputBg = isDark ? "bg-[#2C2C2E]" : "bg-gray-50"
-  const inputBorder = isDark ? "border-gray-700" : "border-gray-200"
+  // 🚨 THEME VARIABLES (Orange/Auditory Themed) - opaque surfaces
+  const modalBg = isDark ? "bg-[#141416] border-white/10" : "bg-white border-black/5"
+  const textColor = isDark ? "text-gray-100" : "text-gray-900"
+  const labelColor = isDark ? "text-gray-200" : "text-gray-700"
+  const inputBg = isDark ? "bg-[#2C2C2E] hover:bg-[#2C2C2E]" : "bg-white hover:bg-white"
+  const inputBorder = isDark ? "border-white/10" : "border-black/5"
   const secondaryText = isDark ? "text-gray-400" : "text-gray-500"
+  const dividerClass = isDark ? "border-white/10" : "border-black/5"
+  const sectionHoverClass = isDark
+    ? "hover:bg-white/8 hover:border-white/15 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+    : "hover:bg-black/5 hover:border-black/10"
+  const iconColor = isDark ? "text-[#FF7A2F]" : "text-[#FF7A2F]"
 
   return (
     <div 
       onClick={handleBackdropClick} 
-      className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/60 backdrop-blur-md font-sans px-4 transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
+      className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/30 backdrop-blur-sm font-sans px-4 transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
       role="dialog"
       aria-modal="true"
     >
-      <div
-        className={`relative w-full max-w-[480px] ${modalBg} rounded-[32px] border-4 border-[#FF7A2F] p-8 shadow-[0_24px_60px_rgba(0,0,0,0.5)] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-90 translate-y-8'}`}
-        onMouseDown={onHeaderMouseDown}
-        style={{
-          transform: `translate(${offset.x}px, ${offset.y}px) scale(${isMounted ? 1 : 0.95})`,
-          cursor: draggingRef.current ? "grabbing" : "grab",
-          visibility: initialOffsetLoaded ? "visible" : "hidden"
-        }}
-      >
-        {/* Visual Drag Handle */}
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-16 h-1.5 rounded-full bg-gray-400/40 pointer-events-none" />
-
-        <h2 className={`text-[28px] font-extrabold mb-8 tracking-tight mt-2 ${textColor}`}>Settings</h2>
-
-        <button 
-          onClick={() => {
-            setIsMounted(false)
-            setTimeout(onClose, 300)
+      <div className="relative">
+        <div
+          className={`relative w-[480px] ${modalBg} rounded-[32px] border p-8 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3),_0_0_2px_rgba(255,255,255,0.2)_inset] transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-[0.95] translate-y-4'}`}
+          onMouseDown={onHeaderMouseDown}
+          style={{
+            transform: `translate(${offset.x}px, ${offset.y}px) scale(${isMounted ? 1 : 0.95})`,
+            cursor: draggingRef.current ? "grabbing" : "grab",
+            visibility: initialOffsetLoaded ? "visible" : "hidden"
           }}
-          className={`absolute top-6 right-6 ${secondaryText} hover:${textColor} transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 rounded-full p-1 active:scale-90`}
-          aria-label="Close"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
+          {/* Subtle Drag Handle */}
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-gray-400/30 pointer-events-none" />
 
-        <div className="flex flex-col gap-6">
-          
-          {/* Font picker */}
-          <div className="flex items-center justify-between min-h-[48px] relative z-50">
-            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Font Family</span>
-            <div ref={fontPickerRef} className="relative w-[220px]">
-              <input
-                value={fontDropdownOpen ? fontSearch : fontInput}
-                placeholder={fontDropdownOpen ? fontInput : "Search fonts..."}
-                onChange={(e) => {
-                  setFontSearch(e.target.value)
-                  if (!fontDropdownOpen) setFontDropdownOpen(true)
-                }}
-                onFocus={() => {
-                  setFontDropdownOpen(true)
-                  setFontSearch("") 
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault()
-                    const topMatch = filteredFonts[0]
-                    if (topMatch) {
-                      handleFontSelect(topMatch.family)
-                    } else {
-                      setFontInput(settings.fontFamily)
-                      setFontDropdownOpen(false)
-                      setFontSearch("")
-                    }
-                    ;(e.target as HTMLInputElement).blur()
-                  }
-                }}
-                className={`w-full border-2 ${inputBorder} ${inputBg} ${textColor} rounded-[16px] text-[15px] font-medium h-[48px] pl-4 pr-10 focus:outline-none focus:border-[#FF7A2F] focus:ring-4 focus:ring-[#FF7A2F]/30 transition-all placeholder:text-gray-500`}
-                aria-label="Search fonts"
-              />
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()} 
-                onClick={(e) => {
-                  e.preventDefault()
-                  setFontDropdownOpen((open) => !open)
-                  if (!fontDropdownOpen) setFontSearch("")
-                }}
-                className={`absolute inset-y-0 right-4 flex items-center transition-transform duration-200 ${fontDropdownOpen ? "rotate-180" : ""} ${secondaryText}`}
-                aria-label="Toggle font list"
-              >
-                <svg className="fill-current h-5 w-5" viewBox="0 0 20 20">
-                  <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                </svg>
-              </button>
-              
-              {fontDropdownOpen && (
-                <div className={`absolute left-0 right-0 top-[calc(100%+8px)] z-[50] max-h-[280px] overflow-y-auto rounded-xl border-2 shadow-[0_10px_30px_rgba(0,0,0,0.3)] custom-scrollbar ${modalBg} ${inputBorder}`}>
-                  {renderedFonts.length > 0 ? (
-                    renderedFonts.map((font) => (
-                      <button
-                        key={font.family}
-                        type="button"
-                        onMouseDown={(e) => {
-                          e.preventDefault()
-                          handleFontSelect(font.family)
-                        }}
-                        className={`block w-full px-4 py-3 text-left text-[16px] border-b last:border-b-0 focus:outline-none transition-colors ${
-                          settings.fontFamily === font.family
-                            ? "bg-[#FF7A2F]/10 text-[#FF7A2F] font-bold"
-                            : isDark
-                              ? "border-gray-800 text-gray-200 hover:bg-white/5"
-                              : "border-gray-100 text-gray-800 hover:bg-[#FF7A2F]/5"
-                        }`}
-                        style={{ fontFamily: `"${font.family}", system-ui, sans-serif` }}
-                      >
-                        {font.family}
-                      </button>
-                    ))
-                  ) : (
-                    <div className="px-4 py-6 text-center text-sm text-gray-400 font-medium">No fonts found</div>
-                  )}
-                </div>
-              )}
-            </div>
+          <div className="flex justify-between items-center mb-8 mt-2">
+            <h2 className="text-[26px] font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A]">
+              Auditory Settings
+            </h2>
+            <button 
+              onClick={() => {
+                setIsMounted(false)
+                setTimeout(onClose, 300)
+              }}
+              className={`bg-transparent hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 hover:${textColor} transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF7A2F]/50 rounded-full p-2`}
+              aria-label="Close"
+              {...getHoverHandlers("Close")}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
           </div>
 
-          {/* Show original toggle */}
-          <div className="flex items-center justify-between min-h-[48px]">
-            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Original Text</span>
-            <div className="w-[220px] flex justify-start">
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  className="sr-only peer" 
-                  checked={settings.showOriginalText} 
-                  onChange={(ev) => persistSettings({ showOriginalText: ev.target.checked })} 
-                  aria-label="Toggle Original Text" 
+          <div className="flex flex-col gap-3">
+            
+            {/* FONT PICKER */}
+            <div 
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} ${sectionHoverClass} rounded-xl transition-colors relative z-50`}
+              {...getHoverHandlers("Font Family")}
+            >
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Font Family</span>
+              </div>
+              <div ref={fontPickerRef} className="relative w-[190px]">
+                <input
+                  value={fontDropdownOpen ? fontSearch : fontInput}
+                  placeholder={fontDropdownOpen ? fontInput : "Search fonts..."}
+                  onChange={(e) => {
+                    setFontSearch(e.target.value)
+                    if (!fontDropdownOpen) setFontDropdownOpen(true)
+                  }}
+                  onFocus={() => { setFontDropdownOpen(true); setFontSearch("") }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault()
+                      const topMatch = filteredFonts[0]
+                      if (topMatch) { handleFontSelect(topMatch.family) } 
+                      else { setFontInput(settings.fontFamily); setFontDropdownOpen(false); setFontSearch("") }
+                      ;(e.target as HTMLInputElement).blur()
+                    }
+                  }}
+                  className={`w-full text-left border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#FF7A2F]/40 transition-all hover:shadow-md placeholder:text-gray-500`}
+                  aria-label="Search fonts"
                 />
-                <div className="w-14 h-8 bg-gray-300 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-[#FF7A2F]/50 rounded-full peer peer-checked:after:translate-x-6 peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-[#FF7A2F] shadow-inner"></div>
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()} 
+                  onClick={(e) => { e.preventDefault(); setFontDropdownOpen((open) => !open); if (!fontDropdownOpen) setFontSearch("") }}
+                  className={`absolute inset-y-0 right-3 flex items-center transition-transform duration-300 ${fontDropdownOpen ? "rotate-180" : ""} ${secondaryText}`}
+                  aria-label="Toggle font list"
+                >
+                  <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
+                </button>
+                
+                {fontDropdownOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setFontDropdownOpen(false) }} />
+                    <ul className={`absolute right-0 z-50 mt-2 w-[240px] max-h-56 overflow-y-auto ${modalBg} border ${inputBorder} rounded-xl shadow-2xl py-2 text-[13px] custom-scrollbar`} role="listbox">
+                      {renderedFonts.length > 0 ? (
+                        renderedFonts.map((font) => (
+                          <li
+                            key={font.family} role="option" aria-selected={settings.fontFamily === font.family}
+                            onMouseDown={(e) => { e.preventDefault(); handleFontSelect(font.family) }}
+                            className={`px-4 py-2.5 cursor-pointer block w-full text-left truncate transition-all font-medium m-1 rounded-lg ${settings.fontFamily === font.family ? "bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A] text-white shadow-md" : isDark ? "text-gray-200 hover:bg-[#FF7A2F]/20 hover:text-[#FF7A2F]" : "text-gray-700 hover:bg-[#FF7A2F]/10 hover:text-[#FF7A2F]"}`}
+                            style={{ fontFamily: `"${font.family}", system-ui, sans-serif` }}
+                          >
+                            {font.family}
+                          </li>
+                        ))
+                      ) : (
+                        <div className="px-4 py-6 text-center text-sm text-gray-400 font-medium">No fonts found</div>
+                      )}
+                    </ul>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* ORIGINAL TEXT TOGGLE */}
+            <div 
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} ${sectionHoverClass} rounded-xl transition-colors cursor-pointer`}
+              {...getHoverHandlers("Original Text")}
+              onClick={() => { persistSettings({ showOriginalText: !settings.showOriginalText }); }}
+            >
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Original Text</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer pointer-events-none">
+                <input type="checkbox" className="sr-only peer" checked={settings.showOriginalText} readOnly />
+                <div className={`w-12 h-7 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#FF7A2F]/50 rounded-full peer peer-checked:after:translate-x-[20px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-200 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-[#FF7A2F] peer-checked:to-[#FF9F0A] shadow-inner`}></div>
               </label>
             </div>
-          </div>
 
-          {/* Text color */}
-          <div className="flex items-center justify-between min-h-[48px] relative z-[100]">
-            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Text Color</span>
-            <div className="w-[220px] flex justify-start">
-              <div className="relative flex items-center justify-center">
+            {/* TEXT COLOR */}
+            <div 
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} ${sectionHoverClass} relative rounded-xl transition-colors`}
+              {...getHoverHandlers("Text Color")}
+            >
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Text Color</span>
+              </div>
+              <div className="relative flex items-center justify-end w-[190px]">
                 <button 
                   type="button" 
                   onMouseDown={(event) => event.stopPropagation()} 
-                  onClick={(event) => { 
-                    event.stopPropagation()
-                    setActiveColorPicker((c) => (c === "text" ? null : "text")) 
-                  }} 
-                  className="w-[44px] h-[44px] border-4 border-gray-200 rounded-full cursor-pointer shadow-md focus:outline-none focus:ring-4 focus:ring-[#FF7A2F]/50 transition-transform active:scale-90" 
+                  onClick={(event) => { event.stopPropagation(); setActiveColorPicker((c) => (c === "text" ? null : "text")) }} 
+                  className="w-10 h-10 rounded-full cursor-pointer shadow-[0_4px_12px_rgba(0,0,0,0.15)] border-2 border-white/40 ring-2 ring-black/5 focus:outline-none focus:ring-4 focus:ring-[#FF7A2F]/50 transition-all active:scale-90 hover:scale-105" 
                   style={{ backgroundColor: settings.textColor }} 
                   aria-label="Pick text color" 
                 />
                 {activeColorPicker === "text" && (
                   <ColorPickerPopup 
-                    isDark={isDark} 
-                    accent="orange" 
+                    isDark={isDark} accent="orange" placement="end"
                     initialColor={settings.textColor} 
                     onColorChange={(color) => persistSettings({ textColor: color })} 
                     onClose={() => setActiveColorPicker(null)} 
@@ -401,28 +383,28 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
                 )}
               </div>
             </div>
-          </div>
 
-          {/* Caption bg color */}
-          <div className="flex items-center justify-between min-h-[48px] relative z-[100]">
-            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Background Color</span>
-            <div className="w-[220px] flex justify-start">
-              <div className="relative flex items-center justify-center">
+            {/* CAPTION BG COLOR */}
+            <div 
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} ${sectionHoverClass} relative rounded-xl transition-colors`}
+              {...getHoverHandlers("Background Color")}
+            >
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Background Color</span>
+              </div>
+              <div className="relative flex items-center justify-end w-[190px]">
                 <button 
                   type="button" 
                   onMouseDown={(event) => event.stopPropagation()} 
-                  onClick={(event) => { 
-                    event.stopPropagation()
-                    setActiveColorPicker((c) => (c === "bg" ? null : "bg")) 
-                  }} 
-                  className="w-[44px] h-[44px] border-4 border-gray-200 rounded-full cursor-pointer shadow-md focus:outline-none focus:ring-4 focus:ring-[#FF7A2F]/50 transition-transform active:scale-90" 
+                  onClick={(event) => { event.stopPropagation(); setActiveColorPicker((c) => (c === "bg" ? null : "bg")) }} 
+                  className="w-10 h-10 rounded-full cursor-pointer shadow-[0_4px_12px_rgba(0,0,0,0.15)] border-2 border-white/40 ring-2 ring-black/5 focus:outline-none focus:ring-4 focus:ring-[#FF7A2F]/50 transition-all active:scale-90 hover:scale-105" 
                   style={{ backgroundColor: settings.captionBgColor }} 
                   aria-label="Pick caption background color" 
                 />
                 {activeColorPicker === "bg" && (
                   <ColorPickerPopup 
-                    isDark={isDark} 
-                    accent="orange" 
+                    isDark={isDark} accent="orange" placement="end"
                     initialColor={settings.captionBgColor} 
                     onColorChange={(color) => persistSettings({ captionBgColor: color })} 
                     onClose={() => setActiveColorPicker(null)} 
@@ -430,46 +412,25 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
                 )}
               </div>
             </div>
+
+            {/* Output Device removed per user request */}
+
           </div>
 
-          {/* Output device */}
-          <div className="flex items-center justify-between min-h-[48px]">
-            <span className={`text-[17px] font-bold tracking-wide ${labelColor}`}>Output Device</span>
-            <div className="relative w-[220px]">
-              <select 
-                value={settings.outputDevice} 
-                onChange={(e) => persistSettings({ outputDevice: e.target.value })} 
-                aria-label="Select output device"
-                className={`appearance-none w-full border-2 ${inputBorder} ${textColor} ${inputBg} h-[48px] pl-4 pr-10 rounded-xl text-[14px] font-medium focus:outline-none focus:border-[#FF7A2F] focus:ring-4 focus:ring-[#FF7A2F]/30 cursor-pointer shadow-sm transition-all`}
-              >
-                <option value="default">Default - Speaker</option>
-                {outputDevices.map((d, i) => (
-                  <option key={d.deviceId || `out-${i}`} value={d.deviceId}>
-                    {d.label || `Speaker ${i + 1}`}
-                  </option>
-                ))}
-              </select>
-              <div className={`pointer-events-none absolute inset-y-0 right-4 flex items-center ${secondaryText}`}>
-                <svg className="fill-current h-5 w-5" viewBox="0 0 20 20">
-                  <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-                </svg>
-              </div>
-            </div>
+          <div className="mt-8 flex justify-center">
+            <button 
+              onClick={() => { 
+                chrome.storage.local.set({ sensa_auditory_settings: DEFAULT_SETTINGS })
+                setSettings(DEFAULT_SETTINGS)
+                setFontInput(DEFAULT_SETTINGS.fontFamily)
+              }} 
+              className={`flex items-center gap-2 bg-transparent hover:bg-[#FF7A2F]/10 hover:text-[#FF7A2F] hover:border-[#FF7A2F]/30 dark:hover:bg-[#FF7A2F]/20 dark:hover:border-[#FF7A2F]/40 ${textColor} border ${inputBorder} font-semibold h-11 px-8 rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF7A2F]/50 text-[14px] tracking-wide hover:shadow-sm`}
+              {...getHoverHandlers("Reset to default")}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
+              Restore Defaults
+            </button>
           </div>
-
-        </div>
-
-        <div className="mt-10 flex justify-center">
-          <button 
-            onClick={() => { 
-              chrome.storage.local.set({ sensa_auditory_settings: DEFAULT_SETTINGS })
-              setSettings(DEFAULT_SETTINGS)
-              setFontInput(DEFAULT_SETTINGS.fontFamily)
-            }} 
-            className="bg-[#FF7A2F] hover:bg-[#E86A25] text-white font-bold h-[48px] px-12 rounded-full transition-colors shadow-lg shadow-[#FF7A2F]/30 active:scale-95 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 text-[16px] tracking-wide"
-          >
-            Reset to default
-          </button>
         </div>
       </div>
     </div>

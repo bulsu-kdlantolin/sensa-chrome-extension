@@ -1,38 +1,5 @@
 import React, { useEffect, useRef, useState } from "react"
-
-// ============================================================================
-// 🎯 PREMIUM TOOLTIP (Fixed to pop out to the LEFT instead of off-screen)
-// ============================================================================
-export const Tooltip = ({ 
-  label, 
-  isDark, 
-  isRed = false,
-  isAuditory = false
-}: { 
-  label: string
-  isDark: boolean
-  isRed?: boolean
-  isAuditory?: boolean
-}) => {
-  return (
-    <span 
-      className={`
-        absolute right-full mr-3 px-3 py-1.5 text-xs font-semibold rounded-lg
-        opacity-0 pointer-events-none group-hover:opacity-100
-        transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]
-        whitespace-nowrap z-50 shadow-xl
-        translate-x-2 group-hover:translate-x-0
-        ${isDark 
-          ? 'bg-gradient-to-b from-[#2C2C2E]/95 to-[#1C1C1E]/95 backdrop-blur-xl text-white/90 border border-white/10' 
-          : 'bg-gradient-to-b from-white/95 to-gray-50/95 backdrop-blur-xl text-gray-800 border border-black/5'
-        }
-        ${isRed ? '!bg-gradient-to-b !from-red-500/95 !to-red-600/95 !text-white !border-red-400/20' : ''}
-      `}
-    >
-      {label}
-    </span>
-  )
-}
+import { Tooltip as SharedTooltip } from "./Tooltip"
 
 // ============================================================================
 // 🎯 SITE-ONLY DUAL ENGINE: Unfiltered Transient + Game Audio Interceptor
@@ -296,8 +263,12 @@ export default function AuditoryDock({
   
   // 🌟 PREMIUM GLASSMORPHISM: Merged your transform-gpu with Vercel's elegant gradients
   const glassPanelClass = isDark 
-    ? "bg-gradient-to-b from-[#2A2A2E]/80 to-[#1C1C1E]/80 backdrop-blur-3xl shadow-[0_8px_32px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.06)] transform-gpu backface-hidden" 
-    : "bg-gradient-to-b from-white/95 to-gray-50/90 backdrop-blur-3xl shadow-[0_8px_32px_rgba(0,0,0,0.1),inset_0_1px_0_rgba(255,255,255,0.9)] transform-gpu backface-hidden"
+    ? "bg-[#1C1C1E] shadow-[0_8px_32px_rgba(0,0,0,0.5)] transform-gpu backface-hidden" 
+    : "bg-white shadow-[0_8px_32px_rgba(0,0,0,0.1)] transform-gpu backface-hidden"
+
+  const controlPanelClass = isDark
+    ? "bg-[#1C1C1E] border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.6)] transform-gpu backface-hidden"
+    : "bg-white border border-black/10 shadow-[0_8px_32px_rgba(0,0,0,0.15)] transform-gpu backface-hidden"
     
   // 🌟 PREMIUM SPRING PHYSICS: Applied the snappy cubic-bezier to your exact button dimensions
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
@@ -307,6 +278,8 @@ export default function AuditoryDock({
   const btnHoverClass = isDark 
     ? "hover:bg-[#FF7A2F]/15 text-gray-300 hover:text-white" 
     : "hover:bg-[#FF7A2F]/10 text-gray-600 hover:text-[#FF7A2F]"
+
+  const closeBtnClass = `${btnBaseClass} text-gray-500 dark:text-gray-400 transition-all duration-200 active:scale-90 hover:scale-105 ${isDark ? 'hover:bg-red-500/80 hover:text-white' : 'hover:bg-red-500/90 hover:text-white'}`
 
   // 🌟 PREMIUM ACTIVE BUTTONS: Fiery Orange Gradient with outer/inner drop-shadows
   const activeButtonClass = `
@@ -344,7 +317,7 @@ export default function AuditoryDock({
 
         {/* Visualizer Frame */}
         <div className={`${btnBaseClass} bg-transparent cursor-default relative z-10`}>
-          <Tooltip label="Sound Visualizer" isDark={isDark} isAuditory />
+          <SharedTooltip label="Sound Visualizer" isDark={isDark} isAuditory />
           <SiteAudioSystem isActive={true} isDark={isDark} />
           <svg viewBox="0 0 24 24" fill="currentColor" className={`absolute !w-[18px] !h-[18px] shrink-0 opacity-10 pointer-events-none ${isDark ? 'text-white' : 'text-black'}`}>
             <rect x="5" y="10" width="2" height="4" rx="1" />
@@ -366,7 +339,7 @@ export default function AuditoryDock({
               : `bg-gradient-to-br from-[#FF7A2F] to-[#E86A25] text-white/90 shadow-[0_2px_12px_rgba(255,122,47,0.3)] hover:shadow-[0_4px_20px_rgba(255,122,47,0.5)] hover:scale-105`
           }`}
         >
-          <Tooltip label={isCaptionsActive ? "Turn Off Captions" : "Turn On Captions"} isDark={isDark} isAuditory />
+          <SharedTooltip label={isCaptionsActive ? "Turn Off Captions" : "Turn On Captions"} isDark={isDark} isAuditory />
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[22px] !h-[22px] shrink-0">
             <rect x="3" y="6" width="18" height="12" rx="2" />
             <path d="M10 10.5a2.5 2.5 0 0 0-3.5 0" />
@@ -413,7 +386,7 @@ export default function AuditoryDock({
               className={`${btnBaseClass} ${btnHoverClass} relative z-10 active:scale-90 hover:scale-105`}
               aria-label="Caption Language"
             >
-              <Tooltip label="Caption Language" isDark={isDark} isAuditory />
+              <SharedTooltip label="Caption Language" isDark={isDark} isAuditory />
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[22px] !h-[22px] shrink-0">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
@@ -426,7 +399,7 @@ export default function AuditoryDock({
               className={`${btnBaseClass} ${btnHoverClass} relative z-10 active:scale-90 hover:scale-105`}
               aria-label="Text Size"
             >
-              <Tooltip label="Text Size" isDark={isDark} isAuditory />
+              <SharedTooltip label="Text Size" isDark={isDark} isAuditory />
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[22px] !h-[22px] shrink-0">
                 <polyline points="4 7 4 4 20 4 20 7" />
                 <line x1="12" y1="4" x2="12" y2="20" />
@@ -439,7 +412,7 @@ export default function AuditoryDock({
               className={`${btnBaseClass} ${btnHoverClass} relative z-10 active:scale-90 hover:scale-105`}
               aria-label="Caption Transparency"
             >
-              <Tooltip label="Caption Transparency" isDark={isDark} isAuditory />
+              <SharedTooltip label="Caption Transparency" isDark={isDark} isAuditory />
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[22px] !h-[22px] shrink-0">
                 <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
                 <rect x="7" y="13" width="10" height="4" rx="1" />
@@ -457,7 +430,7 @@ export default function AuditoryDock({
                   : `${btnHoverClass} hover:scale-105`
               }`}
             >
-              <Tooltip label="Focus Mode" isDark={isDark} isAuditory />
+              <SharedTooltip label="Focus Mode" isDark={isDark} isAuditory />
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[22px] !h-[22px] shrink-0">
                 <path d="M3 8V5a2 2 0 0 1 2-2h3" />
                 <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
@@ -473,7 +446,7 @@ export default function AuditoryDock({
               className={`${btnBaseClass} ${btnHoverClass} relative z-10 active:scale-90 hover:scale-105`}
               aria-label="Settings"
             >
-              <Tooltip label="Settings" isDark={isDark} isAuditory />
+              <SharedTooltip label="Settings" isDark={isDark} isAuditory />
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[24px] !h-[24px] shrink-0">
                 <circle cx="12" cy="12" r="3" />
                 <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -486,7 +459,7 @@ export default function AuditoryDock({
       {/* ========================================================= */}
       {/* 🔽 BOTTOM SECTION: WINDOW CONTROLS */}
       {/* ========================================================= */}
-      <div className={`relative flex flex-col items-center rounded-[28px] p-2 gap-1.5 shrink-0 mt-3 z-20 transition-all duration-300 transform-gpu backface-hidden ${glassPanelClass}`}>
+      <div className={`relative flex flex-col items-center rounded-[28px] p-2 gap-1.5 shrink-0 mt-3 z-20 transition-all duration-300 transform-gpu backface-hidden ${controlPanelClass}`}>
         
         {/* ISOLATED GLOW LAYER */}
         <div 
@@ -504,7 +477,7 @@ export default function AuditoryDock({
           className={`${btnBaseClass} ${btnHoverClass} relative z-10 active:scale-90 hover:scale-105 transform-gpu backface-hidden`}
           aria-label={isMinimized ? "Expand Menu" : "Minimize Menu"}
         >
-          <Tooltip label={isMinimized ? "Expand" : "Minimize"} isDark={isDark} isAuditory />
+          <SharedTooltip label={isMinimized ? "Expand" : "Minimize"} isDark={isDark} isAuditory />
           
           <svg
             viewBox="0 0 24 24"
@@ -532,11 +505,11 @@ export default function AuditoryDock({
         <button
           type="button"
           onClick={onClose}
-          className={`${btnBaseClass} relative z-10 transition-colors text-gray-500 hover:text-white dark:text-gray-400 active:scale-90 hover:scale-105 ${isDark ? 'hover:bg-red-500/80' : 'hover:bg-red-500/90'}`}
+          className={closeBtnClass}
           aria-label="Close Toolbar"
         >
-          <Tooltip label="Close" isRed isDark={isDark} />
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[24px] !h-[24px] shrink-0" aria-hidden="true">
+          <SharedTooltip label="Close" isRed isDark={isDark} />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-5 !h-5 shrink-0" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>

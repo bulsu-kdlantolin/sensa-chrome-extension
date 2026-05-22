@@ -235,7 +235,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     window.speechSynthesis.speak(utterance)
   }
 
-  const modalBg = isDark ? "bg-[#141416]/80 backdrop-blur-3xl border-white/10" : "bg-white/80 backdrop-blur-3xl border-white/40"
+  const modalBg = isDark ? "bg-[#141416]/96 backdrop-blur-3xl border-white/10" : "bg-white/95 backdrop-blur-3xl border-white/40"
   const textColor = isDark ? "text-gray-100" : "text-gray-900"
   const labelColor = isDark ? "text-gray-200" : "text-gray-700"
   const inputBg = isDark ? "bg-[#2C2C2E]/60 hover:bg-[#2C2C2E]" : "bg-white/60 hover:bg-white"
@@ -251,11 +251,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative">
-        {/* 🚨 THE FIX: Refined the gradient to a softer, deeper premium blue (#0099FF) */}
-        <div className={`absolute inset-0 bg-gradient-to-tr from-[#0A44FF]/20 to-[#0099FF]/20 blur-[80px] rounded-full transition-opacity duration-500 ${isMounted ? 'opacity-100' : 'opacity-0'}`} />
-
-        <div
+      <div
           className={`relative w-[480px] ${modalBg} rounded-[32px] border p-8 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3),_0_0_2px_rgba(255,255,255,0.2)_inset] transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-[0.95] translate-y-4'}`}
           onMouseDown={onHeaderMouseDown}
           style={{
@@ -370,6 +366,36 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             </div>
 
             <div 
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
+              {...getHoverHandlers("Mouse Highlight Reader")}
+              onClick={() => handleHighlightMouseScreenReaderToggle(!isHighlightMouseScreenReaderEnabled)}
+            >
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg>
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Mouse Reader</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer pointer-events-none">
+                <input type="checkbox" className="sr-only peer" checked={isHighlightMouseScreenReaderEnabled} readOnly />
+                <div className={`w-12 h-7 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-[20px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-200 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] shadow-inner`}></div>
+              </label>
+            </div>
+
+            <div 
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
+              {...getHoverHandlers("Autoscroll reading")}
+              onClick={() => handleAutoscrollToggle(!isAutoscrollEnabled)}
+            >
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Autoscroll Reading</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer pointer-events-none">
+                <input type="checkbox" className="sr-only peer" checked={isAutoscrollEnabled} readOnly />
+                <div className={`w-12 h-7 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-[20px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-200 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] shadow-inner`}></div>
+              </label>
+            </div>
+
+            <div 
               className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
               {...getHoverHandlers("Highlight color")}
             >
@@ -394,36 +420,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
                   />
                 )}
               </div>
-            </div>
-
-            <div 
-              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
-              {...getHoverHandlers("Autoscroll reading")}
-              onClick={() => handleAutoscrollToggle(!isAutoscrollEnabled)}
-            >
-              <div className="flex items-center gap-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Autoscroll Reading</span>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer pointer-events-none">
-                <input type="checkbox" className="sr-only peer" checked={isAutoscrollEnabled} readOnly />
-                <div className={`w-12 h-7 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-[20px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-200 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] shadow-inner`}></div>
-              </label>
-            </div>
-
-            <div 
-              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
-              {...getHoverHandlers("Mouse Highlight Reader")}
-              onClick={() => handleHighlightMouseScreenReaderToggle(!isHighlightMouseScreenReaderEnabled)}
-            >
-              <div className="flex items-center gap-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg>
-                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Mouse Reader</span>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer pointer-events-none">
-                <input type="checkbox" className="sr-only peer" checked={isHighlightMouseScreenReaderEnabled} readOnly />
-                <div className={`w-12 h-7 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-[20px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-200 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] shadow-inner`}></div>
-              </label>
             </div>
 
             <div 
@@ -485,7 +481,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             </button>
           </div>
 
-        </div>
       </div>
     </div>
   )

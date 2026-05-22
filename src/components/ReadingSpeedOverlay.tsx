@@ -116,7 +116,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     onSpeedChange?.(speed)
   }
 
-  const modalBg = isDark ? "bg-[#141416]/80 backdrop-blur-3xl border-white/10" : "bg-white/80 backdrop-blur-3xl border-white/40"
+  const modalBg = isDark ? "bg-[#141416]/96 backdrop-blur-3xl border-white/10" : "bg-white/95 backdrop-blur-3xl border-white/40"
   const textColor = isDark ? "text-gray-100" : "text-gray-900"
   const secondaryText = isDark ? "text-gray-400" : "text-gray-500"
   const inputBorder = isDark ? "border-white/10" : "border-black/5"
@@ -135,8 +135,6 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       role="dialog"
     >
       <div className="relative">
-        <div className={`absolute inset-0 bg-gradient-to-tr from-[#0A44FF]/20 to-[#0099FF]/20 blur-[80px] rounded-full transition-opacity duration-500 ${isMounted ? 'opacity-100' : 'opacity-0'}`} />
-
         <div
           className={`relative w-[460px] ${modalBg} rounded-[32px] border p-8 text-center shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3),_0_0_2px_rgba(255,255,255,0.2)_inset] transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-[0.95] translate-y-4'}`}
           onMouseDown={onHeaderMouseDown}
@@ -158,7 +156,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
                 setIsMounted(false)
                 setTimeout(onClose, 300)
               }}
-              className={`${closeButtonClass} transition-all duration-200 hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 rounded-full p-2`}
+              className={`${closeButtonClass} transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_10px_22px_-16px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 rounded-full p-2`}
               aria-label="Close"
               {...getHoverHandlers("Close")}
             >
@@ -181,7 +179,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           {/* Minus Button */}
           <button 
             onClick={handleDecrease}
-            className="w-[52px] h-[52px] flex-shrink-0 flex items-center justify-center bg-gradient-to-r from-[#0A44FF] to-[#0099FF] hover:brightness-95 text-white rounded-full transition-all duration-200 active:scale-90 hover:-translate-y-0.5 hover:shadow-[0_16px_24px_-12px_rgba(10,68,255,0.65)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg"
+            className="w-[52px] h-[52px] flex-shrink-0 flex items-center justify-center bg-gradient-to-r from-[#0A44FF] to-[#0099FF] hover:brightness-105 hover:-translate-y-[1px] hover:shadow-[0_16px_24px_-14px_rgba(10,68,255,0.7)] text-white rounded-full transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg"
             aria-label="Decrease speed"
             {...getHoverHandlers("Decrease speed")}
           >
@@ -260,7 +258,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           {/* Plus Button */}
           <button 
             onClick={handleIncrease}
-            className="w-[52px] h-[52px] flex-shrink-0 flex items-center justify-center bg-gradient-to-r from-[#0A44FF] to-[#0099FF] hover:brightness-95 text-white rounded-full transition-all duration-200 active:scale-90 hover:-translate-y-0.5 hover:shadow-[0_16px_24px_-12px_rgba(10,68,255,0.65)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg"
+            className="w-[52px] h-[52px] flex-shrink-0 flex items-center justify-center bg-gradient-to-r from-[#0A44FF] to-[#0099FF] hover:brightness-105 hover:-translate-y-[1px] hover:shadow-[0_16px_24px_-14px_rgba(10,68,255,0.7)] text-white rounded-full transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg"
             aria-label="Increase speed"
             {...getHoverHandlers("Increase speed")}
           >
@@ -281,10 +279,10 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
               }}
               aria-pressed={speed === stop}
               {...getHoverHandlers(`${stop}x`) }
-              className={`flex-1 h-[42px] rounded-full text-[14px] font-semibold transition-all duration-200 border border-transparent hover:-translate-y-0.5 hover:shadow-[0_10px_20px_-14px_rgba(10,68,255,0.45)] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 ${
+              className={`flex-1 h-[42px] overflow-hidden bg-clip-padding rounded-full text-[14px] font-semibold transition-all duration-200 border border-transparent focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 ${
                 speed === stop 
-                  ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white shadow-lg scale-105 border-[#4FA5FF]/40" 
-                  : `${quickChipClass} hover:border-[#0A44FF]/20`
+                  ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white shadow-lg border-[#4FA5FF]/40" 
+                  : `${quickChipClass} hover:border-[#0A44FF]/20 hover:-translate-y-[1px] hover:shadow-[0_10px_18px_-14px_rgba(10,68,255,0.35)]`
               }`}
             >
               {stop}x
@@ -299,7 +297,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
               setIsMounted(false)
               setTimeout(onClose, 300)
             }}
-            className={`h-11 px-6 rounded-xl border ${inputBorder} ${inputBg} ${textColor} text-[14px] font-semibold transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_10px_20px_-14px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/40`}
+            className={`h-11 px-6 rounded-xl border ${inputBorder} ${inputBg} ${textColor} text-[14px] font-semibold transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_10px_20px_-14px_rgba(15,23,42,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/40`}
             {...getHoverHandlers("Cancel")}
           >
             Cancel
@@ -310,7 +308,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
               setIsMounted(false)
               setTimeout(onClose, 300)
             }}
-            className="h-11 px-7 rounded-xl bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-[14px] font-semibold text-white hover:brightness-95 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_26px_-14px_rgba(10,68,255,0.7)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 shadow-lg"
+            className="h-11 px-7 rounded-xl bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-[14px] font-semibold text-white hover:brightness-105 hover:-translate-y-[1px] hover:shadow-[0_16px_26px_-14px_rgba(10,68,255,0.7)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 shadow-lg"
             {...getHoverHandlers("Apply")}
           >
             Apply

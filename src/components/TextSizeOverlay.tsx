@@ -113,22 +113,34 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
     commitSize(Number.parseInt(sizeInput, 10))
   }
 
-  // 🚨 High Contrast Theme Variables
-  const modalBg = isDark ? "bg-[#1C1C1E]" : "bg-white"
-  const textColor = isDark ? "text-white" : "text-black"
+  // Theme variables tuned for a text size control panel
+  const modalBg = isDark ? "bg-[#17171A]" : "bg-white"
+  const textColor = isDark ? "text-white" : "text-gray-950"
   const secondaryText = isDark ? "text-gray-400" : "text-gray-500"
-  const inputBg = isDark ? "bg-[#2C2C2E]" : "bg-gray-100"
-  const inputBorder = isDark ? "border-gray-700" : "border-gray-200"
+  const inputBg = isDark ? "bg-[#2C2C2E]" : "bg-gray-50"
+  const inputBorder = isDark ? "border-white/10" : "border-gray-200"
+  const previewBgClass = isDark
+    ? "bg-gradient-to-br from-[#202026] via-[#121214] to-[#080809]"
+    : "bg-gradient-to-br from-[#F7F7FA] via-[#EEF1F6] to-[#E6EAF0]"
+  const previewGlowClass = isDark
+    ? "opacity-35 bg-[radial-gradient(circle_at_top_right,rgba(255,122,47,0.24),transparent_38%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.08),transparent_35%)]"
+    : "opacity-55 bg-[radial-gradient(circle_at_top_right,rgba(255,122,47,0.16),transparent_40%),radial-gradient(circle_at_bottom_left,rgba(10,68,255,0.08),transparent_34%)]"
+  const previewBadgeClass = isDark
+    ? "border-white/10 bg-black/35 text-white/80"
+    : "border-black/10 bg-white/75 text-gray-700"
+  const previewCaptionClass = isDark
+    ? "text-white border-white/10"
+    : "text-gray-950 border-black/10 shadow-[0_16px_40px_rgba(0,0,0,0.10)]"
 
   return (
     <div 
       onClick={handleBackdropClick} 
-      className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/60 backdrop-blur-md font-sans px-4 transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
+      className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/45 backdrop-blur-sm font-sans px-4 transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
       role="dialog"
       aria-modal="true"
     >
       <div
-        className={`relative w-full max-w-[480px] ${modalBg} rounded-[32px] border-4 border-[#FF7A2F] p-8 shadow-[0_24px_60px_rgba(0,0,0,0.5)] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-90 translate-y-8'}`}
+        className={`relative w-full max-w-[480px] ${modalBg} rounded-[26px] border ${isDark ? "border-white/10" : "border-gray-200"} p-6 shadow-[0_24px_60px_rgba(0,0,0,0.40)] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-95 translate-y-6'}`}
         onMouseDown={onHeaderMouseDown}
         style={{
           transform: `translate(${offset.x}px, ${offset.y}px) scale(${isMounted ? 1 : 0.95})`,
@@ -136,63 +148,67 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
           visibility: initialOffsetLoaded ? "visible" : "hidden"
         }}
       >
-        {/* Visual Drag Handle */}
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-16 h-1.5 rounded-full bg-gray-400/40 pointer-events-none" />
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-14 h-1.5 rounded-full bg-gray-500/35 pointer-events-none" />
 
-        <h2 className={`text-[32px] leading-none font-extrabold mb-6 tracking-tight mt-2 ${textColor}`}>
-          Caption Size
-        </h2>
-
-        <button
-          onClick={() => {
-            setIsMounted(false)
-            setTimeout(onClose, 300)
-          }}
-          className={`absolute top-6 right-6 ${secondaryText} hover:${textColor} transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 rounded-full p-1 active:scale-90`}
-          aria-label="Close"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-
-        {/* 🚨 Cinematic Preview Window */}
-        <div className="relative rounded-[20px] overflow-hidden shadow-inner mb-8 h-[200px] border-2 border-black/20 bg-gradient-to-br from-gray-800 via-gray-900 to-black flex items-center justify-center">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-orange-900/20 via-transparent to-transparent" />
-          
-          <div className="absolute top-4 right-4 px-3 py-1.5 rounded-full bg-black/60 backdrop-blur-md text-white/90 text-[11px] font-extrabold tracking-widest border border-white/10 z-10">
-            PREVIEW
+        <div className="flex items-start justify-between gap-4 mb-4 mt-2">
+          <div>
+            <h2 className="mt-1 text-[24px] leading-tight font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A]">
+              Caption Size
+            </h2>
+            <p className={`mt-2 text-[13px] leading-relaxed max-w-[32rem] ${secondaryText}`}>
+              Adjust how large captions appear so the text remains readable without overwhelming the page.
+            </p>
           </div>
 
-          <div 
-            className="relative px-6 py-4 text-center text-white font-bold leading-snug drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)] transition-all duration-200 w-full"
+          <button
+            onClick={() => {
+              setIsMounted(false)
+              setTimeout(onClose, 300)
+            }}
+            className={`shrink-0 bg-transparent hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 hover:${textColor} transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF7A2F]/50 rounded-full p-2 active:scale-90`}
+            aria-label="Close"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className={`relative rounded-[20px] overflow-hidden mb-6 h-[170px] border ${isDark ? "border-white/10" : "border-black/5"} ${previewBgClass} shadow-inner flex items-center justify-center`}>
+          <div className={`absolute inset-0 ${previewGlowClass}`} />
+          <div className={`absolute top-3.5 left-3.5 inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.22em] backdrop-blur-sm ${previewBadgeClass}`}>
+            Live Preview
+          </div>
+
+          <div
+            className={`relative inline-flex w-fit max-w-[82%] items-center justify-center text-center font-bold leading-snug transition-all duration-200 overflow-visible ${isDark ? 'text-white' : 'text-gray-950'}`}
             style={{ fontSize: `${fontSize}px` }}
           >
-            Sample Caption
+            <span className="block truncate">Text</span>
           </div>
         </div>
 
         {/* 🚨 Hyper-Tactile Controls */}
-        <div className="flex items-center justify-center gap-6 mb-10">
+        <div className="flex items-center justify-center gap-4 mb-6">
           <button
             onClick={decrease}
             aria-label="Decrease font size"
-            className="w-[64px] h-[64px] rounded-full bg-[#FF7A2F] hover:bg-[#E86A25] text-white flex items-center justify-center transition-all active:scale-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 shadow-lg shadow-[#FF7A2F]/30 shrink-0"
+            className="w-[44px] h-[44px] rounded-full bg-[#FF7A2F] hover:bg-[#E86A25] hover:shadow-[0_4px_20px_rgba(255,122,47,0.5)] hover:-translate-y-0.5 text-white flex items-center justify-center transition-all duration-200 active:scale-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 shadow-[0_2px_12px_rgba(255,122,47,0.3)] shrink-0"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[22px] h-[22px]">
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
           </button>
 
-          <div className={`w-[140px] h-[80px] rounded-[20px] border-2 flex items-center justify-center px-4 transition-colors focus-within:border-[#FF7A2F] focus-within:ring-4 focus-within:ring-[#FF7A2F]/20 ${inputBg} ${inputBorder}`}>
+          <div className={`w-[124px] h-[68px] rounded-[18px] border-2 flex items-center justify-center px-3 transition-all duration-200 focus-within:border-[#FF7A2F] focus-within:ring-4 focus-within:ring-[#FF7A2F]/20 hover:border-[#FF7A2F]/30 hover:shadow-md ${inputBg} ${inputBorder}`}>
             <input
               type="text"
               inputMode="numeric"
               value={sizeInput}
               onChange={(event) => handleInputChange(event.target.value)}
               onBlur={normalizeInput}
-              className={`w-full bg-transparent text-center text-[52px] leading-none font-black outline-none tracking-tighter ${textColor}`}
+              className={`w-full bg-transparent text-center text-[42px] leading-none font-black outline-none tracking-tighter ${textColor}`}
               aria-label="Font size in pixels"
             />
           </div>
@@ -200,9 +216,9 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
           <button
             onClick={increase}
             aria-label="Increase font size"
-            className="w-[64px] h-[64px] rounded-full bg-[#FF7A2F] hover:bg-[#E86A25] text-white flex items-center justify-center transition-all active:scale-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 shadow-lg shadow-[#FF7A2F]/30 shrink-0"
+            className="w-[44px] h-[44px] rounded-full bg-[#FF7A2F] hover:bg-[#E86A25] hover:shadow-[0_4px_20px_rgba(255,122,47,0.5)] hover:-translate-y-0.5 text-white flex items-center justify-center transition-all duration-200 active:scale-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 shadow-[0_2px_12px_rgba(255,122,47,0.3)] shrink-0"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[22px] h-[22px]">
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
@@ -216,7 +232,7 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
               setIsMounted(false)
               setTimeout(onClose, 300)
             }}
-            className={`px-6 py-3 rounded-full border-2 ${isDark ? 'border-gray-600 hover:bg-gray-800 text-white' : 'border-gray-300 hover:bg-gray-100 text-gray-800'} text-[16px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gray-400 active:scale-95`}
+            className={`px-5 py-2.5 rounded-full border-2 ${isDark ? 'border-white/10 hover:bg-white/10 hover:border-white/20 text-white' : 'border-gray-300 hover:bg-gray-100 hover:border-gray-400 text-gray-800'} text-[14px] font-bold transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gray-400 active:scale-95 hover:-translate-y-0.5`}
           >
             Cancel
           </button>
@@ -226,7 +242,7 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
               setIsMounted(false)
               setTimeout(onClose, 300)
             }}
-            className="px-8 py-3 rounded-full bg-[#FF7A2F] text-[16px] font-bold text-white hover:bg-[#E86A25] transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 shadow-lg shadow-[#FF7A2F]/30 active:scale-95"
+            className="px-6 py-2.5 rounded-full bg-[#FF7A2F] text-[14px] font-bold text-white hover:bg-[#E86A25] hover:shadow-xl hover:shadow-[#FF7A2F]/35 hover:-translate-y-0.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 shadow-lg shadow-[#FF7A2F]/30 active:scale-95"
           >
             Apply
           </button>

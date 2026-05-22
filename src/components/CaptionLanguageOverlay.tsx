@@ -230,8 +230,8 @@ export default function CaptionLanguageOverlay({
   }
 
   // 🚨 High Contrast Theme Variables
-  const modalBg = isDark ? "bg-[#1C1C1E]" : "bg-white"
-  const textColor = isDark ? "text-white" : "text-black"
+  const modalBg = isDark ? "bg-[#17171A]" : "bg-white"
+  const textColor = isDark ? "text-white" : "text-gray-950"
   const secondaryText = isDark ? "text-gray-400" : "text-gray-500"
   const inputBg = isDark ? "bg-[#2C2C2E]" : "bg-gray-100"
   const inputBorder = isDark ? "border-gray-700" : "border-gray-200"
@@ -244,7 +244,7 @@ export default function CaptionLanguageOverlay({
       aria-modal="true"
     >
       <div
-        className={`relative w-full max-w-[440px] ${modalBg} rounded-[32px] border-4 border-[#FF7A2F] p-8 shadow-[0_24px_60px_rgba(0,0,0,0.5)] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-90 translate-y-8'}`}
+        className={`relative w-full max-w-[480px] ${modalBg} rounded-[26px] border ${isDark ? "border-white/10" : "border-black/5"} p-6 shadow-[0_24px_60px_rgba(0,0,0,0.40)] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-95 translate-y-6'}`}
         onMouseDown={onHeaderMouseDown}
         style={{
           transform: `translate(${offset.x}px, ${offset.y}px) scale(${isMounted ? 1 : 0.95})`,
@@ -253,10 +253,10 @@ export default function CaptionLanguageOverlay({
         }}
       >
         {/* Visual Drag Handle */}
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-16 h-1.5 rounded-full bg-gray-400/40 pointer-events-none" />
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-gray-400/30 pointer-events-none" />
 
-        <h2 className={`text-[32px] font-extrabold mb-1 tracking-tight mt-2 ${textColor}`}>Language</h2>
-        <p className={`text-[15px] font-bold mb-6 ${isDark ? "text-[#FF7A2F]" : "text-[#E86A25]"}`}>
+        <h2 className="mt-1 text-[24px] leading-tight font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A]">Language</h2>
+        <p className={`mt-2 text-[13px] leading-relaxed mb-6 ${secondaryText}`}>
           Current: <span className={textColor}>{activeLabel}</span>
         </p>
 
@@ -265,10 +265,10 @@ export default function CaptionLanguageOverlay({
             setIsMounted(false)
             setTimeout(onClose, 300)
           }}
-          className={`absolute top-6 right-6 ${secondaryText} hover:${textColor} transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 rounded-full p-1 active:scale-90`}
+          className={`absolute top-6 right-6 bg-transparent hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 hover:${textColor} transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF7A2F]/50 rounded-full p-2`}
           aria-label="Close"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
             <line x1="18" y1="6" x2="6" y2="18" />
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
@@ -326,13 +326,13 @@ export default function CaptionLanguageOverlay({
         </div>
 
         {/* Footer Actions */}
-        <div className="mt-8 flex justify-end gap-4">
+        <div className="mt-6 flex justify-end gap-3.5">
           <button
             onClick={() => {
               setIsMounted(false)
               setTimeout(onClose, 300)
             }}
-            className={`px-6 py-3 rounded-full border-2 ${isDark ? 'border-gray-600 hover:bg-gray-800 text-white' : 'border-gray-300 hover:bg-gray-100 text-gray-800'} text-[16px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gray-400 active:scale-95`}
+            className={`px-5 py-2.5 rounded-full border-2 ${isDark ? 'border-white/10 hover:bg-white/10 hover:border-white/20 text-white' : 'border-gray-300 hover:bg-gray-100 hover:border-gray-400 text-gray-800'} text-[14px] font-bold transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gray-400 active:scale-95 hover:-translate-y-0.5`}
           >
             Cancel
           </button>
@@ -349,7 +349,7 @@ export default function CaptionLanguageOverlay({
               setIsMounted(false)
               setTimeout(onClose, 300)
             }}
-            className="px-8 py-3 rounded-full bg-[#FF7A2F] text-[16px] font-bold text-white hover:bg-[#E86A25] transition-colors focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 shadow-lg shadow-[#FF7A2F]/30 active:scale-95"
+            className="px-6 py-2.5 rounded-full bg-[#FF7A2F] text-[14px] font-bold text-white hover:bg-[#E86A25] hover:shadow-xl hover:shadow-[#FF7A2F]/35 hover:-translate-y-0.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 shadow-lg shadow-[#FF7A2F]/30 active:scale-95"
           >
             Apply
           </button>
