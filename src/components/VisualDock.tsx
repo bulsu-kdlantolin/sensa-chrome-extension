@@ -3,7 +3,7 @@ import { Tooltip } from "./Tooltip"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
 // ============================================================================
-// 🎙️ THE GOD-TIER MIC ICON
+// 🎙️ THE GOD-TIER MIC ICON (CPU Optimized)
 // ============================================================================
 const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {  
   const barsRef = useRef<(HTMLDivElement | null)[]>([])
@@ -37,9 +37,8 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
     const startMic = async () => {
       if (!isActive) return
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { noiseSuppression: true, echoCancellation: true, autoGainControl: true }
-        })
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        
         audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
         analyser = audioCtx.createAnalyser()
         analyser.fftSize = 256
@@ -181,7 +180,6 @@ export default function VisualDock({
   
   const iconMotionClass = `transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform`
   
-  // 🚨 THE FIX: All outer containers are now `rounded-full` to perfectly hug the circular buttons and eliminate pointed edges.
   const glassPanelClass = `rounded-full backdrop-blur-3xl border transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isDark
     ? "bg-[#1C1C1E]/85 border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.6)]"
     : "bg-white/90 border-black/10 shadow-[0_8px_32px_rgba(0,0,0,0.15)]"
@@ -228,16 +226,12 @@ export default function VisualDock({
     isVoiceCommandActive, isMinimized, isPlaying, isPaused, onToggleVoiceCommand, onTogglePlay, onNext, onPrev, onRestart,
     onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio
   })
-  const isVoiceCommandActiveRef = useRef(isVoiceCommandActive)
-  const startRecognitionRef = useRef<(() => void) | null>(null)
-  const stopRecognitionRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     callbacksRef.current = {
       isVoiceCommandActive, isMinimized, isPlaying, isPaused, onToggleVoiceCommand, onTogglePlay, onNext, onPrev, onRestart,
       onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio
     }
-    isVoiceCommandActiveRef.current = isVoiceCommandActive
   })
 
   useEffect(() => {
@@ -245,54 +239,39 @@ export default function VisualDock({
     if (!SpeechRecognitionCtor) return
 
     const recognition = new SpeechRecognitionCtor()
-    recognition.continuous = true
-    recognition.interimResults = true
+    
+    // 🚨 CPU FIX 1: Restored continuous mode. This stops the engine from aggressively shutting 
+    // down and rebooting after every single sound or background noise.
+    recognition.continuous = true 
+    recognition.interimResults = true 
     recognition.lang = 'en-US'
 
     let isComponentMounted = true
     let restartTimer: number | null = null
-    let hasStartedOnce = false
-    let isRecognitionStarted = false
-
-    let currentResultIndex = -1
-    const executedCommandsInCurrentBreath = new Set<string>()
+    const lastExecutedRef = { current: {} as { [key: string]: number } }
 
     const scheduleRestart = () => {
-      if (!isComponentMounted || !isVoiceCommandActiveRef.current) return
+      if (!isComponentMounted) return
       if (restartTimer) window.clearTimeout(restartTimer)
+      
+      // 🚨 CPU FIX 2: Added a 400ms breather. If the engine *does* stop due to pure silence, 
+      // this gives the CPU time to flush memory before spinning the hardware back up.
       restartTimer = window.setTimeout(() => {
-        startRecognition()
-      }, 250)
+        try { recognition.start() } catch (e) {}
+      }, 400) 
     }
 
-    const startRecognition = () => {
-      if (!isComponentMounted || isRecognitionStarted) return
-      try {
-        recognition.start()
-        isRecognitionStarted = true
-        hasStartedOnce = true
-      } catch (e) {
-        if (!hasStartedOnce) {
-          console.warn("VisualDock speech recognition start failed", e)
+    const checkCommand = (id: string, regex: RegExp, transcript: string) => {
+      if (regex.test(transcript)) {
+        const now = Date.now()
+        const lastExecuted = lastExecutedRef.current[id] || 0
+        if (now - lastExecuted > 1000) {
+          lastExecutedRef.current[id] = now
+          return true
         }
       }
+      return false
     }
-
-    const stopRecognition = () => {
-      if (!isComponentMounted || !isRecognitionStarted) return
-      if (restartTimer) {
-        window.clearTimeout(restartTimer)
-        restartTimer = null
-      }
-      isRecognitionStarted = false
-      try {
-        recognition.stop()
-      } catch (e) {
-        // ignore
-      }
-    }
-    startRecognitionRef.current = startRecognition
-    stopRecognitionRef.current = stopRecognition
 
     recognition.onresult = (event: any) => {
       const { 
@@ -300,114 +279,88 @@ export default function VisualDock({
         onRestart, onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio 
       } = callbacksRef.current
 
-      const latestIndex = event.results.length - 1
-      if (latestIndex < 0) return
-
-      if (latestIndex !== currentResultIndex) {
-        currentResultIndex = latestIndex
-        executedCommandsInCurrentBreath.clear()
-      }
-
-      const rawTranscript = event.results[latestIndex][0]?.transcript || ""
-      if (!rawTranscript) return
-
-      const paddedTranscript = ` ${rawTranscript.toLowerCase().replace(/[^a-z0-9\s]/gi, "")} `
-
-      const checkAndLockCommand = (commandId: string, keywords: string[]) => {
-        if (executedCommandsInCurrentBreath.has(commandId)) return false 
-        const isMatched = keywords.some(word => paddedTranscript.includes(` ${word} `))
-        if (isMatched) {
-          executedCommandsInCurrentBreath.add(commandId) 
-          return true
-        }
-        return false
-      }
+      const res = event.results[event.results.length - 1]
+      if (!res) return
+      
+      const rawText = (res[0]?.transcript || "").toLowerCase()
+      const transcript = ` ${rawText.replace(/[^a-z0-9\s]/gi, "")} `
+      if (!transcript.trim()) return
 
       if (!isVoiceCommandActive) {
-        if (checkAndLockCommand('speak', ['speak', 'wake up', 'listen'])) {
+        if (checkCommand('speak', /\b(speak|wake up|listen|speed)\b/, transcript)) {
           playClickAudio?.('Voice commands activated')
           try { onToggleVoiceCommand() } catch {}
         }
         return
       }
 
-      if (checkAndLockCommand('stoplistening', ['stop listening', 'stop voice', 'sleep', 'stop microphone'])) {
+      if (checkCommand('stoplistening', /\b(stop listening|stop voice|sleep|stop microphone)\b/, transcript)) {
         playClickAudio?.('Voice commands deactivated')
         try { onToggleVoiceCommand() } catch {}
       } 
-      else if (checkAndLockCommand('play', ['play', 'resume', 'lay', 'blade'])) {
+      else if (checkCommand('play', /\b(play|resume|lay|blade|bay|play please)\b/, transcript)) {
         if (!isPlaying || isPaused) { playClickAudio?.('Play'); onTogglePlay(); }
       } 
-      else if (checkAndLockCommand('pause', ['pause', 'stop', 'halt', 'paws', 'pulse', 'pass'])) {
+      else if (checkCommand('pause', /\b(pause|stop media|halt|paws|pulse|pass|stump|boss|stop)\b/, transcript)) {
         if (isPlaying && !isPaused) { playClickAudio?.('Pause'); onTogglePlay(); }
       } 
-      else if (checkAndLockCommand('next', ['next', 'skip', 'forward', 'necks', 'mix'])) {
+      else if (checkCommand('next', /\b(next|skip|forward|necks|mix|max|macs)\b/, transcript)) {
         playClickAudio?.('Next'); onNext();
       } 
-      else if (checkAndLockCommand('previous', ['previous', 'back', 'prev', 'go back'])) {
+      else if (checkCommand('prev', /\b(previous|back|prev|go back|priv)\b/, transcript)) {
         playClickAudio?.('Previous'); onPrev();
       } 
-      else if (checkAndLockCommand('restart', ['restart', 'start over', 're start'])) {
+      else if (checkCommand('restart', /\b(restart|start over|restore|re start)\b/, transcript)) {
         playClickAudio?.('Restart'); onRestart();
       } 
-      else if (checkAndLockCommand('speed', ['reading speed', 'speed', 'voice speed'])) {
+      else if (checkCommand('speed', /\b(reading speed|speed|voice speed)\b/, transcript)) {
         playClickAudio?.('Reading speed'); onOpenReadingSpeed();
       } 
-      else if (checkAndLockCommand('settings', ['setting', 'settings', 'options'])) {
+      else if (checkCommand('settings', /\b(setting|settings|options)\b/, transcript)) {
         playClickAudio?.('Settings'); onOpenSettings();
       } 
-      else if (checkAndLockCommand('minimize', ['minimize', 'collapse', 'hide'])) {
+      else if (checkCommand('minimize', /\b(minimize|collapse|hide|mini)\b/, transcript)) {
         if (!isMinimized) { playClickAudio?.('Minimize'); onMinimizeToggle(); }
       } 
-      else if (checkAndLockCommand('expand', ['expand', 'maximize', 'show'])) {
+      else if (checkCommand('expand', /\b(expand|maximize|show)\b/, transcript)) {
         if (isMinimized) { playClickAudio?.('Expand'); onMinimizeToggle(); }
       } 
-      else if (checkAndLockCommand('close', ['close', 'exit', 'quit', 'clothes'])) {
+      else if (checkCommand('close', /\b(close|exit|quit|clothes|dose|close dark|close duck)\b/, transcript)) {
         playClickAudio?.('Close'); onClose();
       } 
-      else if (checkAndLockCommand('top', ['top', 'tap', 'stop', 'pop', 'to up', 'go up'])) {
+      else if (checkCommand('top', /\b(top|tap|pop|to up|go up)\b/, transcript)) {
         window.scrollTo({ top: 0, behavior: "smooth" })
       } 
-      else if (checkAndLockCommand('bottom', ['bottom', 'button', 'down below'])) {
+      else if (checkCommand('bottom', /\b(bottom|button|down below)\b/, transcript)) {
         window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })
       } 
-      else if (checkAndLockCommand('scrollup', ['up', 'scroll up'])) {
+      else if (checkCommand('scrollup', /\b(scroll up|up)\b/, transcript) && !transcript.includes("to up")) {
         window.scrollBy({ top: -600, behavior: "smooth" })
       } 
-      else if (checkAndLockCommand('scrolldown', ['down', 'scroll down'])) {
+      else if (checkCommand('scrolldown', /\b(scroll down|down)\b/, transcript) && !transcript.includes("down below")) {
         window.scrollBy({ top: 600, behavior: "smooth" })
       }
     }
 
     recognition.onerror = (event: any) => {
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") return
+      // Prevents infinite error loops if hardware temporarily clashes
+      if (event.error === "not-allowed" || event.error === "service-not-allowed" || event.error === "aborted") return
       scheduleRestart()
     }
 
-    recognition.onend = () => {
-      isRecognitionStarted = false
-      scheduleRestart()
-    }
+    recognition.onend = () => scheduleRestart()
+
+    try { recognition.start() } catch (e) {}
 
     return () => {
       isComponentMounted = false
       if (restartTimer) window.clearTimeout(restartTimer)
-      startRecognitionRef.current = null
-      stopRecognitionRef.current = null
       try { recognition.stop() } catch (e) {}
       recognition.onresult = null
       recognition.onerror = null
       recognition.onend = null
     }
   }, []) 
-
-  useEffect(() => {
-    if (isVoiceCommandActive) {
-      startRecognitionRef.current?.()
-    } else {
-      stopRecognitionRef.current?.()
-    }
-  }, [isVoiceCommandActive])
 
   return (
     <div 
@@ -472,19 +425,15 @@ export default function VisualDock({
       </div>
 
       {/* ========================================================= */}
-      {/* ↔️ MIDDLE SECTION (The Core Ghosting Fix) */}
+      {/* ↔️ MIDDLE SECTION */}
       {/* ========================================================= */}
       <div 
-        // 🚨 THE FIX: This invisible clip-path bounds the top and bottom perfectly, eliminating ghosting as it shrinks, 
-        // but intentionally ignores the left/right bounds so your Tooltips have plenty of space to render!
         className={`grid w-full relative z-10 [clip-path:inset(-50px_-200px_0px_-200px)] transition-all duration-[800ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
           isMinimized ? "grid-rows-[0fr] mt-0" : "grid-rows-[1fr] mt-3"
         }`}
       >
         <div className="min-h-0 flex justify-center w-full">
           <div 
-            // 🚨 THE FIX: When minimizing, this gently shrinks to 85% size and fades out in 300ms, 
-            // preventing the ugly "glitchy disappear" effect while the outer container takes 800ms to gracefully fold.
             className={`flex flex-col items-center p-2 gap-1.5 w-fit origin-top transition-all ease-[cubic-bezier(0.16,1,0.3,1)] ${middleGlassPanelClass} ${
               isMinimized 
                 ? "opacity-0 scale-[0.85] -translate-y-4 pointer-events-none duration-300" 
