@@ -29,6 +29,21 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false)
 
   const [isMounted, setIsMounted] = useState(false)
+  const onCloseRef = useRef(onClose)
+  const overlayStateRef = useRef({
+    isVoiceGuideEnabled,
+    showColorPicker,
+    highlightColor,
+    inputDevices,
+    outputDevices,
+    selectedInputDeviceId,
+    selectedOutputDeviceId,
+    isAutoscrollEnabled,
+    isHighlightMouseScreenReaderEnabled,
+    voices,
+    selectedVoiceURI,
+    isVoiceDropdownOpen,
+  })
 
   const getHoverHandlers = (label: string) => ({
     onMouseEnter: () => playHoverAudio(label),
@@ -53,6 +68,40 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       playClickAudio("Settings opened")
     }
   }, [isMounted, playClickAudio])
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
+  useEffect(() => {
+    overlayStateRef.current = {
+      isVoiceGuideEnabled,
+      showColorPicker,
+      highlightColor,
+      inputDevices,
+      outputDevices,
+      selectedInputDeviceId,
+      selectedOutputDeviceId,
+      isAutoscrollEnabled,
+      isHighlightMouseScreenReaderEnabled,
+      voices,
+      selectedVoiceURI,
+      isVoiceDropdownOpen,
+    }
+  }, [
+    highlightColor,
+    inputDevices,
+    isAutoscrollEnabled,
+    isHighlightMouseScreenReaderEnabled,
+    isVoiceDropdownOpen,
+    isVoiceGuideEnabled,
+    outputDevices,
+    selectedInputDeviceId,
+    selectedOutputDeviceId,
+    selectedVoiceURI,
+    showColorPicker,
+    voices,
+  ])
 
   useEffect(() => {
     offsetRef.current = offset
@@ -147,6 +196,246 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     navigator.mediaDevices?.addEventListener?.("devicechange", handleDeviceChange)
     return () => navigator.mediaDevices?.removeEventListener?.("devicechange", handleDeviceChange)
   }, [])
+
+  useEffect(() => {
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognitionCtor) return
+
+    const recognition = new SpeechRecognitionCtor()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = "en-US"
+
+    let isComponentMounted = true
+    let restartTimer: number | null = null
+    const lastExecutedRef = { current: {} as Record<string, number> }
+    const lastTranscriptRef = { current: {} as Record<string, string> }
+
+    const normalizeTranscript = (text: string) =>
+      ` ${text.toLowerCase().replace(/[^a-z0-9\s]/gi, "").replace(/\s+/g, " ").trim()} `
+
+    const checkCommand = (id: string, patterns: string[], transcript: string, cooldownMs = 500) => {
+      const normalizedTranscript = normalizeTranscript(transcript)
+
+      if (patterns.some((pattern) => normalizedTranscript.includes(` ${pattern} `))) {
+        const now = Date.now()
+        const lastExecuted = lastExecutedRef.current[id] || 0
+        const lastTranscript = lastTranscriptRef.current[id] || ""
+        if (normalizedTranscript === lastTranscript && now - lastExecuted < 2500) {
+          return false
+        }
+
+        if (now - lastExecuted > cooldownMs) {
+          lastExecutedRef.current[id] = now
+          lastTranscriptRef.current[id] = normalizedTranscript
+          return true
+        }
+      }
+
+      return false
+    }
+
+    const scheduleRestart = () => {
+      if (!isComponentMounted) return
+      if (restartTimer) window.clearTimeout(restartTimer)
+      restartTimer = window.setTimeout(() => {
+        try { recognition.start() } catch {}
+      }, 300)
+    }
+
+    const speakFeedback = (message: string) => {
+      playClickAudio(message)
+    }
+
+    const setSettingsState = (updater: (state: typeof overlayStateRef.current) => void) => {
+      const nextState = { ...overlayStateRef.current }
+      updater(nextState)
+      overlayStateRef.current = nextState
+    }
+
+    const cycleVoice = (step: 1 | -1) => {
+      const state = overlayStateRef.current
+      if (!state.voices.length) return
+
+      const currentIndex = Math.max(state.voices.findIndex((voice) => voice.voiceURI === state.selectedVoiceURI), 0)
+      const nextVoice = state.voices[(currentIndex + step + state.voices.length) % state.voices.length]
+      if (!nextVoice) return
+
+      setSelectedVoiceURI(nextVoice.voiceURI)
+      chrome.storage.local.set({ sensa_visual_voice_uri: nextVoice.voiceURI, sensa_visual_voice_name: nextVoice.name || "" })
+      setIsVoiceDropdownOpen(false)
+      window.speechSynthesis.cancel()
+      speakFeedback(`${nextVoice.name} selected`)
+      setSettingsState((state) => {
+        state.selectedVoiceURI = nextVoice.voiceURI
+        state.isVoiceDropdownOpen = false
+      })
+    }
+
+    const cycleDevice = (kind: "input" | "output", step: 1 | -1) => {
+      const state = overlayStateRef.current
+      const devices = kind === "input" ? state.inputDevices : state.outputDevices
+      const currentId = kind === "input" ? state.selectedInputDeviceId : state.selectedOutputDeviceId
+      const defaultDevice = {
+        deviceId: DEFAULT_INPUT_DEVICE_ID,
+        label: kind === "input" ? "Default - Microphone" : "Default - Speaker",
+      }
+      const options = [defaultDevice, ...devices]
+      if (!options.length) return
+
+      const currentIndex = Math.max(options.findIndex((device) => device.deviceId === currentId), 0)
+      const nextDevice = options[(currentIndex + step + options.length) % options.length]
+      if (!nextDevice) return
+
+      if (kind === "input") {
+        setSelectedInputDeviceId(nextDevice.deviceId)
+        chrome.storage.local.set({ sensa_visual_input_device_id: nextDevice.deviceId })
+      } else {
+        setSelectedOutputDeviceId(nextDevice.deviceId)
+        chrome.storage.local.set({ sensa_visual_output_device_id: nextDevice.deviceId })
+      }
+
+      speakFeedback(nextDevice.label || `${kind} device selected`)
+    }
+
+    const voiceSelectionMatches = (transcript: string) => {
+      const normalizedTranscript = normalizeTranscript(transcript)
+      const matchedVoice = overlayStateRef.current.voices.find((voice) => {
+        const normalizedVoiceName = normalizeTranscript(voice.name || "")
+        return normalizedTranscript.includes(normalizedVoiceName.trim()) || normalizedVoiceName.includes(normalizedTranscript.trim())
+      })
+
+      if (!matchedVoice) return false
+
+      setSelectedVoiceURI(matchedVoice.voiceURI)
+      chrome.storage.local.set({ sensa_visual_voice_uri: matchedVoice.voiceURI, sensa_visual_voice_name: matchedVoice.name || "" })
+      setIsVoiceDropdownOpen(false)
+      window.speechSynthesis.cancel()
+      speakFeedback(`${matchedVoice.name} selected`)
+      setSettingsState((state) => {
+        state.selectedVoiceURI = matchedVoice.voiceURI
+        state.isVoiceDropdownOpen = false
+      })
+      return true
+    }
+
+    recognition.onresult = (event: any) => {
+      const results = Array.from(event.results ?? [])
+      if (!results.length) return
+
+      const transcripts = results
+        .map((result: any) => result?.[0]?.transcript || "")
+        .filter(Boolean)
+
+      if (!transcripts.length) return
+
+      const transcript = transcripts.slice(-2).join(" ")
+      const state = overlayStateRef.current
+      const normalizedTranscript = normalizeTranscript(transcript)
+      const wantsOn = /\b(on|enable|enabled|turn on|activate|active)\b/.test(normalizedTranscript)
+      const wantsOff = /\b(off|disable|disabled|turn off|deactivate)\b/.test(normalizedTranscript)
+
+      if (state.isVoiceDropdownOpen) {
+        if (checkCommand("voice-dropdown-close", ["close voice selection", "close dropdown", "cancel voice selection", "hide voices"], transcript, 350)) {
+          setIsVoiceDropdownOpen(false)
+          setSettingsState((next) => {
+            next.isVoiceDropdownOpen = false
+          })
+          speakFeedback("Voice selection closed")
+          return
+        }
+
+        if (checkCommand("voice-dropdown-next", ["next voice", "voice next", "next selection", "next voice option"], transcript, 350)) {
+          cycleVoice(1)
+          return
+        }
+
+        if (checkCommand("voice-dropdown-prev", ["previous voice", "prev voice", "voice previous", "last voice", "previous selection"], transcript, 350)) {
+          cycleVoice(-1)
+          return
+        }
+
+        if (voiceSelectionMatches(transcript)) return
+        return
+      }
+
+      if (checkCommand("settings-close", ["close settings", "close", "cancel", "back", "exit"], transcript, 350)) {
+        setIsMounted(false)
+        setTimeout(() => onCloseRef.current(), 300)
+        return
+      }
+
+      if (checkCommand("settings-reset", ["reset default", "reset defaults", "restore defaults", "reset settings"], transcript, 700)) {
+        handleResetToDefault()
+        return
+      }
+
+      if (checkCommand("settings-voice-guide", ["voice guide", "voice guidance"], transcript, 500)) {
+        handleVoiceGuideToggle(wantsOff ? false : wantsOn ? true : !state.isVoiceGuideEnabled)
+        return
+      }
+
+      if (checkCommand("settings-mouse-reader", ["mouse reader", "mouse highlight reader", "mouse highlight"], transcript, 500)) {
+        handleHighlightMouseScreenReaderToggle(wantsOff ? false : wantsOn ? true : !state.isHighlightMouseScreenReaderEnabled)
+        return
+      }
+
+      if (checkCommand("settings-autoscroll", ["autoscroll", "auto scroll", "scroll reading"], transcript, 500)) {
+        handleAutoscrollToggle(wantsOff ? false : wantsOn ? true : !state.isAutoscrollEnabled)
+        return
+      }
+
+      if (checkCommand("settings-color", ["highlight color", "color picker", "pick color"], transcript, 500)) {
+        setShowColorPicker(true)
+        speakFeedback("Highlight color opened")
+        return
+      }
+
+      if (checkCommand("settings-voice-selection", ["voice selection", "select voice", "voice voices"], transcript, 500)) {
+        setIsVoiceDropdownOpen(true)
+        speakFeedback("Voice selection opened")
+        return
+      }
+
+      if (checkCommand("settings-input-next", ["next input", "next microphone", "input next", "microphone next"], transcript, 450)) {
+        cycleDevice("input", 1)
+        return
+      }
+
+      if (checkCommand("settings-input-prev", ["previous input", "prev input", "previous microphone", "microphone previous"], transcript, 450)) {
+        cycleDevice("input", -1)
+        return
+      }
+
+      if (checkCommand("settings-output-next", ["next output", "next speaker", "output next", "speaker next"], transcript, 450)) {
+        cycleDevice("output", 1)
+        return
+      }
+
+      if (checkCommand("settings-output-prev", ["previous output", "prev output", "previous speaker", "speaker previous"], transcript, 450)) {
+        cycleDevice("output", -1)
+        return
+      }
+    }
+
+    recognition.onerror = (event: any) => {
+      if (event.error === "not-allowed" || event.error === "service-not-allowed" || event.error === "aborted") return
+      scheduleRestart()
+    }
+
+    recognition.onend = () => scheduleRestart()
+
+    try { recognition.start() } catch {}
+
+    return () => {
+      isComponentMounted = false
+      if (restartTimer) window.clearTimeout(restartTimer)
+      try { recognition.stop() } catch {}
+      recognition.onresult = null
+      recognition.onerror = null
+      recognition.onend = null
+    }
+  }, [playClickAudio])
 
   const handleHighlightChange = (color: string) => {
     const normalizedNew = color.toUpperCase()

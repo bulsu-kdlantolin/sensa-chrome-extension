@@ -614,6 +614,7 @@ export default function FloatingDockManager() {
             isPaused={isPaused}              // <-- NEW PROP
             isVoiceCommandActive={isVoiceCommandActive}
             canRestart={isPlaying || isPaused}
+            isVoiceCommandsSuspended={isSettingsOverlayOpen || isReadingSpeedOpen}
             onTogglePlay={togglePlayPause}   // <-- NEW PROP
             onToggleVoiceCommand={() => setIsVoiceCommandActive(prev => !prev)}
             onNext={next}                    // <-- NEW PROP

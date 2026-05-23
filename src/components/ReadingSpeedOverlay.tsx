@@ -11,6 +11,8 @@ interface ReadingSpeedOverlayProps {
 export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeedChange, isDark = false }: ReadingSpeedOverlayProps) {
   const [speed, setSpeed] = useState(initialSpeed)
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
+  const onCloseRef = useRef(onClose)
+  const onSpeedChangeRef = useRef(onSpeedChange)
   
   // Dragging State
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
@@ -21,11 +23,26 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   const draggingRef = useRef(false)
   const dragStartRef = useRef({ x: 0, y: 0 })
   const offsetStartRef = useRef({ x: 0, y: 0 })
+  const speedRef = useRef(speed)
+  const lastExecutedRef = useRef<Record<string, number>>({})
+  const lastTranscriptRef = useRef<Record<string, string>>({})
 
   useEffect(() => {
     // Trigger entrance animation
     requestAnimationFrame(() => setIsMounted(true))
   }, [])
+
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
+  useEffect(() => {
+    onSpeedChangeRef.current = onSpeedChange
+  }, [onSpeedChange])
+
+  useEffect(() => {
+    speedRef.current = speed
+  }, [speed])
 
   useEffect(() => {
     offsetRef.current = offset
@@ -115,6 +132,137 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   const commitSpeed = () => {
     onSpeedChange?.(speed)
   }
+
+  useEffect(() => {
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognitionCtor) return
+
+    const recognition = new SpeechRecognitionCtor()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = "en-US"
+
+    let isComponentMounted = true
+    let restartTimer: number | null = null
+
+    const normalizeTranscript = (text: string) =>
+      ` ${text.toLowerCase().replace(/[^a-z0-9\s.]/gi, "").replace(/\s+/g, " ").trim()} `
+
+    const checkCommand = (id: string, patterns: string[], transcript: string, cooldownMs = 400) => {
+      const normalizedTranscript = normalizeTranscript(transcript)
+
+      if (patterns.some((pattern) => normalizedTranscript.includes(` ${pattern} `))) {
+        const now = Date.now()
+        const lastExecuted = lastExecutedRef.current[id] || 0
+        const lastTranscript = lastTranscriptRef.current[id] || ""
+        if (normalizedTranscript === lastTranscript && now - lastExecuted < 2500) {
+          return false
+        }
+
+        if (now - lastExecuted > cooldownMs) {
+          lastExecutedRef.current[id] = now
+          lastTranscriptRef.current[id] = normalizedTranscript
+          return true
+        }
+      }
+
+      return false
+    }
+
+    const scheduleRestart = () => {
+      if (!isComponentMounted) return
+      if (restartTimer) window.clearTimeout(restartTimer)
+      restartTimer = window.setTimeout(() => {
+        try { recognition.start() } catch {}
+      }, 300)
+    }
+
+    const applySpeed = (next: number, announce = true) => {
+      const clamped = Math.max(0.5, Math.min(3, +next.toFixed(2)))
+      setSpeed(clamped)
+      onSpeedChangeRef.current?.(clamped)
+      if (announce) {
+        playClickAudio(`${clamped.toFixed(2).replace(/\.00$/, "")}x`)
+      }
+    }
+
+    const closeOverlay = () => {
+      setIsMounted(false)
+      setTimeout(() => onCloseRef.current(), 300)
+    }
+
+    const speedTargets = [
+      { value: 0.5, patterns: ["0.5", "half", "half speed", "point five"] },
+      { value: 1, patterns: ["1", "1x", "one", "normal", "normal speed", "one x"] },
+      { value: 1.25, patterns: ["1.25", "one point two five", "one and a quarter"] },
+      { value: 1.5, patterns: ["1.5", "one point five", "one and a half"] },
+      { value: 1.75, patterns: ["1.75", "one point seven five"] },
+      { value: 2, patterns: ["2", "2x", "two", "double", "two times"] },
+      { value: 2.25, patterns: ["2.25", "two point two five"] },
+      { value: 2.5, patterns: ["2.5", "two point five", "two and a half"] },
+      { value: 2.75, patterns: ["2.75", "two point seven five"] },
+      { value: 3, patterns: ["3", "3x", "three", "max", "maximum"] },
+    ]
+
+    recognition.onresult = (event: any) => {
+      const results = Array.from(event.results ?? [])
+      if (!results.length) return
+
+      const transcripts = results.map((result: any) => result?.[0]?.transcript || "").filter(Boolean)
+      if (!transcripts.length) return
+
+      const transcript = transcripts.slice(-2).join(" ")
+      const normalizedTranscript = normalizeTranscript(transcript)
+
+      if (checkCommand("speed-close", ["close", "cancel", "back", "exit", "close overlay", "close speed"], transcript, 350)) {
+        closeOverlay()
+        return
+      }
+
+      if (checkCommand("speed-apply", ["apply", "save", "done", "confirm", "okay", "ok"], transcript, 500)) {
+        onSpeedChangeRef.current?.(speedRef.current)
+        closeOverlay()
+        return
+      }
+
+      if (checkCommand("speed-up", ["increase", "faster", "faster speed", "up", "speed up"], transcript, 250)) {
+        applySpeed(speedRef.current + 0.25)
+        return
+      }
+
+      if (checkCommand("speed-down", ["decrease", "slower", "lower", "down", "slow down"], transcript, 250)) {
+        applySpeed(speedRef.current - 0.25)
+        return
+      }
+
+      const matchedTarget = speedTargets.find((target) =>
+        target.patterns.some((pattern) => normalizedTranscript.includes(` ${pattern} `))
+      )
+
+      if (matchedTarget && checkCommand(`speed-set-${matchedTarget.value}`, matchedTarget.patterns, transcript, 500)) {
+        applySpeed(matchedTarget.value)
+        return
+      }
+    }
+
+    recognition.onerror = (event: any) => {
+      if (event.error === "not-allowed" || event.error === "service-not-allowed" || event.error === "aborted") return
+      scheduleRestart()
+    }
+
+    recognition.onend = () => scheduleRestart()
+
+    try { recognition.start() } catch {}
+
+    return () => {
+      isComponentMounted = false
+      if (restartTimer) window.clearTimeout(restartTimer)
+      try { recognition.stop() } catch {}
+      recognition.onresult = null
+      recognition.onerror = null
+      recognition.onend = null
+    }
+  }, [])
 
   const modalBg = isDark ? "bg-[#141416]/96 backdrop-blur-3xl border-white/10" : "bg-white/95 backdrop-blur-3xl border-white/40"
   const textColor = isDark ? "text-gray-100" : "text-gray-900"

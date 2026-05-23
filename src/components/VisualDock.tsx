@@ -17,8 +17,10 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
     let stream: MediaStream | null = null
     let dataArray: Uint8Array<ArrayBuffer> | null = null
     let smoothedEnergy = 0
+    let lastFrameTime = 0
     
     const silenceGate = 0.01 
+    const frameIntervalMs = 50
 
     const colors = [
       "rgba(147, 197, 253, 1)", 
@@ -33,6 +35,16 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
     const idleHeights = [4, 6, 8, 6, 4]
 
     const lerp = (start: number, end: number, amt: number) => (1 - amt) * start + amt * end
+
+    const paintIdleState = () => {
+      barsRef.current.forEach((bar, i) => {
+        if (!bar) return
+        bar.style.height = `${idleHeights[i]}px`
+        bar.style.backgroundColor = colors[i]
+        bar.style.boxShadow = "none"
+        bar.style.opacity = "0.6"
+      })
+    }
 
     const startMic = async () => {
       if (!isActive) return
@@ -71,7 +83,15 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
     }
 
     const draw = () => {
-      tickRef.current += 0.07
+      animationId = requestAnimationFrame(draw)
+
+      if (!isActive || document.visibilityState !== "visible") return
+
+      const now = performance.now()
+      if (now - lastFrameTime < frameIntervalMs) return
+      lastFrameTime = now
+
+      tickRef.current += 0.03
       const tick = tickRef.current
       const liveEnergy = getLiveEnergy()
 
@@ -103,7 +123,13 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
         bar.style.opacity = `${opacity}`
       })
 
-      animationId = requestAnimationFrame(draw)
+    }
+
+    if (!isActive) {
+      paintIdleState()
+      return () => {
+        if (animationId) cancelAnimationFrame(animationId)
+      }
     }
 
     startMic()
@@ -155,6 +181,7 @@ interface VisualDockProps {
   onOpenReadingSpeed: () => void
   onOpenSettings: () => void
   onClose: () => void
+  isVoiceCommandsSuspended?: boolean
 }
 
 export default function VisualDock({
@@ -174,6 +201,7 @@ export default function VisualDock({
   onOpenReadingSpeed,
   onOpenSettings,
   onClose,
+  isVoiceCommandsSuspended = false,
 }: VisualDockProps) {
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   const [isPlayOptimistic, setIsPlayOptimistic] = useState(isPlaying && !isPaused)
@@ -235,6 +263,8 @@ export default function VisualDock({
   })
 
   useEffect(() => {
+    if (isVoiceCommandsSuspended) return
+
     const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognitionCtor) return
 
@@ -249,6 +279,8 @@ export default function VisualDock({
     let isComponentMounted = true
     let restartTimer: number | null = null
     const lastExecutedRef = { current: {} as { [key: string]: number } }
+    const lastTranscriptRef = { current: {} as { [key: string]: string } }
+    let voiceToggleLockUntil = 0
 
     const scheduleRestart = () => {
       if (!isComponentMounted) return
@@ -261,16 +293,30 @@ export default function VisualDock({
       }, 400) 
     }
 
-    const checkCommand = (id: string, regex: RegExp, transcript: string) => {
-      if (regex.test(transcript)) {
+    const normalizeTranscript = (text: string) => ` ${text.toLowerCase().replace(/[^a-z0-9\s]/gi, "").replace(/\s+/g, " ").trim()} `
+
+    const checkCommand = (id: string, patterns: string[], transcript: string, cooldownMs = 350) => {
+      const normalizedTranscript = normalizeTranscript(transcript)
+
+      if (patterns.some((pattern) => normalizedTranscript.includes(` ${pattern} `))) {
         const now = Date.now()
         const lastExecuted = lastExecutedRef.current[id] || 0
-        if (now - lastExecuted > 1000) {
+        const lastTranscript = lastTranscriptRef.current[id] || ""
+        if (normalizedTranscript === lastTranscript && now - lastExecuted < 2500) {
+          return false
+        }
+
+        if (now - lastExecuted > cooldownMs) {
           lastExecutedRef.current[id] = now
+          lastTranscriptRef.current[id] = normalizedTranscript
           return true
         }
       }
       return false
+    }
+
+    const lockVoiceToggle = () => {
+      voiceToggleLockUntil = Date.now() + 1800
     }
 
     recognition.onresult = (event: any) => {
@@ -279,65 +325,75 @@ export default function VisualDock({
         onRestart, onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio 
       } = callbacksRef.current
 
-      const res = event.results[event.results.length - 1]
-      if (!res) return
-      
-      const rawText = (res[0]?.transcript || "").toLowerCase()
-      const transcript = ` ${rawText.replace(/[^a-z0-9\s]/gi, "")} `
-      if (!transcript.trim()) return
+      const results = Array.from(event.results ?? [])
+      if (!results.length) return
+
+      const transcripts = results
+        .map((result: any) => result?.[0]?.transcript || "")
+        .filter(Boolean)
+        .map((text: string) => normalizeTranscript(text))
+        .filter((text: string) => text.trim().length > 0)
+
+      if (!transcripts.length) return
+
+      const transcript = transcripts.slice(-2).join(" ")
+
+      const canToggleVoiceMode = Date.now() >= voiceToggleLockUntil
 
       if (!isVoiceCommandActive) {
-        if (checkCommand('speak', /\b(speak|wake up|listen|speed)\b/, transcript)) {
+        if (canToggleVoiceMode && checkCommand('speak', ["speak", "wake up", "wake", "listen", "start listening"], transcript, 500)) {
+          lockVoiceToggle()
           playClickAudio?.('Voice commands activated')
           try { onToggleVoiceCommand() } catch {}
         }
         return
       }
 
-      if (checkCommand('stoplistening', /\b(stop listening|stop voice|sleep|stop microphone)\b/, transcript)) {
+      if (canToggleVoiceMode && checkCommand('stoplistening', ["stop listening", "stop voice", "sleep", "stop microphone", "stop mic"], transcript, 500)) {
+        lockVoiceToggle()
         playClickAudio?.('Voice commands deactivated')
         try { onToggleVoiceCommand() } catch {}
       } 
-      else if (checkCommand('play', /\b(play|resume|lay|blade|bay|play please)\b/, transcript)) {
+      else if (checkCommand('play', ["play", "resume", "start reading", "play please", "continue reading", "start", "begin reading", "resume reading"], transcript, 250)) {
         if (!isPlaying || isPaused) { playClickAudio?.('Play'); onTogglePlay(); }
       } 
-      else if (checkCommand('pause', /\b(pause|stop media|halt|paws|pulse|pass|stump|boss|stop)\b/, transcript)) {
+      else if (checkCommand('pause', ["pause", "stop media", "halt", "pause reading", "stop reading", "stop", "pause playback"], transcript, 250)) {
         if (isPlaying && !isPaused) { playClickAudio?.('Pause'); onTogglePlay(); }
       } 
-      else if (checkCommand('next', /\b(next|skip|forward|necks|mix|max|macs)\b/, transcript)) {
+      else if (checkCommand('next', ["next", "skip", "forward", "next paragraph", "go next", "next item"], transcript, 250)) {
         playClickAudio?.('Next'); onNext();
       } 
-      else if (checkCommand('prev', /\b(previous|back|prev|go back|priv)\b/, transcript)) {
+      else if (checkCommand('prev', ["previous", "back", "prev", "go back", "previous paragraph", "go previous"], transcript, 250)) {
         playClickAudio?.('Previous'); onPrev();
       } 
-      else if (checkCommand('restart', /\b(restart|start over|restore|re start)\b/, transcript)) {
+      else if (checkCommand('restart', ["restart", "start over", "restore", "re start", "restart reading", "start again"], transcript, 500)) {
         playClickAudio?.('Restart'); onRestart();
       } 
-      else if (checkCommand('speed', /\b(reading speed|speed|voice speed)\b/, transcript)) {
+      else if (checkCommand('speed', ["reading speed", "speed", "voice speed", "speed settings", "reading rate"], transcript, 500)) {
         playClickAudio?.('Reading speed'); onOpenReadingSpeed();
       } 
-      else if (checkCommand('settings', /\b(setting|settings|options)\b/, transcript)) {
+      else if (checkCommand('settings', ["setting", "settings", "options", "open settings", "settings overlay"], transcript, 1200)) {
         playClickAudio?.('Settings'); onOpenSettings();
       } 
-      else if (checkCommand('minimize', /\b(minimize|collapse|hide|mini)\b/, transcript)) {
+      else if (checkCommand('minimize', ["minimize", "collapse", "hide", "mini", "minimise"], transcript, 500)) {
         if (!isMinimized) { playClickAudio?.('Minimize'); onMinimizeToggle(); }
       } 
-      else if (checkCommand('expand', /\b(expand|maximize|show)\b/, transcript)) {
+      else if (checkCommand('expand', ["expand", "maximize", "show", "open", "maximize menu"], transcript, 500)) {
         if (isMinimized) { playClickAudio?.('Expand'); onMinimizeToggle(); }
       } 
-      else if (checkCommand('close', /\b(close|exit|quit|clothes|dose|close dark|close duck)\b/, transcript)) {
+      else if (checkCommand('close', ["close", "exit", "quit", "close dock", "close dark", "close duck", "close toolbar"], transcript, 500)) {
         playClickAudio?.('Close'); onClose();
       } 
-      else if (checkCommand('top', /\b(top|tap|pop|to up|go up)\b/, transcript)) {
+      else if (checkCommand('top', ["top", "tap", "pop", "to up", "go up"], transcript, 250)) {
         window.scrollTo({ top: 0, behavior: "smooth" })
       } 
-      else if (checkCommand('bottom', /\b(bottom|button|down below)\b/, transcript)) {
+      else if (checkCommand('bottom', ["bottom", "button", "down below"], transcript, 250)) {
         window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })
       } 
-      else if (checkCommand('scrollup', /\b(scroll up|up)\b/, transcript) && !transcript.includes("to up")) {
+      else if (checkCommand('scrollup', ["scroll up", "up"], transcript, 250) && !transcript.includes(" to up ")) {
         window.scrollBy({ top: -600, behavior: "smooth" })
       } 
-      else if (checkCommand('scrolldown', /\b(scroll down|down)\b/, transcript) && !transcript.includes("down below")) {
+      else if (checkCommand('scrolldown', ["scroll down", "down"], transcript, 250) && !transcript.includes(" down below ")) {
         window.scrollBy({ top: 600, behavior: "smooth" })
       }
     }
@@ -360,7 +416,7 @@ export default function VisualDock({
       recognition.onerror = null
       recognition.onend = null
     }
-  }, []) 
+  }, [isVoiceCommandsSuspended]) 
 
   return (
     <div 
