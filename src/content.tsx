@@ -182,7 +182,8 @@ export default function FloatingDockManager() {
     readingSpeed,
     highlightColor,
     isSettingsOverlayOpen,
-    isVisualAutoscrollEnabled
+    isVisualAutoscrollEnabled,
+    activeMode === "visual"
   )
   const targetLanguage = (captionLanguage.split("-")[0] ?? "EN").toUpperCase()
   const { captions, error: captionsError } = useLiveCaptions(

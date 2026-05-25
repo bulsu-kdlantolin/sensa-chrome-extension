@@ -2,13 +2,15 @@ import React, { useEffect, useRef, useState } from "react"
 import { Tooltip } from "./Tooltip"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
-// ============================================================================
-// 🎙️ THE GOD-TIER MIC ICON (True Hardware Audio Analyzer)
-// ============================================================================
 const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {  
   const barsRef = useRef<(HTMLDivElement | null)[]>([])
   const currentHeights = useRef([4, 6, 8, 6, 4])
   const tickRef = useRef(0)
+  
+  const isActiveRef = useRef(isActive)
+  useEffect(() => {
+    isActiveRef.current = isActive
+  }, [isActive])
   
   useEffect(() => {
     let animationId: number
@@ -17,6 +19,7 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
     let stream: MediaStream | null = null
     let dataArray: Uint8Array<ArrayBuffer> | null = null
     let smoothedEnergy = 0
+    let lastTime = performance.now()
     
     const silenceGate = 0.02 
 
@@ -31,11 +34,8 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
     const maxHeights = [12, 18, 26, 18, 12]
     const idleHeights = [4, 6, 8, 6, 4]
 
-    // 🚨 THE FIX: Re-integrated the actual hardware MediaStream!
     const startMic = async () => {
-      if (!isActive) return
       try {
-        // We use raw audio without heavy DSP to prevent the 100% CPU lockup
         stream = await navigator.mediaDevices.getUserMedia({ audio: true })
         audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
         analyser = audioCtx.createAnalyser()
@@ -51,7 +51,7 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
     }
 
     const getLiveEnergy = () => {
-      if (!isActive || !analyser || !dataArray) return 0
+      if (!isActiveRef.current || !analyser || !dataArray) return 0
       analyser.getByteTimeDomainData(dataArray)
 
       let sum = 0
@@ -61,18 +61,21 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
       }
 
       const rms = Math.sqrt(sum / dataArray.length)
-      const boosted = Math.min(1, rms * 12.0) // Boost sensitivity
+      const boosted = Math.min(1, rms * 12.0) 
       smoothedEnergy = smoothedEnergy * 0.3 + boosted * 0.7 
 
       if (smoothedEnergy <= silenceGate) return 0
       return (smoothedEnergy - silenceGate) / (1 - silenceGate)
     }
 
-    const draw = () => {
+    const draw = (time: number) => {
       animationId = requestAnimationFrame(draw)
       if (document.visibilityState !== "visible") return
 
-      tickRef.current += 1
+      const dt = Math.min((time - lastTime) / 1000, 0.1)
+      lastTime = time
+
+      tickRef.current += dt * 60 
       const tick = tickRef.current
       const liveEnergy = getLiveEnergy()
 
@@ -81,19 +84,16 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
         
         let targetHeight = idleHeights[i]
 
-        if (isActive) {
-          // Reacts physically to your voice volume
+        if (isActiveRef.current) {
           const distFromCenter = Math.abs(i - 2)
           const voiceSpike = liveEnergy * 40 * (1 - distFromCenter * 0.15)
           targetHeight = Math.min(maxHeights[i], idleHeights[i] + voiceSpike)
         } else {
-          // Subtle, calm breathing when asleep
           const breath = Math.sin(tick * 0.04) * 1.5
           targetHeight = idleHeights[i] + Math.max(0, breath)
         }
 
-        // Smoothly glide to the target height
-        currentHeights.current[i] += (targetHeight - currentHeights.current[i]) * 0.25
+        currentHeights.current[i] += (targetHeight - currentHeights.current[i]) * (dt * 15)
 
         const intensity = (currentHeights.current[i] - idleHeights[i]) / (maxHeights[i] - idleHeights[i])
         const shadowRadius = intensity * 8
@@ -106,18 +106,15 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
       })
     }
 
-    if (isActive) {
-      startMic()
-    }
-    
-    draw()
+    startMic()
+    animationId = requestAnimationFrame(draw)
 
     return () => {
       if (animationId) cancelAnimationFrame(animationId)
       if (stream) stream.getTracks().forEach((track) => track.stop())
       if (audioCtx) audioCtx.close().catch(() => undefined)
     }
-  }, [isActive])
+  }, []) 
 
   return (
     <div className="flex items-center justify-center gap-[3px] !w-[24px] !h-[24px] shrink-0" aria-hidden="true">
@@ -130,7 +127,7 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
             height: "4px", 
             backgroundColor: "currentColor",
             willChange: "height, box-shadow, opacity",
-            transition: `all ${isActive ? 50 : 300}ms ease-out`
+            transition: `all 150ms ease-out`
           }}
         />
       ))}
@@ -138,9 +135,6 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
   )
 }
 
-// ============================================================================
-// MAIN VISUAL DOCK COMPONENT
-// ============================================================================
 interface VisualDockProps {
   isDark: boolean
   isMinimized: boolean
@@ -182,8 +176,13 @@ export default function VisualDock({
 }: VisualDockProps) {
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   const [isPlayOptimistic, setIsPlayOptimistic] = useState(isPlaying && !isPaused)
+  const voiceInactivityTimerRef = useRef<number | null>(null)
+  const VOICE_INACTIVITY_MS = 10_000
+  const VOICE_ACTIVITY_THRESHOLD = 0.018
+  const VOICE_ACTIVITY_RESET_COOLDOWN_MS = 900
   
   const iconMotionClass = `transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform`
+  const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
   
   const glassPanelClass = `rounded-full backdrop-blur-3xl border transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isDark
     ? "bg-[#1C1C1E]/85 border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.6)]"
@@ -232,12 +231,102 @@ export default function VisualDock({
     onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio
   })
 
+  const clearVoiceInactivityTimer = () => {
+    if (voiceInactivityTimerRef.current) {
+      window.clearTimeout(voiceInactivityTimerRef.current)
+      voiceInactivityTimerRef.current = null
+    }
+  }
+
+  const resetVoiceInactivityTimer = () => {
+    clearVoiceInactivityTimer()
+    if (!callbacksRef.current.isVoiceCommandActive) return
+
+    voiceInactivityTimerRef.current = window.setTimeout(() => {
+      const cbs = callbacksRef.current
+      if (!cbs.isVoiceCommandActive) return
+      cbs.playClickAudio?.('Voice commands deactivated')
+      try { cbs.onToggleVoiceCommand() } catch {}
+    }, VOICE_INACTIVITY_MS)
+  }
+
   useEffect(() => {
     callbacksRef.current = {
       isVoiceCommandActive, isMinimized, isPlaying, isPaused, onToggleVoiceCommand, onTogglePlay, onNext, onPrev, onRestart,
       onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio
     }
   })
+
+  useEffect(() => {
+    if (isVoiceCommandsSuspended || !isVoiceCommandActive) {
+      clearVoiceInactivityTimer()
+      return
+    }
+
+    resetVoiceInactivityTimer()
+  }, [isVoiceCommandActive, isVoiceCommandsSuspended])
+
+  useEffect(() => {
+    if (isVoiceCommandsSuspended || !isVoiceCommandActive) return
+
+    let isCancelled = false
+    let activityRafId: number | null = null
+    let activityStream: MediaStream | null = null
+    let activityAudioCtx: AudioContext | null = null
+    let activityAnalyser: AnalyserNode | null = null
+    let activityData: Uint8Array<ArrayBuffer> | null = null
+    let lastResetAt = 0
+
+    const monitorVoiceActivity = () => {
+      if (isCancelled) return
+      activityRafId = window.requestAnimationFrame(monitorVoiceActivity)
+
+      if (!activityAnalyser || !activityData) return
+      if (!callbacksRef.current.isVoiceCommandActive) return
+
+      activityAnalyser.getByteTimeDomainData(activityData)
+      let sum = 0
+      for (let i = 0; i < activityData.length; i++) {
+        const normalized = (activityData[i] - 128) / 128
+        sum += normalized * normalized
+      }
+
+      const rms = Math.sqrt(sum / activityData.length)
+      const now = Date.now()
+
+      if (rms >= VOICE_ACTIVITY_THRESHOLD && now - lastResetAt >= VOICE_ACTIVITY_RESET_COOLDOWN_MS) {
+        lastResetAt = now
+        resetVoiceInactivityTimer()
+      }
+    }
+
+    const startVoiceActivityMonitor = async () => {
+      try {
+        activityStream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        if (isCancelled) return
+
+        activityAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
+        activityAnalyser = activityAudioCtx.createAnalyser()
+        activityAnalyser.fftSize = 256
+        activityAnalyser.smoothingTimeConstant = 0.25
+
+        const source = activityAudioCtx.createMediaStreamSource(activityStream)
+        source.connect(activityAnalyser)
+
+        activityData = new Uint8Array(new ArrayBuffer(activityAnalyser.fftSize))
+        monitorVoiceActivity()
+      } catch {}
+    }
+
+    startVoiceActivityMonitor()
+
+    return () => {
+      isCancelled = true
+      if (activityRafId) window.cancelAnimationFrame(activityRafId)
+      if (activityStream) activityStream.getTracks().forEach((track) => track.stop())
+      if (activityAudioCtx) activityAudioCtx.close().catch(() => undefined)
+    }
+  }, [isVoiceCommandActive, isVoiceCommandsSuspended])
 
   useEffect(() => {
     if (isVoiceCommandsSuspended) return
@@ -253,13 +342,15 @@ export default function VisualDock({
     let isComponentMounted = true
     let restartTimer: number | null = null
     let voiceToggleLockUntil = 0
+    let isPermanentlyDead = false
+    let ignoreSpeechUntil = 0
 
     const scheduleRestart = () => {
-      if (!isComponentMounted) return
+      if (!isComponentMounted || isPermanentlyDead) return
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
         try { recognition.start() } catch (e) {}
-      }, 400) 
+      }, 200) 
     }
 
     const lockVoiceToggle = () => {
@@ -267,111 +358,169 @@ export default function VisualDock({
     }
 
     recognition.onresult = (event: any) => {
-      const { 
-        isVoiceCommandActive, isMinimized, isPlaying, isPaused, onToggleVoiceCommand, onTogglePlay, onNext, onPrev,
-        onRestart, onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio 
-      } = callbacksRef.current
+      const cbs = callbacksRef.current
 
-      let interimTranscript = ""
+      let heardTranscript = ""
       for (let i = event.resultIndex; i < event.results.length; ++i) {
-        interimTranscript += event.results[i][0].transcript
+        heardTranscript += event.results[i][0].transcript || ""
+      }
+      if (cbs.isVoiceCommandActive && heardTranscript.trim()) {
+        resetVoiceInactivityTimer()
       }
 
-      const transcript = ` ${interimTranscript.toLowerCase().replace(/[^a-z0-9\s]/gi, "").replace(/\s+/g, " ").trim()} `
+      if (Date.now() < ignoreSpeechUntil) return
+
+      let liveTranscript = ""
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        liveTranscript += event.results[i][0].transcript
+      }
+
+      const rawText = liveTranscript.toLowerCase()
+      const transcript = ` ${rawText.replace(/[^a-z0-9\s]/gi, "").replace(/\s+/g, " ").trim()} `
+      
       if (!transcript.trim()) return
 
+      const check = (regex: RegExp) => regex.test(transcript)
       const canToggleVoiceMode = Date.now() >= voiceToggleLockUntil
       let commandFired = false
+      let commandExecuted = false
+      let commandType: "none" | "activate-voice" | "deactivate-voice" | "reader" | "other" = "none"
 
-      if (!isVoiceCommandActive) {
-        if (canToggleVoiceMode && /(speak|peak|spik|speed|wake|listen|start)/i.test(transcript)) {
-          commandFired = true
+      if (!cbs.isVoiceCommandActive) {
+        if (canToggleVoiceMode && check(/\b(sensa|sensor|sansa|speak|peak|spik|wake|listen|start)\b/i)) {
+          commandFired = commandExecuted = true
+          commandType = "activate-voice"
           lockVoiceToggle()
-          playClickAudio?.('Voice commands activated')
-          try { onToggleVoiceCommand() } catch {}
+          cbs.playClickAudio?.('Voice commands activated')
+          try { cbs.onToggleVoiceCommand() } catch {}
         }
       } else {
-        if (canToggleVoiceMode && /(stop|sleep|mute)/i.test(transcript)) {
-          commandFired = true
+        if (canToggleVoiceMode && check(/\b(deactivate|stop listening|stop voice|sleep|mute|quiet|stop mic)\b/i)) {
+          commandFired = commandExecuted = true
+          commandType = "deactivate-voice"
           lockVoiceToggle()
-          playClickAudio?.('Voice commands deactivated')
-          try { onToggleVoiceCommand() } catch {}
+          cbs.playClickAudio?.('Voice commands deactivated')
+          try { cbs.onToggleVoiceCommand() } catch {}
         } 
-        else if (/(play|resume|continue)/i.test(transcript)) {
-          commandFired = true
-          if (!isPlaying || isPaused) { playClickAudio?.('Play'); onTogglePlay(); }
+        else if (check(/\b(restart|start over|restore|reset|refresh)\b/i)) {
+          commandFired = commandExecuted = true
+          commandType = "other"
+          cbs.playClickAudio?.('Restart'); cbs.onRestart();
         } 
-        else if (/(pause|stop reading|halt)/i.test(transcript)) {
-          commandFired = true
-          if (isPlaying && !isPaused) { playClickAudio?.('Pause'); onTogglePlay(); }
+        else if (check(/\b(previous|prev|priv|back)\b/i)) {
+          commandFired = commandExecuted = true
+          commandType = "other"
+          cbs.playClickAudio?.('Previous'); cbs.onPrev();
         } 
-        else if (/(next|skip|forward)/i.test(transcript)) {
-          commandFired = true
-          playClickAudio?.('Next'); onNext();
+        else if (check(/\b(next|skip|forward|necks|macs)\b/i)) {
+          commandFired = commandExecuted = true
+          commandType = "other"
+          cbs.playClickAudio?.('Next'); cbs.onNext();
         } 
-        else if (/(previous|back|prev)/i.test(transcript)) {
-          commandFired = true
-          playClickAudio?.('Previous'); onPrev();
+        else if (check(/\b(speed|rate)\b/i)) {
+          commandFired = commandExecuted = true
+          commandType = "other"
+          cbs.playClickAudio?.('Reading speed'); cbs.onOpenReadingSpeed();
         } 
-        else if (/(restart|start over)/i.test(transcript)) {
-          commandFired = true
-          playClickAudio?.('Restart'); onRestart();
+        else if (check(/\b(setting|settings|options)\b/i)) {
+          commandFired = commandExecuted = true
+          commandType = "other"
+          cbs.playClickAudio?.('Settings'); cbs.onOpenSettings();
         } 
-        else if (/(speed|rate)/i.test(transcript)) {
-          commandFired = true
-          playClickAudio?.('Reading speed'); onOpenReadingSpeed();
+        else if (check(/\b(minimize|collapse|hide|mini)\b/i)) {
+          commandType = "other"
+          if (!cbs.isMinimized) {
+            commandFired = commandExecuted = true
+            cbs.playClickAudio?.('Minimize'); cbs.onMinimizeToggle();
+          }
         } 
-        else if (/(setting|options)/i.test(transcript)) {
-          commandFired = true
-          playClickAudio?.('Settings'); onOpenSettings();
+        else if (check(/\b(expand|maximize|show|open)\b/i)) {
+          commandType = "other"
+          if (cbs.isMinimized) {
+            commandFired = commandExecuted = true
+            cbs.playClickAudio?.('Expand'); cbs.onMinimizeToggle();
+          }
         } 
-        else if (/(minimize|collapse|hide|mini)/i.test(transcript)) {
-          commandFired = true
-          if (!isMinimized) { playClickAudio?.('Minimize'); onMinimizeToggle(); }
+        else if (check(/\b(close|exit|quit|clothes|dose|dismiss|duck|dark)\b/i)) {
+          commandFired = commandExecuted = true
+          commandType = "other"
+          cbs.playClickAudio?.('Close'); cbs.onClose();
         } 
-        else if (/(expand|maximize|show)/i.test(transcript)) {
-          commandFired = true
-          if (isMinimized) { playClickAudio?.('Expand'); onMinimizeToggle(); }
-        } 
-        else if (/(close|exit|quit)/i.test(transcript)) {
-          commandFired = true
-          playClickAudio?.('Close'); onClose();
-        } 
-        else if (/(top|go up)/i.test(transcript)) {
-          commandFired = true
+        else if (check(/\b(top|go up)\b/i)) {
+          commandFired = commandExecuted = true
+          commandType = "other"
           window.scrollTo({ top: 0, behavior: "smooth" })
         } 
-        else if (/(bottom|down below)/i.test(transcript)) {
-          commandFired = true
+        else if (check(/\b(bottom|down below)\b/i)) {
+          commandFired = commandExecuted = true
+          commandType = "other"
           window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })
         } 
-        else if (/(scroll up|up)/i.test(transcript) && !transcript.includes(" to up ")) {
-          commandFired = true
+        else if (check(/\b(scroll up|up)\b/i) && !check(/\b(go up|to up)\b/i)) {
+          commandFired = commandExecuted = true
+          commandType = "other"
           window.scrollBy({ top: -600, behavior: "smooth" })
         } 
-        else if (/(scroll down|down)/i.test(transcript) && !transcript.includes(" down below ")) {
-          commandFired = true
+        else if (check(/\b(scroll down|down)\b/i) && !check(/\b(down below)\b/i)) {
+          commandFired = commandExecuted = true
+          commandType = "other"
           window.scrollBy({ top: 600, behavior: "smooth" })
         }
+        else if (check(/\b(pause|stop reading|halt|paws|pass|boss|pulse|pose|stop playing|stop)\b/i)) {
+          commandFired = true
+          commandType = "reader"
+          if (cbs.isPlaying && !cbs.isPaused) {
+            commandExecuted = true
+            cbs.playClickAudio?.('Pause'); cbs.onTogglePlay();
+          }
+        } 
+        else if (check(/\b(read|play|resume|continue|lay|bay|clay|pay|pray|start reading|blade)\b/i)) {
+          commandFired = true
+          commandType = "reader"
+          if (!cbs.isPlaying || cbs.isPaused) {
+            commandExecuted = true
+            cbs.playClickAudio?.('Play'); cbs.onTogglePlay();
+          }
+        } 
       }
 
       if (commandFired) {
-        try { recognition.abort() } catch (e) {}
+        ignoreSpeechUntil = Date.now() + 1500 
+
+        if (!commandExecuted) return
+
+        if (commandType === "deactivate-voice") {
+          clearVoiceInactivityTimer()
+        } else {
+          resetVoiceInactivityTimer()
+        }
       }
     }
 
     recognition.onerror = (event: any) => {
-      if (event.error === "not-allowed" || event.error === "service-not-allowed" || event.error === "aborted") return
-      scheduleRestart()
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        isPermanentlyDead = true
+      }
     }
 
     recognition.onend = () => scheduleRestart()
+
+    const reviveEngineOnClick = () => {
+      if (isPermanentlyDead && !isVoiceCommandsSuspended) {
+        isPermanentlyDead = false
+        try { recognition.start() } catch (e) {}
+      }
+    }
+    
+    window.addEventListener("click", reviveEngineOnClick)
 
     try { recognition.start() } catch (e) {}
 
     return () => {
       isComponentMounted = false
+      window.removeEventListener("click", reviveEngineOnClick)
       if (restartTimer) window.clearTimeout(restartTimer)
+      clearVoiceInactivityTimer()
       try { recognition.stop() } catch (e) {}
       recognition.onresult = null
       recognition.onerror = null
@@ -408,10 +557,10 @@ export default function VisualDock({
             ? "shadow-[0_0_0_1px_rgba(10,68,255,0.18),0_0_24px_rgba(10,68,255,0.42)] ring-4 ring-[#0A44FF]/30 bg-[#0A44FF]"
             : "bg-[#0A44FF] shadow-md shadow-[#0A44FF]/30 hover:bg-[#0836CC] hover:shadow-lg hover:shadow-[#0A44FF]/50"
           }`}
-          aria-label={isVoiceCommandActive ? "Stop Listening" : "Start Voice Command"}
-          {...getHoverHandlers(isVoiceCommandActive ? "Stop Listening" : "Speak")}
+          aria-label={isVoiceCommandActive ? "Stop Voice Command" : "Speak"}
+          {...getHoverHandlers(isVoiceCommandActive ? "Stop Voice Command" : "Speak")}
         >
-          <Tooltip label={isVoiceCommandActive ? "Stop Listening" : "Speak"} isDark={isDark} />
+          <Tooltip label={isVoiceCommandActive ? "Stop Voice Command" : "Speak"} isDark={isDark} />
           <div className="relative flex items-center justify-center !w-full !h-full shrink-0" aria-hidden="true">
             <svg 
               viewBox="0 0 24 24" 
@@ -438,16 +587,16 @@ export default function VisualDock({
       </div>
 
       <div 
-        className={`grid w-full relative z-10 [clip-path:inset(-50px_-200px_0px_-200px)] transition-all duration-[800ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        className={`grid w-full relative z-10 [clip-path:inset(-50px_-200px_0px_-200px)] ${springTransition} ${
           isMinimized ? "grid-rows-[0fr] mt-0" : "grid-rows-[1fr] mt-3"
         }`}
       >
         <div className="min-h-0 flex justify-center w-full">
           <div 
-            className={`flex flex-col items-center p-2 gap-1.5 w-fit origin-top transition-all ease-[cubic-bezier(0.16,1,0.3,1)] ${middleGlassPanelClass} ${
+            className={`flex flex-col items-center p-2 gap-1.5 w-fit origin-top ${springTransition} ${middleGlassPanelClass} ${
               isMinimized 
-                ? "opacity-0 scale-[0.85] -translate-y-4 pointer-events-none duration-300" 
-                : "opacity-100 scale-100 translate-y-0 pointer-events-auto duration-[800ms]"
+                ? "opacity-0 scale-75 -translate-y-4 pointer-events-none" 
+                : "opacity-100 scale-100 translate-y-0 pointer-events-auto"
             }`}
           >
             <button
@@ -455,10 +604,10 @@ export default function VisualDock({
               onClick={handleTogglePlay}
               aria-pressed={isPlayOptimistic}
               className={`${btnBaseClass} ${isMinimized ? "shadow-none hover:shadow-none" : btnAccentClass}`}
-              aria-label={isPlayOptimistic ? "Pause Reading" : "Play Reading"}
-              {...getHoverHandlers(isPlayOptimistic ? "Pause" : "Play")}
+              aria-label={isPlayOptimistic ? "Stop Reading" : "Read"}
+              {...getHoverHandlers(isPlayOptimistic ? "Stop" : "Read")}
             >
-              <Tooltip label={isPlayOptimistic ? "Pause" : "Play"} isDark={isDark} />
+              <Tooltip label={isPlayOptimistic ? "Stop" : "Read"} isDark={isDark} />
               {isPlayOptimistic ? (
                 <svg viewBox="0 0 24 24" fill="currentColor" className={`transition-transform duration-200 will-change-transform !w-[22px] !h-[22px] shrink-0`} aria-hidden="true">
                   <rect x="6" y="5" width="4" height="14" rx="1" />

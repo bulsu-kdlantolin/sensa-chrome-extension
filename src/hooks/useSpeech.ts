@@ -209,7 +209,13 @@ const splitSentenceRanges = (text: string) => {
   return ranges;
 };
 
-export function useSpeech(readingSpeed: number, highlightColor: string, isOverlaySuppressed = false, isAutoscrollEnabled = true) {
+export function useSpeech(
+  readingSpeed: number,
+  highlightColor: string,
+  isOverlaySuppressed = false,
+  isAutoscrollEnabled = true,
+  isVisualModeActive = true
+) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
 
@@ -342,6 +348,18 @@ export function useSpeech(readingSpeed: number, highlightColor: string, isOverla
       }
     }
   }, [clearSentenceOverlay, isOverlaySuppressed, renderSegmentOverlay]);
+
+  useEffect(() => {
+    if (isVisualModeActive) return;
+
+    speechSessionRef.current += 1;
+    window.speechSynthesis.cancel();
+    setIsPlaying(false);
+    setIsPaused(false);
+    currentSegmentIndexRef.current = 0;
+    currentCharOffsetRef.current = 0;
+    clearSentenceOverlay();
+  }, [clearSentenceOverlay, isVisualModeActive]);
 
   const extractReadableContent = useCallback(() => {
     const root =
