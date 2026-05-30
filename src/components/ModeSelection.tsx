@@ -1,4 +1,6 @@
+import { useEffect, useMemo, useRef, useState } from "react"
 import sensaLogo from "data-base64:../../assets/sensa-logo.png"
+import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
 interface ModeSelectionProps {
   theme: "light" | "dark"
@@ -7,13 +9,330 @@ interface ModeSelectionProps {
 
 export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProps) {
   const isDark = theme === "dark"
+  const { playHoverAudio, cancelHoverAudio } = useUIHoverAudio()
+  const [typedDescriptionCount, setTypedDescriptionCount] = useState(0)
+  const [typedWordCount, setTypedWordCount] = useState(0)
+  const [startDescription, setStartDescription] = useState(false)
+  const [startSubtitle, setStartSubtitle] = useState(false)
+  const [visibleCards, setVisibleCards] = useState(0)
+  const selectedVoiceURIRef = useRef<string>("")
+  const selectedVoiceNameRef = useRef<string>("")
+  const voiceSettingsLoadedRef = useRef(false)
+  const narrationStageRef = useRef<"idle" | "titleDone" | "descriptionDone" | "subtitleDone" | "cardsDone">("idle")
+  const narrationCanceledRef = useRef(false)
+  const pendingUtteranceRef = useRef<string | null>(null)
+  const voiceRetryTimerRef = useRef<number | null>(null)
+  const voiceReadyRetryRef = useRef<number | null>(null)
+  const audioCtxRef = useRef<AudioContext | null>(null)
   
   // Apple-style spring animation curve
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 
+  const titleText = "Welcome to Sensa"
+  const descriptionText = "A tailored accessibility layer that reads, guides, and adapts to you."
+  const subtitleText = "Select your primary accessibility mode"
+  const descriptionWords = useMemo(() => descriptionText.split(" "), [descriptionText])
+  const subtitleWords = useMemo(() => subtitleText.split(" "), [subtitleText])
+  const typedDescription = descriptionWords.slice(0, typedDescriptionCount).join(" ")
+  const typedSubtitle = subtitleWords.slice(0, typedWordCount).join(" ")
+
+  const visualCardText = "Visual Mode. Support low vision with guided reading and spoken cues."
+  const auditoryCardText = "Auditory Mode. Support hearing loss with live captions and sound visualizer."
+
+  const getAudioContext = () => {
+    if (!audioCtxRef.current) {
+      const Ctor = window.AudioContext || (window as any).webkitAudioContext
+      audioCtxRef.current = Ctor ? new Ctor() : null
+    }
+
+    if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
+      audioCtxRef.current.resume().catch(() => undefined)
+    }
+
+    return audioCtxRef.current
+  }
+
+  const playTypingSfx = () => {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = "triangle"
+    osc.frequency.setValueAtTime(980, ctx.currentTime)
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.045, ctx.currentTime + 0.01)
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.06)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.07)
+  }
+
+  const playPopSfx = () => {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = "sine"
+    osc.frequency.setValueAtTime(520, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(220, ctx.currentTime + 0.12)
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.07, ctx.currentTime + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.14)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.16)
+  }
+
+  useEffect(() => {
+    chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
+      if (typeof res.sensa_visual_voice_uri === "string") {
+        selectedVoiceURIRef.current = res.sensa_visual_voice_uri
+      }
+      if (typeof res.sensa_visual_voice_name === "string") {
+        selectedVoiceNameRef.current = res.sensa_visual_voice_name
+      }
+      voiceSettingsLoadedRef.current = true
+    })
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.sensa_visual_voice_uri && typeof changes.sensa_visual_voice_uri.newValue === "string") {
+        selectedVoiceURIRef.current = changes.sensa_visual_voice_uri.newValue
+      }
+      if (changes.sensa_visual_voice_name && typeof changes.sensa_visual_voice_name.newValue === "string") {
+        selectedVoiceNameRef.current = changes.sensa_visual_voice_name.newValue
+      }
+    }
+
+    chrome.storage.onChanged.addListener(handleStorageChange)
+    return () => {
+      chrome.storage.onChanged.removeListener(handleStorageChange)
+    }
+  }, [])
+
+  const speakWithResolvedVoice = (text: string, onDone: () => void) => {
+    if (!text.trim()) {
+      onDone()
+      return
+    }
+
+    if (!voiceSettingsLoadedRef.current) {
+      pendingUtteranceRef.current = text
+      if (voiceRetryTimerRef.current === null) {
+        voiceRetryTimerRef.current = window.setTimeout(() => {
+          voiceRetryTimerRef.current = null
+          const pending = pendingUtteranceRef.current
+          pendingUtteranceRef.current = null
+          if (pending && !narrationCanceledRef.current) {
+            speakWithResolvedVoice(pending, onDone)
+          }
+        }, 200)
+      }
+      return
+    }
+
+    const voices = window.speechSynthesis.getVoices()
+    if (!voices.length) {
+      pendingUtteranceRef.current = text
+      if (voiceRetryTimerRef.current === null) {
+        voiceRetryTimerRef.current = window.setTimeout(() => {
+          voiceRetryTimerRef.current = null
+          const pending = pendingUtteranceRef.current
+          pendingUtteranceRef.current = null
+          if (pending && !narrationCanceledRef.current) {
+            speakWithResolvedVoice(pending, onDone)
+          }
+        }, 300)
+      }
+      window.speechSynthesis.onvoiceschanged = () => {
+        const pending = pendingUtteranceRef.current
+        pendingUtteranceRef.current = null
+        if (pending && !narrationCanceledRef.current) {
+          speakWithResolvedVoice(pending, onDone)
+        }
+      }
+      return
+    }
+
+    const preferredVoice =
+      voices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
+      voices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
+      voices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current))
+
+    if (!preferredVoice && (selectedVoiceURIRef.current || selectedVoiceNameRef.current)) {
+      pendingUtteranceRef.current = text
+      if (voiceReadyRetryRef.current === null) {
+        let attempts = 0
+        voiceReadyRetryRef.current = window.setInterval(() => {
+          if (narrationCanceledRef.current) {
+            window.clearInterval(voiceReadyRetryRef.current as number)
+            voiceReadyRetryRef.current = null
+            return
+          }
+
+          const refreshedVoices = window.speechSynthesis.getVoices()
+          const readyVoice =
+            refreshedVoices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
+            refreshedVoices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
+            refreshedVoices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current))
+
+          if (readyVoice || attempts++ >= 20) {
+            window.clearInterval(voiceReadyRetryRef.current as number)
+            voiceReadyRetryRef.current = null
+            const pending = pendingUtteranceRef.current
+            pendingUtteranceRef.current = null
+            if (pending && !narrationCanceledRef.current) {
+              speakWithResolvedVoice(pending, onDone)
+            }
+          }
+        }, 200)
+      }
+      return
+    }
+
+    window.speechSynthesis.cancel()
+
+    const utterance = new SpeechSynthesisUtterance(text)
+    if (preferredVoice) {
+      utterance.voice = preferredVoice
+      utterance.lang = preferredVoice.lang
+    }
+
+    utterance.onend = () => {
+      if (narrationCanceledRef.current) return
+      onDone()
+    }
+    utterance.onerror = () => {
+      if (narrationCanceledRef.current) return
+      onDone()
+    }
+
+    window.speechSynthesis.speak(utterance)
+  }
+
+  useEffect(() => {
+    if (narrationStageRef.current !== "idle") return
+
+    narrationStageRef.current = "titleDone"
+    narrationCanceledRef.current = false
+
+    speakWithResolvedVoice(titleText, () => {
+      setStartDescription(true)
+    })
+
+    return () => {
+      narrationCanceledRef.current = true
+      window.speechSynthesis.cancel()
+      if (voiceReadyRetryRef.current !== null) {
+        window.clearInterval(voiceReadyRetryRef.current)
+        voiceReadyRetryRef.current = null
+      }
+    }
+  }, [titleText])
+
+  useEffect(() => {
+    if (!startDescription) return
+    if (typedDescriptionCount >= descriptionWords.length) return
+
+    const timer = window.setTimeout(() => {
+      setTypedDescriptionCount((count) => Math.min(count + 1, descriptionWords.length))
+    }, 140)
+
+    return () => window.clearTimeout(timer)
+  }, [descriptionWords.length, startDescription, typedDescriptionCount])
+
+  useEffect(() => {
+    if (!startDescription) return
+    if (typedDescriptionCount === 0) return
+    playTypingSfx()
+  }, [startDescription, typedDescriptionCount])
+
+  useEffect(() => {
+    if (!startDescription) return
+    if (typedDescriptionCount < descriptionWords.length) return
+    if (narrationStageRef.current !== "titleDone") return
+
+    narrationStageRef.current = "descriptionDone"
+    speakWithResolvedVoice(descriptionText, () => {
+      setStartSubtitle(true)
+    })
+  }, [descriptionText, descriptionWords.length, startDescription, typedDescriptionCount])
+
+  useEffect(() => {
+    if (!startSubtitle) return
+    if (typedWordCount >= subtitleWords.length) return
+
+    const timer = window.setTimeout(() => {
+      setTypedWordCount((count) => Math.min(count + 1, subtitleWords.length))
+    }, 140)
+
+    return () => window.clearTimeout(timer)
+  }, [startSubtitle, subtitleWords.length, typedWordCount])
+
+  useEffect(() => {
+    if (!startSubtitle) return
+    if (typedWordCount === 0) return
+    playTypingSfx()
+  }, [startSubtitle, typedWordCount])
+
+  useEffect(() => {
+    if (!startSubtitle) return
+    if (typedWordCount < subtitleWords.length) return
+    if (narrationStageRef.current !== "descriptionDone") return
+
+    narrationStageRef.current = "subtitleDone"
+    speakWithResolvedVoice(subtitleText, () => {
+      const revealAndSpeak = (index: number) => {
+        if (index >= 2) {
+          narrationStageRef.current = "cardsDone"
+          return
+        }
+
+        playPopSfx()
+        setVisibleCards(index + 1)
+        const line = index === 0 ? visualCardText : auditoryCardText
+        speakWithResolvedVoice(line, () => {
+          revealAndSpeak(index + 1)
+        })
+      }
+
+      revealAndSpeak(0)
+    })
+  }, [auditoryCardText, startSubtitle, subtitleText, subtitleWords.length, typedWordCount, visualCardText])
+
+  useEffect(() => {
+    return () => {
+      narrationCanceledRef.current = true
+      window.speechSynthesis.cancel()
+      if (voiceReadyRetryRef.current !== null) {
+        window.clearInterval(voiceReadyRetryRef.current)
+        voiceReadyRetryRef.current = null
+      }
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => undefined)
+        audioCtxRef.current = null
+      }
+    }
+  }, [])
+
   return (
-    <div className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] px-6 py-4 flex flex-col items-center justify-center font-sans select-none relative overflow-hidden transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-gray-200' : 'bg-gray-50 text-black'}`}>
+    <div className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] px-6 pt-5 pb-4 flex flex-col items-center justify-start font-sans select-none relative overflow-hidden transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-gray-200' : 'bg-gray-50 text-black'}`}>
       
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes pop-in {
+          0% { opacity: 0; transform: translateY(10px) scale(0.98); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .animate-pop { animation: pop-in 0.7s cubic-bezier(0.23,1,0.32,1) forwards; opacity: 0; }
+      `}} />
+
       {/* 🚨 CSS INJECTION FOR AMBIENT DUAL-TONE ORBS */}
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes float-blue {
@@ -65,35 +384,44 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
       <div className="relative z-10 w-full flex flex-col items-center">
         
         {/* 🌟 Brand Header */}
-        <div className="flex flex-col items-center gap-0 mb-0 transform-gpu">
+        <div className="flex flex-col items-center gap-1 mb-2 transform-gpu">
           <img 
             src={sensaLogo} 
             alt="Sensa Logo" 
-            className="w-[120px] h-[120px] object-contain drop-shadow-md animate-logo-light" 
+            className="w-[92px] h-[92px] object-contain drop-shadow-md animate-logo-light" 
           />
-          <h1 className={`text-[28px] font-black tracking-tight leading-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          <h1 className={`text-[26px] font-black tracking-tight leading-tight animate-pop ${isDark ? 'text-white' : 'text-gray-900'}`} style={{ animationDelay: "0.05s" }}>
             Welcome to Sensa
           </h1>
-          <p className={`text-[15px] font-medium text-center mb-5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            Select your primary accessibility mode
+          <p className={`text-[12.5px] font-medium text-center leading-relaxed mb-2 animate-pop ${isDark ? 'text-gray-300' : 'text-gray-600'}`} style={{ animationDelay: "0.1s" }}>
+            {typedDescription}
+          </p>
+          <p className={`text-[13px] font-semibold text-center leading-snug mb-6 animate-pop ${isDark ? 'text-gray-400' : 'text-gray-500'}`} style={{ animationDelay: "0.16s" }}>
+            {typedSubtitle}
           </p>
         </div>
 
-        <div className="w-full flex flex-col gap-3">
+        <div className="w-full flex flex-col gap-4">
 
           {/* ========================================================= */}
           {/* 👁️ VISUAL MODE CARD (Sensa Blue) */}
           {/* ========================================================= */}
-          <button
-            onClick={() => onSelectMode("visual")}
-            className={`w-full group relative flex items-center p-5 rounded-[24px] border-[3px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 active:scale-95 ${springTransition}
-              ${isDark 
-                ? 'bg-[#2C2C2E] border-gray-700 hover:border-[#0A44FF] hover:bg-[#2C2C2E] shadow-lg hover:shadow-[0_12px_30px_rgba(10,68,255,0.25)]' 
-                : 'bg-white border-white hover:border-[#0A44FF] shadow-[0_4px_20px_rgba(0,0,0,0.05)] hover:shadow-[0_12px_30px_rgba(10,68,255,0.2)]'
-              }`}
-          >
+          {visibleCards >= 1 && (
+            <button
+              onClick={() => onSelectMode("visual")}
+              onMouseEnter={() => playHoverAudio("Visual Mode. Support low vision with guided reading and spoken cues.")}
+              onFocus={() => playHoverAudio("Visual Mode. Support low vision with guided reading and spoken cues.")}
+              onMouseLeave={cancelHoverAudio}
+              onBlur={cancelHoverAudio}
+              className={`w-full group relative flex items-center p-5 rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 active:scale-95 animate-pop ${springTransition}
+                ${isDark 
+                  ? 'bg-[#24262B] border-[#3A3F4A] hover:border-[#0A44FF] hover:bg-[#262A31] shadow-[0_10px_26px_rgba(0,0,0,0.35)] hover:shadow-[0_14px_32px_rgba(10,68,255,0.28)]' 
+                  : 'bg-white border-[#E2E6F0] hover:border-[#0A44FF] shadow-[0_8px_22px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_28px_rgba(10,68,255,0.2)]'
+                }`}
+              style={{ animationDelay: "0.2s" }}
+            >
             {/* Card Icon */}
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 mr-4 ${springTransition} group-hover:scale-110 ${isDark ? 'bg-[#0A44FF]/20 text-[#3B82F6]' : 'bg-[#0A44FF]/10 text-[#0A44FF]'}`}>
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 mr-4 ${springTransition} group-hover:scale-110 ${isDark ? 'bg-[#0A44FF]/22 text-[#6AA2FF]' : 'bg-[#0A44FF]/12 text-[#0A44FF]'}`}>
               <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
                 <circle cx="12" cy="12" r="3" />
@@ -102,28 +430,35 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
             
             {/* Card Text */}
             <div className="flex flex-col">
-              <h2 className={`text-[19px] font-black tracking-tight mb-0.5 ${springTransition} ${isDark ? 'text-white group-hover:text-[#3B82F6]' : 'text-gray-900 group-hover:text-[#0A44FF]'}`}>
+              <h2 className={`text-[18px] font-extrabold tracking-tight mb-0.5 ${springTransition} ${isDark ? 'text-white group-hover:text-[#6AA2FF]' : 'text-gray-900 group-hover:text-[#0A44FF]'}`}>
                 Visual Mode
               </h2>
-              <p className={`text-[13px] font-medium leading-snug ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                Optimize for low vision with auditory navigation & reading.
+              <p className={`text-[12.5px] font-medium leading-snug ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                Support low vision with guided reading and spoken cues.
               </p>
             </div>
-          </button>
+            </button>
+          )}
 
           {/* ========================================================= */}
           {/* 🦻 AUDITORY MODE CARD (Sensa Orange) */}
           {/* ========================================================= */}
-          <button
-            onClick={() => onSelectMode("auditory")}
-            className={`w-full group relative flex items-center p-5 rounded-[24px] border-[3px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 active:scale-95 ${springTransition}
-              ${isDark 
-                ? 'bg-[#2C2C2E] border-gray-700 hover:border-[#FF7A2F] hover:bg-[#2C2C2E] shadow-lg hover:shadow-[0_12px_30px_rgba(255,122,47,0.25)]' 
-                : 'bg-white border-white hover:border-[#FF7A2F] shadow-[0_4px_20px_rgba(0,0,0,0.05)] hover:shadow-[0_12px_30px_rgba(255,122,47,0.2)]'
-              }`}
-          >
+          {visibleCards >= 2 && (
+            <button
+              onClick={() => onSelectMode("auditory")}
+              onMouseEnter={() => playHoverAudio("Auditory Mode. Support hearing loss with live captions and sound visualizer.")}
+              onFocus={() => playHoverAudio("Auditory Mode. Support hearing loss with live captions and sound visualizer.")}
+              onMouseLeave={cancelHoverAudio}
+              onBlur={cancelHoverAudio}
+              className={`w-full group relative flex items-center p-5 rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 active:scale-95 animate-pop ${springTransition}
+                ${isDark 
+                  ? 'bg-[#24262B] border-[#3A3F4A] hover:border-[#FF7A2F] hover:bg-[#262A31] shadow-[0_10px_26px_rgba(0,0,0,0.35)] hover:shadow-[0_14px_32px_rgba(255,122,47,0.28)]' 
+                  : 'bg-white border-[#E2E6F0] hover:border-[#FF7A2F] shadow-[0_8px_22px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_28px_rgba(255,122,47,0.2)]'
+                }`}
+              style={{ animationDelay: "0.28s" }}
+            >
             {/* Card Icon */}
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 mr-4 ${springTransition} group-hover:scale-110 ${isDark ? 'bg-[#FF7A2F]/20 text-[#FF9660]' : 'bg-[#FF7A2F]/10 text-[#FF7A2F]'}`}>
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 mr-4 ${springTransition} group-hover:scale-110 ${isDark ? 'bg-[#FF7A2F]/22 text-[#FFC09B]' : 'bg-[#FF7A2F]/12 text-[#FF7A2F]'}`}>
               <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0"/>
                 <path d="M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4"/>
@@ -132,14 +467,15 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
             
             {/* Card Text */}
             <div className="flex flex-col">
-              <h2 className={`text-[19px] font-black tracking-tight mb-0.5 ${springTransition} ${isDark ? 'text-white group-hover:text-[#FF9660]' : 'text-gray-900 group-hover:text-[#FF7A2F]'}`}>
+              <h2 className={`text-[18px] font-extrabold tracking-tight mb-0.5 ${springTransition} ${isDark ? 'text-white group-hover:text-[#FFC09B]' : 'text-gray-900 group-hover:text-[#FF7A2F]'}`}>
                 Auditory Mode
               </h2>
-              <p className={`text-[13px] font-medium leading-snug ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                Optimize for hearing impairments with live captions & alerts.
+              <p className={`text-[12.5px] font-medium leading-snug ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                Support hearing loss with live captions and sound visualizer.
               </p>
             </div>
-          </button>
+            </button>
+          )}
 
         </div>
       </div>

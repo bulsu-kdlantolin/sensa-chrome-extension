@@ -5,6 +5,8 @@ export function useUIHoverAudio() {
 	const isHoverSpeakingRef = useRef(false)
 	const selectedVoiceURIRef = useRef<string>("")
 	const selectedVoiceNameRef = useRef<string>("")
+	const pendingUtteranceRef = useRef<string | null>(null)
+	const voiceRetryTimerRef = useRef<number | null>(null)
 
 	useEffect(() => {
 		chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
@@ -41,6 +43,25 @@ export function useUIHoverAudio() {
 	const speakWithResolvedVoice = useCallback((text: string) => {
 		if (!text.trim()) return
 
+		const availableVoices = window.speechSynthesis.getVoices()
+		if (!availableVoices.length) {
+			pendingUtteranceRef.current = text
+			if (voiceRetryTimerRef.current === null) {
+				voiceRetryTimerRef.current = window.setTimeout(() => {
+					voiceRetryTimerRef.current = null
+					const pending = pendingUtteranceRef.current
+					pendingUtteranceRef.current = null
+					if (pending) speakWithResolvedVoice(pending)
+				}, 300)
+			}
+			window.speechSynthesis.onvoiceschanged = () => {
+				const pending = pendingUtteranceRef.current
+				pendingUtteranceRef.current = null
+				if (pending) speakWithResolvedVoice(pending)
+			}
+			return
+		}
+
 		// If another non-hover speech flow is active, defer speaking until it's finished.
 		if ((window.speechSynthesis.speaking || window.speechSynthesis.pending) && !isHoverSpeakingRef.current) {
 			let retries = 0
@@ -68,15 +89,16 @@ export function useUIHoverAudio() {
 			}
 
 			const utterance = new SpeechSynthesisUtterance(msg)
-		const availableVoices = window.speechSynthesis.getVoices()
-		const preferredVoice =
-			availableVoices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
-			availableVoices.find((voice) => voice.name === selectedVoiceNameRef.current)
+			const voices = window.speechSynthesis.getVoices()
+			const preferredVoice =
+				voices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
+				voices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
+				voices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current))
 
-		if (preferredVoice) {
-			utterance.voice = preferredVoice
-			utterance.lang = preferredVoice.lang
-		}
+			if (preferredVoice) {
+				utterance.voice = preferredVoice
+				utterance.lang = preferredVoice.lang
+			}
 
 		utterance.onstart = () => {
 			isHoverSpeakingRef.current = true
