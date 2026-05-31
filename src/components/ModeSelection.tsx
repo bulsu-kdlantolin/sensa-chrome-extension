@@ -91,6 +91,26 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     osc.stop(ctx.currentTime + 0.16)
   }
 
+  const playHoverSfx = () => {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = "sine"
+    osc.frequency.setValueAtTime(720, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(420, ctx.currentTime + 0.08)
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.015)
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.1)
+  }
+
   useEffect(() => {
     chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
       if (typeof res.sensa_visual_voice_uri === "string") {
@@ -217,6 +237,20 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     window.speechSynthesis.speak(utterance)
   }
 
+  const speakCardSequence = (index: number) => {
+    if (index >= 2) {
+      narrationStageRef.current = "cardsDone"
+      return
+    }
+
+    playPopSfx()
+    setVisibleCards(index + 1)
+    const line = index === 0 ? visualCardText : auditoryCardText
+    speakWithResolvedVoice(line, () => {
+      speakCardSequence(index + 1)
+    })
+  }
+
   useEffect(() => {
     if (narrationStageRef.current !== "idle") return
 
@@ -289,21 +323,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
 
     narrationStageRef.current = "subtitleDone"
     speakWithResolvedVoice(subtitleText, () => {
-      const revealAndSpeak = (index: number) => {
-        if (index >= 2) {
-          narrationStageRef.current = "cardsDone"
-          return
-        }
-
-        playPopSfx()
-        setVisibleCards(index + 1)
-        const line = index === 0 ? visualCardText : auditoryCardText
-        speakWithResolvedVoice(line, () => {
-          revealAndSpeak(index + 1)
-        })
-      }
-
-      revealAndSpeak(0)
+      speakCardSequence(0)
     })
   }, [auditoryCardText, startSubtitle, subtitleText, subtitleWords.length, typedWordCount, visualCardText])
 
@@ -322,8 +342,74 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     }
   }, [])
 
+  useEffect(() => {
+    const resumeAudio = () => {
+      const ctx = getAudioContext()
+      if (ctx && ctx.state === "suspended") {
+        ctx.resume().catch(() => undefined)
+      }
+    }
+
+    window.addEventListener("pointerdown", resumeAudio)
+    window.addEventListener("keydown", resumeAudio)
+    return () => {
+      window.removeEventListener("pointerdown", resumeAudio)
+      window.removeEventListener("keydown", resumeAudio)
+    }
+  }, [])
+
+  const handleSkipStep = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement
+    if (target.closest("button")) return
+
+    window.speechSynthesis.cancel()
+
+    if (narrationStageRef.current === "idle") {
+      narrationStageRef.current = "titleDone"
+      setStartDescription(true)
+      setTypedDescriptionCount(descriptionWords.length)
+      return
+    }
+
+    if (!startDescription) {
+      setStartDescription(true)
+      setTypedDescriptionCount(descriptionWords.length)
+      return
+    }
+
+    if (typedDescriptionCount < descriptionWords.length) {
+      setTypedDescriptionCount(descriptionWords.length)
+      return
+    }
+
+    if (!startSubtitle) {
+      setStartSubtitle(true)
+      setTypedWordCount(subtitleWords.length)
+      return
+    }
+
+    if (typedWordCount < subtitleWords.length) {
+      setTypedWordCount(subtitleWords.length)
+      return
+    }
+
+    if (narrationStageRef.current === "subtitleDone") {
+      if (visibleCards < 1) {
+        setVisibleCards(1)
+        return
+      }
+      if (visibleCards < 2) {
+        setVisibleCards(2)
+        return
+      }
+    }
+  }
+
   return (
-    <div className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] px-6 pt-5 pb-4 flex flex-col items-center justify-start font-sans select-none relative overflow-hidden transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-gray-200' : 'bg-gray-50 text-black'}`}>
+    <div
+      className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] px-6 pt-5 pb-4 flex flex-col items-center justify-start font-sans select-none relative overflow-hidden transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-gray-200' : 'bg-gray-50 text-black'}`}
+      onClick={handleSkipStep}
+    >
       
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes pop-in {
@@ -409,8 +495,8 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
           {visibleCards >= 1 && (
             <button
               onClick={() => onSelectMode("visual")}
-              onMouseEnter={() => playHoverAudio("Visual Mode. Support low vision with guided reading and spoken cues.")}
-              onFocus={() => playHoverAudio("Visual Mode. Support low vision with guided reading and spoken cues.")}
+              onMouseEnter={() => { playHoverSfx(); playHoverAudio("Visual Mode. Support low vision with guided reading and spoken cues.") }}
+              onFocus={() => { playHoverSfx(); playHoverAudio("Visual Mode. Support low vision with guided reading and spoken cues.") }}
               onMouseLeave={cancelHoverAudio}
               onBlur={cancelHoverAudio}
               className={`w-full group relative flex items-center p-5 rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 active:scale-95 animate-pop ${springTransition}
@@ -446,8 +532,8 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
           {visibleCards >= 2 && (
             <button
               onClick={() => onSelectMode("auditory")}
-              onMouseEnter={() => playHoverAudio("Auditory Mode. Support hearing loss with live captions and sound visualizer.")}
-              onFocus={() => playHoverAudio("Auditory Mode. Support hearing loss with live captions and sound visualizer.")}
+              onMouseEnter={() => { playHoverSfx(); playHoverAudio("Auditory Mode. Support hearing loss with live captions and sound visualizer.") }}
+              onFocus={() => { playHoverSfx(); playHoverAudio("Auditory Mode. Support hearing loss with live captions and sound visualizer.") }}
               onMouseLeave={cancelHoverAudio}
               onBlur={cancelHoverAudio}
               className={`w-full group relative flex items-center p-5 rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 active:scale-95 animate-pop ${springTransition}

@@ -4,6 +4,88 @@ export default function VisualMode() {
   const [isListening, setIsListening] = useState(false)
   const selectedVoiceURIRef = useRef("")
   const selectedVoiceNameRef = useRef("")
+  const audioCtxRef = useRef<AudioContext | null>(null)
+
+  const getAudioContext = () => {
+    if (!audioCtxRef.current) {
+      const Ctor = window.AudioContext || (window as any).webkitAudioContext
+      audioCtxRef.current = Ctor ? new Ctor() : null
+    }
+
+    if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
+      audioCtxRef.current.resume().catch(() => undefined)
+    }
+
+    return audioCtxRef.current
+  }
+
+  const playHoverSfx = () => {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = "sine"
+    osc.frequency.setValueAtTime(720, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(420, ctx.currentTime + 0.08)
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.015)
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.1)
+  }
+
+  const playActivateSfx = () => {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const makeClick = (freq: number, startAt: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.type = "square"
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + startAt)
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + startAt)
+      gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + startAt + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.05)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(ctx.currentTime + startAt)
+      osc.stop(ctx.currentTime + startAt + 0.06)
+    }
+
+    makeClick(900, 0)
+    makeClick(1200, 0.07)
+  }
+
+  const playDeactivateSfx = () => {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const makeClick = (freq: number, startAt: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.type = "triangle"
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + startAt)
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + startAt)
+      gain.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime + startAt + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.06)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(ctx.currentTime + startAt)
+      osc.stop(ctx.currentTime + startAt + 0.07)
+    }
+
+    makeClick(720, 0)
+    makeClick(480, 0.08)
+  }
 
   const waitForVoices = () =>
     new Promise<SpeechSynthesisVoice[]>((resolve) => {
@@ -91,6 +173,34 @@ export default function VisualMode() {
   }, [])
 
   useEffect(() => {
+    const resumeAudio = () => {
+      const ctx = getAudioContext()
+      if (ctx && ctx.state === "suspended") {
+        ctx.resume().catch(() => undefined)
+      }
+    }
+
+    window.addEventListener("pointerdown", resumeAudio)
+    window.addEventListener("keydown", resumeAudio)
+    return () => {
+      window.removeEventListener("pointerdown", resumeAudio)
+      window.removeEventListener("keydown", resumeAudio)
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => undefined)
+        audioCtxRef.current = null
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    chrome.storage.local.get(["sensa_visual_entered_from_welcome"], (res) => {
+      if (!res.sensa_visual_entered_from_welcome) return
+      chrome.storage.local.set({ sensa_visual_entered_from_welcome: false })
+      void speakFeedback("We are now in the Visual Mode interface")
+    })
+  }, [])
+
+  useEffect(() => {
     chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
       if (typeof res.sensa_visual_voice_uri === "string") {
         selectedVoiceURIRef.current = res.sensa_visual_voice_uri
@@ -116,6 +226,11 @@ export default function VisualMode() {
   }, [])
 
   const handleToggle = () => {
+    if (isListening) {
+      playDeactivateSfx()
+    } else {
+      playActivateSfx()
+    }
     const newState = !isListening
     setIsListening(newState)
     chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: newState ? "visual" : null })
@@ -125,6 +240,10 @@ export default function VisualMode() {
     })
 
     void speakFeedback(newState ? "Visual mode activated" : "Visual mode deactivated")
+  }
+
+  const handleHoverSpeak = () => {
+    void speakFeedback(isListening ? "Deactivate Visual Mode" : "Activate Visual Mode")
   }
 
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
@@ -169,6 +288,14 @@ export default function VisualMode() {
           <button
             style={{ WebkitTapHighlightColor: 'transparent' }}
             onClick={handleToggle}
+            onMouseEnter={() => {
+              playHoverSfx()
+              handleHoverSpeak()
+            }}
+            onFocus={() => {
+              playHoverSfx()
+              handleHoverSpeak()
+            }}
             aria-pressed={isListening}
             aria-label={isListening ? "Deactivate Visual Mode" : "Activate Visual Mode"}
             className={`w-[136px] h-[136px] shrink-0 rounded-full flex items-center justify-center relative group outline-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-offset-4 focus-visible:ring-[#0A44FF]/60 transform-gpu active:scale-90 ${springTransition}

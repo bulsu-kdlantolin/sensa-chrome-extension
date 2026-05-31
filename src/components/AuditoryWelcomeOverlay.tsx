@@ -25,6 +25,10 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
           0% { opacity: 0; transform: translateY(24px); }
           100% { opacity: 1; transform: translateY(0); }
         }
+        @keyframes pop-in {
+          0% { opacity: 0; transform: translateY(10px) scale(0.98); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
         
         .animate-float-orange-1 { animation: float-orange-1 8s ease-in-out infinite; }
         .animate-float-orange-2 { animation: float-orange-2 8s ease-in-out infinite 0.5s; }
@@ -33,6 +37,8 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
         .fade-in-2 { animation: fade-in-up 0.8s cubic-bezier(0.23,1,0.32,1) 0.2s forwards; opacity: 0; }
         .fade-in-3 { animation: fade-in-up 0.8s cubic-bezier(0.23,1,0.32,1) 0.3s forwards; opacity: 0; }
         .fade-in-4 { animation: fade-in-up 0.8s cubic-bezier(0.23,1,0.32,1) 0.4s forwards; opacity: 0; }
+        .pop-in-1 { animation: pop-in 0.7s cubic-bezier(0.23,1,0.32,1) 0.3s forwards; opacity: 0; }
+        .pop-in-2 { animation: pop-in 0.7s cubic-bezier(0.23,1,0.32,1) 0.45s forwards; opacity: 0; }
       `}} />
 
       {/* 🌌 AMBIENT ORANGE BACKGROUND ENGINE */}
@@ -48,7 +54,7 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
             Auditory Mode
           </h1>
           <p className={`text-[16px] font-semibold text-center leading-snug fade-in-2 px-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            Sensa will provide live captions and visualize environmental sounds for you.
+            Sensa provides live captions and visual sound insights for you.
           </p>
         </div>
 
@@ -56,14 +62,12 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
         <div className="grid grid-cols-1 gap-3 w-full mt-auto mb-auto fade-in-3">
           
           {/* Live Captions Card */}
-          <div className={`flex items-center gap-4 rounded-[20px] px-4 py-4 shadow-md transition-colors ${isDark ? 'bg-[#2C2C2E] border-2 border-gray-700' : 'bg-white border-2 border-transparent'}`}>
+          <div className={`flex items-center gap-4 rounded-[20px] px-4 py-4 shadow-md transition-colors pop-in-1 ${isDark ? 'bg-[#2C2C2E] border-2 border-gray-700' : 'bg-white border-2 border-transparent'}`}>
             <div className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center text-[#FF7A2F] ${isDark ? 'bg-[#FF7A2F]/20' : 'bg-[#FF7A2F]/10'}`}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-                <rect x="3" y="6" width="18" height="12" rx="2" />
-                <path d="M10 10.5a2.5 2.5 0 0 0-3.5 0" />
-                <path d="M10 13.5a2.5 2.5 0 0 1-3.5 0" />
-                <path d="M17.5 10.5a2.5 2.5 0 0 0-3.5 0" />
-                <path d="M17.5 13.5a2.5 2.5 0 0 1-3.5 0" />
+              <svg viewBox="0 0 24 24" className="w-7 h-7" aria-hidden="true">
+                <rect x="3" y="6" width="18" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
+                <text x="7" y="15" fill="currentColor" fontSize="6.5" fontWeight="700" fontFamily="system-ui, sans-serif">C</text>
+                <text x="12.5" y="15" fill="currentColor" fontSize="6.5" fontWeight="700" fontFamily="system-ui, sans-serif">C</text>
               </svg>
             </div>
             <div className="flex flex-col">
@@ -73,17 +77,17 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
           </div>
 
           {/* Sound Visualization Card */}
-          <div className={`flex items-center gap-4 rounded-[20px] px-4 py-4 shadow-md transition-colors ${isDark ? 'bg-[#2C2C2E] border-2 border-gray-700' : 'bg-white border-2 border-transparent'}`}>
+          <div className={`flex items-center gap-4 rounded-[20px] px-4 py-4 shadow-md transition-colors pop-in-2 ${isDark ? 'bg-[#2C2C2E] border-2 border-gray-700' : 'bg-white border-2 border-transparent'}`}>
             <div className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center text-[#FF7A2F] ${isDark ? 'bg-[#FF7A2F]/20' : 'bg-[#FF7A2F]/10'}`}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-                <path d="M 6 8 A 6 6 0 0 1 6 16" />
-                <path d="M 10 4 A 11 11 0 0 1 10 20" />
-                <path d="M 14 0 A 16 16 0 0 1 14 24" />
+              <svg viewBox="0 0 28 28" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7">
+                <path d="M 7 10 A 5 5 0 0 1 7 18" />
+                <path d="M 12 6 A 9 9 0 0 1 12 22" />
+                <path d="M 17 2 A 13 13 0 0 1 17 26" />
               </svg>
             </div>
             <div className="flex flex-col">
               <p className={`text-[15px] font-black uppercase tracking-wide leading-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>Sound Alerts</p>
-              <p className={`text-[13px] font-medium leading-snug mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Visualize background audio and environmental cues.</p>
+              <p className={`text-[13px] font-medium leading-snug mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Visualize audio activity with clear visual cues.</p>
             </div>
           </div>
 

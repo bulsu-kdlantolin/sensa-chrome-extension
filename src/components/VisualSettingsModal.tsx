@@ -26,6 +26,9 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>("")
+  const defaultVoiceURIRef = useRef<string>("")
+  const defaultVoiceLabelRef = useRef<string>("")
+  const defaultVoiceAppliedRef = useRef(false)
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false)
 
   const [isMounted, setIsMounted] = useState(false)
@@ -169,12 +172,25 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     const loadVoices = () => {
       const availableVoices = window.speechSynthesis.getVoices()
       if (availableVoices.length > 0) {
+        const defaultVoice = availableVoices.find((v) => v.name.includes("Google US English")) || availableVoices[0]
+        defaultVoiceURIRef.current = defaultVoice?.voiceURI || ""
+        defaultVoiceLabelRef.current = defaultVoice?.name || ""
+
         setVoices(availableVoices)
         setSelectedVoiceURI((prev) => {
           if (prev) return prev
-          const defaultVoice = availableVoices.find(v => v.name.includes("Google US English")) || availableVoices[0]
           return defaultVoice?.voiceURI || ""
         })
+
+        if (defaultVoice?.voiceURI && !defaultVoiceAppliedRef.current) {
+          chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (stored) => {
+            const hasStored = typeof stored.sensa_visual_voice_uri === "string" && stored.sensa_visual_voice_uri.length > 0
+            if (!hasStored) {
+              chrome.storage.local.set({ sensa_visual_voice_uri: defaultVoice.voiceURI, sensa_visual_voice_name: defaultVoice.name || "" })
+            }
+            defaultVoiceAppliedRef.current = true
+          })
+        }
       }
     }
     loadVoices()
@@ -608,7 +624,14 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
                   aria-haspopup="listbox"
                   aria-expanded={isVoiceDropdownOpen}
                 >
-                  <span className="block truncate">{voices.find(v => v.voiceURI === selectedVoiceURI)?.name || "Loading..."}</span>
+                  <span className="block truncate">
+                    {(() => {
+                      const selected = voices.find((v) => v.voiceURI === selectedVoiceURI)
+                      if (!selected) return "Loading..."
+                      const isDefault = selected.voiceURI === defaultVoiceURIRef.current
+                      return `${selected.name}${isDefault ? " (Default)" : ""}`
+                    })()}
+                  </span>
                   <div className={`pointer-events-none absolute inset-y-0 right-3 flex items-center ${secondaryText}`}>
                     <svg className={`fill-current h-4 w-4 transition-transform duration-300 ${isVoiceDropdownOpen ? "rotate-180" : ""}`} viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
                   </div>
@@ -619,14 +642,16 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
                     <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }} />
                     <ul className={`absolute right-0 z-50 mt-2 w-[240px] max-h-56 overflow-y-auto ${modalBg} border ${inputBorder} rounded-xl shadow-2xl py-2 text-[13px] custom-scrollbar`} role="listbox">
                       {voices.map((voice) => (
-                        <li
-                          key={voice.voiceURI} role="option" aria-selected={selectedVoiceURI === voice.voiceURI}
+                        <li 
+                          key={voice.voiceURI}
+                          role="option"
+                          aria-selected={selectedVoiceURI === voice.voiceURI}
+                          className={`px-4 py-2.5 cursor-pointer block w-full text-left truncate transition-all font-medium m-1 rounded-lg ${selectedVoiceURI === voice.voiceURI ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white shadow-md" : isDark ? "text-gray-200 hover:bg-[#0A44FF]/20 hover:text-[#0A44FF]" : "text-gray-700 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF]"}`}
                           onMouseEnter={() => previewVoice(voice)}
                           onClick={() => { handleVoiceChange(voice.voiceURI); setIsVoiceDropdownOpen(false); playClickAudio(`${voice.name} selected`); window.speechSynthesis.cancel() }}
-                          // 🚨 THE FIX: Removed margin, added full block padding so the entire horizontal row triggers the hover preview
-                          className={`px-4 py-3 cursor-pointer block w-full text-left truncate transition-colors font-medium border-b ${dividerClass} last:border-0 ${selectedVoiceURI === voice.voiceURI ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white" : isDark ? "text-gray-200 hover:bg-[#0A44FF]/20 hover:text-[#0A44FF]" : "text-gray-700 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF]"}`}
+                          style={{ fontFamily: `"${voice.name}", system-ui, sans-serif` }}
                         >
-                          {voice.name}
+                          {voice.name}{voice.voiceURI === defaultVoiceURIRef.current ? " (Default)" : ""}
                         </li>
                       ))}
                     </ul>
