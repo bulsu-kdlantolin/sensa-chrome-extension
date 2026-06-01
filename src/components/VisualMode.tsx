@@ -5,6 +5,7 @@ export default function VisualMode() {
   const selectedVoiceURIRef = useRef("")
   const selectedVoiceNameRef = useRef("")
   const audioCtxRef = useRef<AudioContext | null>(null)
+  const hoverSpeakLockRef = useRef(0)
 
   const getAudioContext = () => {
     if (!audioCtxRef.current) {
@@ -242,8 +243,23 @@ export default function VisualMode() {
     void speakFeedback(newState ? "Visual mode activated" : "Visual mode deactivated")
   }
 
+  const speakWithHoverLock = (message: string) => {
+    const now = Date.now()
+    if (now - hoverSpeakLockRef.current < 900) return
+    hoverSpeakLockRef.current = now
+    void speakFeedback(message)
+  }
+
+  const cancelHoverSpeak = () => {
+    window.speechSynthesis.cancel()
+  }
+
   const handleHoverSpeak = () => {
-    void speakFeedback(isListening ? "Deactivate Visual Mode" : "Activate Visual Mode")
+    speakWithHoverLock(isListening ? "Deactivate Visual Mode" : "Activate Visual Mode")
+  }
+
+  const handleHintHoverSpeak = () => {
+    speakWithHoverLock(isListening ? "Click or speak to deactivate" : "Click or speak to activate")
   }
 
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
@@ -272,7 +288,7 @@ export default function VisualMode() {
         .animate-visual-pulse-glow { animation: visual-pulse-glow 1.6s ease-in-out infinite backwards; }
       `}} />
 
-      <div className="flex flex-col items-center justify-center w-full relative z-10">
+      <div className="flex flex-col items-center justify-center w-full relative z-10 overflow-visible pb-2">
 
         <div className="flex items-center justify-center gap-6 mb-10 mt-4 w-full relative overflow-visible">
           
@@ -292,15 +308,17 @@ export default function VisualMode() {
               playHoverSfx()
               handleHoverSpeak()
             }}
+            onMouseLeave={cancelHoverSpeak}
             onFocus={() => {
               playHoverSfx()
               handleHoverSpeak()
             }}
+            onBlur={cancelHoverSpeak}
             aria-pressed={isListening}
             aria-label={isListening ? "Deactivate Visual Mode" : "Activate Visual Mode"}
             className={`w-[136px] h-[136px] shrink-0 rounded-full flex items-center justify-center relative group outline-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-offset-4 focus-visible:ring-[#0A44FF]/60 transform-gpu active:scale-90 ${springTransition}
               ${isListening 
-                ? "bg-[#0A44FF] scale-105 animate-visual-pulse-glow" 
+                ? "bg-[#0A44FF] animate-visual-pulse-glow" 
                 : "bg-[#0A44FF] ring-[10px] ring-[#0A44FF]/10 shadow-[0_16px_35px_rgba(0,0,0,0.15)] hover:scale-105 hover:bg-[#0836CC] hover:ring-[#0A44FF]/20"
               }`}
           >
@@ -335,7 +353,14 @@ export default function VisualMode() {
           </div>
         </div>
 
-        <h2 className={`relative transform-gpu text-[22px] font-semibold text-center whitespace-pre-line leading-relaxed tracking-wide transition-colors duration-500 ${isListening ? "text-[#0A44FF]" : "text-gray-500"}`}>
+        <h2
+          className={`relative transform-gpu text-[22px] font-semibold text-center whitespace-nowrap leading-relaxed tracking-wide transition-all duration-200 rounded-md px-2 py-1 cursor-default ${isListening ? "text-[#0A44FF]" : "text-gray-500"} hover:ring-2 hover:ring-[#0A44FF]/30 hover:shadow-[0_0_0_4px_rgba(10,68,255,0.12)]`}
+          onMouseEnter={handleHintHoverSpeak}
+          onMouseLeave={cancelHoverSpeak}
+          onFocus={handleHintHoverSpeak}
+          onBlur={cancelHoverSpeak}
+          tabIndex={0}
+        >
           {isListening ? "Click or Speak to Deactivate" : "Click or Speak to Activate"}
         </h2>
 

@@ -263,12 +263,12 @@ export default function AuditoryDock({
   
   // 🌟 PREMIUM GLASSMORPHISM: Merged your transform-gpu with Vercel's elegant gradients
   const glassPanelClass = isDark 
-    ? "bg-[#1C1C1E] shadow-[0_8px_32px_rgba(0,0,0,0.5)] transform-gpu backface-hidden" 
-    : "bg-white shadow-[0_8px_32px_rgba(0,0,0,0.1)] transform-gpu backface-hidden"
+    ? "bg-[#1C1C1E]/85 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-3xl transform-gpu backface-hidden" 
+    : "bg-white/90 shadow-[0_8px_32px_rgba(0,0,0,0.15)] backdrop-blur-3xl transform-gpu backface-hidden"
 
   const controlPanelClass = isDark
-    ? "bg-[#1C1C1E] border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.6)] transform-gpu backface-hidden"
-    : "bg-white border border-black/10 shadow-[0_8px_32px_rgba(0,0,0,0.15)] transform-gpu backface-hidden"
+    ? "bg-[#1C1C1E]/85 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-3xl transform-gpu backface-hidden"
+    : "bg-white/90 shadow-[0_8px_32px_rgba(0,0,0,0.15)] backdrop-blur-3xl transform-gpu backface-hidden"
     
   // 🌟 PREMIUM SPRING PHYSICS: Applied the snappy cubic-bezier to your exact button dimensions
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
@@ -308,10 +308,9 @@ export default function AuditoryDock({
         
         {/* ISOLATED GLOW LAYER */}
         <div 
-          className="sensa-dock-pill absolute inset-0 rounded-[28px] border-[1.5px] pointer-events-none transition-colors duration-150" 
+          className="sensa-dock-pill absolute inset-0 rounded-[28px] pointer-events-none transition-colors duration-150" 
           style={{ 
-            borderColor: isDark ? 'rgba(255,122,47,0.3)' : 'rgba(255,122,47,0.4)',
-            willChange: 'border-color, box-shadow' 
+            willChange: 'box-shadow' 
           }} 
         />
 
@@ -374,10 +373,9 @@ export default function AuditoryDock({
           >
             {/* ISOLATED GLOW LAYER */}
             <div 
-              className="sensa-dock-pill absolute inset-0 rounded-[28px] border-[1.5px] pointer-events-none transition-colors duration-150" 
+              className="sensa-dock-pill absolute inset-0 rounded-[28px] pointer-events-none transition-colors duration-150" 
               style={{ 
-                borderColor: isDark ? 'rgba(255,122,47,0.3)' : 'rgba(255,122,47,0.4)',
-                willChange: 'border-color, box-shadow' 
+                willChange: 'box-shadow' 
               }} 
             />
 
@@ -463,10 +461,9 @@ export default function AuditoryDock({
         
         {/* ISOLATED GLOW LAYER */}
         <div 
-          className="sensa-dock-pill absolute inset-0 rounded-[28px] border-[1.5px] pointer-events-none transition-colors duration-150" 
+          className="sensa-dock-pill absolute inset-0 rounded-[28px] pointer-events-none transition-colors duration-150" 
           style={{ 
-            borderColor: isDark ? 'rgba(255,122,47,0.3)' : 'rgba(255,122,47,0.4)',
-            willChange: 'border-color, box-shadow' 
+            willChange: 'box-shadow' 
           }} 
         />
 

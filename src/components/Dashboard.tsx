@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import sensaLogo from "data-base64:../../assets/sensa-logo.png"
 import VisualMode from "./VisualMode"
 import AuditoryMode from "./AuditoryMode"
+import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 // Small helper component: measured marquee label
 function WebsiteLabel({ label, isDark, syncColors, websiteStatus }: { label: string; isDark: boolean; syncColors: string; websiteStatus: string }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -103,6 +104,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ selectedMode, theme, onModeChange, onThemeChange, onReset }: DashboardProps) {
+  const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   const [currentViewMode, setCurrentViewMode] = useState<"visual" | "auditory">(selectedMode ?? "visual")
   const [websiteLabel, setWebsiteLabel] = useState("Detecting...")
   const [websiteStatus, setWebsiteStatus] = useState<"online" | "offline" | "unsupported">("offline")
@@ -117,6 +119,21 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
       requestAnimationFrame(() => setIsMounted(true))
     })
   }, [])
+
+  useEffect(() => {
+    if (!hasHydratedInitialMode) return
+    playClickAudio(currentViewMode === "visual" ? "Visual Mode Interface" : "Auditory Mode Interface")
+  }, [currentViewMode, hasHydratedInitialMode, playClickAudio])
+
+  const getHoverHandlers = (label: string) => ({
+    onMouseEnter: () => playHoverAudio(label),
+    onMouseLeave: cancelHoverAudio,
+    onFocus: () => playHoverAudio(label),
+    onBlur: cancelHoverAudio
+  })
+
+  const websiteHoverText = `Target website: ${websiteLabel}`
+  const extensionHoverText = `Extension Status: ${extensionStatus === "online" ? "Connected" : "Offline"}`
 
   useEffect(() => {
     chrome.storage.local.get(["sensa_last_tab"], (res) => {
@@ -302,6 +319,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
             onClick={() => handleViewSwap("visual")}
             className={`flex-1 relative z-10 flex items-center justify-center gap-2 font-black text-[15px] tracking-wide ${syncColors} focus-visible:outline-none rounded-full
               ${!isAuditory ? 'text-white' : (isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-800')}`}
+            {...getHoverHandlers("Visual Mode")}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-[18px] h-[18px]">
               <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
@@ -313,6 +331,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
             onClick={() => handleViewSwap("auditory")}
             className={`flex-1 relative z-10 flex items-center justify-center gap-2 font-black text-[15px] tracking-wide ${syncColors} focus-visible:outline-none rounded-full
               ${isAuditory ? 'text-white' : (isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-800')}`}
+            {...getHoverHandlers("Auditory Mode")}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-[18px] h-[18px]">
               <path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0"/>
@@ -347,8 +366,12 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
         <div className={`w-full flex items-center justify-center gap-4 px-5 py-3.5 rounded-[18px] transition-colors duration-500 text-center ${isDark ? 'bg-[#2C2C2E]/80 border border-white/5 shadow-[0_8px_24px_rgba(0,0,0,0.3)]' : 'bg-white border border-black/5 shadow-[0_8px_24px_rgba(0,0,0,0.06)]'}`}>
           
-          <div className="flex flex-col items-center overflow-hidden text-center min-w-0 flex-1">
-            <span className={`text-[10px] font-black uppercase tracking-widest ${syncColors} ${isAuditory ? 'text-[#FF7A2F]' : 'text-[#0A44FF]'}`}>
+          <div
+            className={`flex flex-col items-center overflow-hidden text-center min-w-0 flex-1 rounded-md px-2 py-1 transition-all duration-200 cursor-default ${!isAuditory ? (isDark ? "hover:bg-white/10" : "hover:bg-black/5") : ""} ${!isAuditory ? "hover:ring-2 hover:ring-[#0A44FF]/40 hover:shadow-[0_0_0_4px_rgba(10,68,255,0.12)]" : ""}`}
+            tabIndex={!isAuditory ? 0 : -1}
+            {...(!isAuditory ? getHoverHandlers(websiteHoverText) : {})}
+          >
+            <span className={`text-[10px] font-black uppercase tracking-widest whitespace-nowrap ${syncColors} ${isAuditory ? 'text-[#FF7A2F]' : 'text-[#0A44FF]'}`}>
               Target Website
             </span>
             {/* Scrolling label: measures overflow and applies a looping marquee animation */}
@@ -367,9 +390,13 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
           <div className={`h-10 w-[2px] rounded-full mx-0 transition-colors duration-500 ${isDark ? 'bg-gray-600/40' : 'bg-gray-100'}`}></div>
 
-          <div className="flex flex-col items-center text-center shrink-0 flex-1">
+          <div
+            className={`flex flex-col items-center text-center min-w-0 flex-1 rounded-md px-2 py-1 transition-all duration-200 cursor-default ${!isAuditory ? (isDark ? "hover:bg-white/10" : "hover:bg-black/5") : ""} ${!isAuditory ? "hover:ring-2 hover:ring-[#0A44FF]/30 hover:shadow-[0_0_0_4px_rgba(10,68,255,0.1)]" : ""}`}
+            tabIndex={!isAuditory ? 0 : -1}
+            {...(!isAuditory ? getHoverHandlers(extensionHoverText) : {})}
+          >
             {/* 🚨 FIXED COPYWRITING: "Extension Status" */}
-            <span className={`text-[10px] font-black uppercase tracking-widest ${syncColors} ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+            <span className={`text-[10px] font-black uppercase tracking-widest whitespace-nowrap ${syncColors} ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Extension Status
             </span>
             <div className="flex items-center justify-center gap-2 mt-0.5">
