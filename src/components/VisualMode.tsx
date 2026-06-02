@@ -2,12 +2,15 @@ import { useState, useEffect, useRef } from "react"
 
 export default function VisualMode() {
   const [isListening, setIsListening] = useState(false)
+  const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState(true)
   const selectedVoiceURIRef = useRef("")
   const selectedVoiceNameRef = useRef("")
   const audioCtxRef = useRef<AudioContext | null>(null)
+  const isSoundEffectsEnabledRef = useRef(true)
   const hoverSpeakLockRef = useRef(0)
 
   const getAudioContext = () => {
+    if (!isSoundEffectsEnabledRef.current) return null
     if (!audioCtxRef.current) {
       const Ctor = window.AudioContext || (window as any).webkitAudioContext
       audioCtxRef.current = Ctor ? new Ctor() : null
@@ -19,6 +22,32 @@ export default function VisualMode() {
 
     return audioCtxRef.current
   }
+
+  useEffect(() => {
+    isSoundEffectsEnabledRef.current = isSoundEffectsEnabled
+  }, [isSoundEffectsEnabled])
+
+  useEffect(() => {
+    chrome.storage.local.get(["sensa_visual_sound_effects_enabled"], (res) => {
+      if (typeof res.sensa_visual_sound_effects_enabled === "boolean") {
+        setIsSoundEffectsEnabled(res.sensa_visual_sound_effects_enabled)
+      }
+    })
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.sensa_visual_sound_effects_enabled?.newValue !== undefined) {
+        const next = !!changes.sensa_visual_sound_effects_enabled.newValue
+        setIsSoundEffectsEnabled(next)
+        if (!next && audioCtxRef.current) {
+          audioCtxRef.current.close().catch(() => undefined)
+          audioCtxRef.current = null
+        }
+      }
+    }
+
+    chrome.storage.onChanged.addListener(handleStorageChange)
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange)
+  }, [])
 
   const playHoverSfx = () => {
     const ctx = getAudioContext()
@@ -157,6 +186,32 @@ export default function VisualMode() {
     window.speechSynthesis.speak(utterance)
   }
 
+  const buildVisualModeAnnouncement = async () => {
+    let websiteLabel = "No active tab"
+    try {
+      const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+      const activeTab = tabs?.[0]
+      if (activeTab?.url) {
+        try {
+          const parsed = new URL(activeTab.url)
+          websiteLabel = parsed.hostname || activeTab.url
+        } catch {
+          websiteLabel = activeTab.url
+        }
+      }
+    } catch {
+      websiteLabel = "Unavailable"
+    }
+
+    const storageState = await new Promise<{ isActive: boolean }>((resolve) => {
+      chrome.storage.local.get(["sensa_visual_active"], (res) => {
+        resolve({ isActive: !!res.sensa_visual_active })
+      })
+    })
+    const statusLabel = storageState.isActive ? "Connected" : "Offline"
+    return `We are now in the Visual Mode interface. Target website: ${websiteLabel}. Extension status: ${statusLabel}.`
+  }
+
   // --- THE TWO-WAY BRIDGE ---
   useEffect(() => {
     chrome.storage.local.get(["sensa_visual_active"], (res) => {
@@ -197,7 +252,9 @@ export default function VisualMode() {
     chrome.storage.local.get(["sensa_visual_entered_from_welcome"], (res) => {
       if (!res.sensa_visual_entered_from_welcome) return
       chrome.storage.local.set({ sensa_visual_entered_from_welcome: false })
-      void speakFeedback("We are now in the Visual Mode interface")
+      void buildVisualModeAnnouncement().then((message) => {
+        void speakFeedback(message)
+      })
     })
   }, [])
 

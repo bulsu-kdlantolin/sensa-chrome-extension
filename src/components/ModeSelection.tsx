@@ -23,6 +23,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const pendingUtteranceRef = useRef<string | null>(null)
   const voiceRetryTimerRef = useRef<number | null>(null)
   const voiceReadyRetryRef = useRef<number | null>(null)
+  const voicesChangedHandlerRef = useRef<(() => void) | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   
   // Apple-style spring animation curve
@@ -160,6 +161,10 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
 
     const voices = window.speechSynthesis.getVoices()
     if (!voices.length) {
+      if (voicesChangedHandlerRef.current) {
+        window.speechSynthesis.removeEventListener("voiceschanged", voicesChangedHandlerRef.current)
+        voicesChangedHandlerRef.current = null
+      }
       pendingUtteranceRef.current = text
       if (voiceRetryTimerRef.current === null) {
         voiceRetryTimerRef.current = window.setTimeout(() => {
@@ -171,13 +176,15 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
           }
         }, 300)
       }
-      window.speechSynthesis.onvoiceschanged = () => {
+      const handleVoicesChanged = () => {
         const pending = pendingUtteranceRef.current
         pendingUtteranceRef.current = null
         if (pending && !narrationCanceledRef.current) {
           speakWithResolvedVoice(pending, onDone)
         }
       }
+      voicesChangedHandlerRef.current = handleVoicesChanged
+      window.speechSynthesis.addEventListener("voiceschanged", handleVoicesChanged)
       return
     }
 
@@ -264,9 +271,17 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     return () => {
       narrationCanceledRef.current = true
       window.speechSynthesis.cancel()
+      if (voiceRetryTimerRef.current !== null) {
+        window.clearTimeout(voiceRetryTimerRef.current)
+        voiceRetryTimerRef.current = null
+      }
       if (voiceReadyRetryRef.current !== null) {
         window.clearInterval(voiceReadyRetryRef.current)
         voiceReadyRetryRef.current = null
+      }
+      if (voicesChangedHandlerRef.current) {
+        window.speechSynthesis.removeEventListener("voiceschanged", voicesChangedHandlerRef.current)
+        voicesChangedHandlerRef.current = null
       }
     }
   }, [titleText])
@@ -331,9 +346,18 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     return () => {
       narrationCanceledRef.current = true
       window.speechSynthesis.cancel()
+      pendingUtteranceRef.current = null
+      if (voiceRetryTimerRef.current !== null) {
+        window.clearTimeout(voiceRetryTimerRef.current)
+        voiceRetryTimerRef.current = null
+      }
       if (voiceReadyRetryRef.current !== null) {
         window.clearInterval(voiceReadyRetryRef.current)
         voiceReadyRetryRef.current = null
+      }
+      if (voicesChangedHandlerRef.current) {
+        window.speechSynthesis.removeEventListener("voiceschanged", voicesChangedHandlerRef.current)
+        voicesChangedHandlerRef.current = null
       }
       if (audioCtxRef.current) {
         audioCtxRef.current.close().catch(() => undefined)

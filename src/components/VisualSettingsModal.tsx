@@ -13,7 +13,11 @@ interface VisualSettingsModalProps {
 
 export default function VisualSettingsModal({ onClose, isDark = false }: VisualSettingsModalProps) {
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
+  const audioCtxRef = useRef<AudioContext | null>(null)
   const [isVoiceGuideEnabled, setIsVoiceGuideEnabled] = useState<boolean>(true)
+  const highlightSoundDebounceRef = useRef<number | null>(null)
+  const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState<boolean>(true)
+  const isSoundEffectsEnabledRef = useRef<boolean>(true)
   
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR)
@@ -48,10 +52,151 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     isVoiceDropdownOpen,
   })
 
+  const getAudioContext = () => {
+    if (!isSoundEffectsEnabledRef.current) return null
+    if (!audioCtxRef.current) {
+      const Ctor = window.AudioContext || (window as any).webkitAudioContext
+      audioCtxRef.current = Ctor ? new Ctor() : null
+    }
+
+    if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
+      audioCtxRef.current.resume().catch(() => undefined)
+    }
+
+    return audioCtxRef.current
+  }
+
+  React.useEffect(() => {
+    isSoundEffectsEnabledRef.current = isSoundEffectsEnabled
+  }, [isSoundEffectsEnabled])
+
+  const playHoverSfx = () => {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = "sine"
+    osc.frequency.setValueAtTime(720, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(420, ctx.currentTime + 0.08)
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.015)
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.1)
+  }
+
+  const playClickSfx = () => {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const makeClick = (freq: number, startAt: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.type = "square"
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + startAt)
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + startAt)
+      gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + startAt + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.05)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(ctx.currentTime + startAt)
+      osc.stop(ctx.currentTime + startAt + 0.06)
+    }
+
+    makeClick(900, 0)
+    makeClick(1200, 0.07)
+  }
+
+  const playPopSfx = () => {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = "sine"
+    osc.frequency.setValueAtTime(520, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(220, ctx.currentTime + 0.12)
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.07, ctx.currentTime + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.14)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.16)
+  }
+
+  const playActivateSfx = () => {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const makeClick = (freq: number, startAt: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.type = "square"
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + startAt)
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + startAt)
+      gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + startAt + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.05)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(ctx.currentTime + startAt)
+      osc.stop(ctx.currentTime + startAt + 0.06)
+    }
+
+    makeClick(900, 0)
+    makeClick(1200, 0.07)
+  }
+
+  const playDeactivateSfx = () => {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const makeClick = (freq: number, startAt: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.type = "triangle"
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + startAt)
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + startAt)
+      gain.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime + startAt + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.06)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(ctx.currentTime + startAt)
+      osc.stop(ctx.currentTime + startAt + 0.07)
+    }
+
+    makeClick(720, 0)
+    makeClick(480, 0.08)
+  }
+
+  const playToggleSfx = (enabled: boolean) => {
+    if (enabled) playActivateSfx()
+    else playDeactivateSfx()
+  }
+
   const getHoverHandlers = (label: string) => ({
-    onMouseEnter: () => playHoverAudio(label),
+    onMouseEnter: () => {
+      playHoverSfx()
+      playHoverAudio(label)
+    },
     onMouseLeave: cancelHoverAudio,
-    onFocus: () => playHoverAudio(label),
+    onFocus: () => {
+      playHoverSfx()
+      playHoverAudio(label)
+    },
     onBlur: cancelHoverAudio
   })
 
@@ -68,9 +213,34 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
 
   useEffect(() => {
     if (isMounted) {
+      playPopSfx()
       playClickAudio("Settings opened")
     }
   }, [isMounted, playClickAudio])
+
+  useEffect(() => {
+    const resumeAudio = () => {
+      const ctx = getAudioContext()
+      if (ctx && ctx.state === "suspended") {
+        ctx.resume().catch(() => undefined)
+      }
+    }
+
+    window.addEventListener("pointerdown", resumeAudio)
+    window.addEventListener("keydown", resumeAudio)
+    return () => {
+      window.removeEventListener("pointerdown", resumeAudio)
+      window.removeEventListener("keydown", resumeAudio)
+      if (highlightSoundDebounceRef.current !== null) {
+        window.clearTimeout(highlightSoundDebounceRef.current)
+        highlightSoundDebounceRef.current = null
+      }
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => undefined)
+        audioCtxRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     onCloseRef.current = onClose
@@ -155,6 +325,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       "sensa_visual_output_device_id", 
       "sensa_visual_autoscroll_enabled",
       "sensa_visual_voice_guide_enabled",
+      "sensa_visual_sound_effects_enabled",
       "sensa_visual_voice_uri",
       "sensa_visual_highlight_mouse_screen_reader"
     ], (res) => {
@@ -163,6 +334,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       if (typeof res.sensa_visual_output_device_id === "string") setSelectedOutputDeviceId(res.sensa_visual_output_device_id)
       if (typeof res.sensa_visual_autoscroll_enabled === "boolean") setIsAutoscrollEnabled(res.sensa_visual_autoscroll_enabled)
       if (typeof res.sensa_visual_voice_guide_enabled === "boolean") setIsVoiceGuideEnabled(res.sensa_visual_voice_guide_enabled)
+      if (typeof res.sensa_visual_sound_effects_enabled === "boolean") setIsSoundEffectsEnabled(res.sensa_visual_sound_effects_enabled)
       if (typeof res.sensa_visual_voice_uri === "string") setSelectedVoiceURI(res.sensa_visual_voice_uri)
       if (typeof res.sensa_visual_highlight_mouse_screen_reader === "boolean") setIsHighlightMouseScreenReaderEnabled(res.sensa_visual_highlight_mouse_screen_reader)
     })
@@ -459,10 +631,21 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     if (normalizedNew === normalizedPrev) return
     setHighlightColor(color)
     chrome.storage.local.set({ sensa_visual_highlight_color: color })
-    playClickAudio("Highlight color changed")
+
+    // Dragging the picker can emit dozens of updates per second.
+    // Debounce audio so we only play once after the user pauses.
+    if (highlightSoundDebounceRef.current !== null) {
+      window.clearTimeout(highlightSoundDebounceRef.current)
+    }
+    highlightSoundDebounceRef.current = window.setTimeout(() => {
+      highlightSoundDebounceRef.current = null
+      playClickSfx()
+      playClickAudio("Highlight color changed")
+    }, 220)
   }
 
   const handleInputDeviceChange = (deviceId: string) => {
+    playClickSfx()
     setSelectedInputDeviceId(deviceId)
     chrome.storage.local.set({ sensa_visual_input_device_id: deviceId })
     const label = inputDevices.find(d => d.deviceId === deviceId)?.label || "Input device selected"
@@ -470,6 +653,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   }
 
   const handleOutputDeviceChange = (deviceId: string) => {
+    playClickSfx()
     setSelectedOutputDeviceId(deviceId)
     chrome.storage.local.set({ sensa_visual_output_device_id: deviceId })
     const label = outputDevices.find(d => d.deviceId === deviceId)?.label || "Output device selected"
@@ -477,24 +661,38 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   }
 
   const handleAutoscrollToggle = (enabled: boolean) => {
+    playToggleSfx(enabled)
     setIsAutoscrollEnabled(enabled)
     chrome.storage.local.set({ sensa_visual_autoscroll_enabled: enabled })
     playClickAudio(enabled ? "Autoscroll enabled" : "Autoscroll disabled")
   }
 
   const handleHighlightMouseScreenReaderToggle = (enabled: boolean) => {
+    playToggleSfx(enabled)
     setIsHighlightMouseScreenReaderEnabled(enabled)
     chrome.storage.local.set({ sensa_visual_highlight_mouse_screen_reader: enabled })
     playClickAudio(enabled ? "Mouse reader enabled" : "Mouse reader disabled")
   }
 
   const handleVoiceGuideToggle = (enabled: boolean) => {
+    playToggleSfx(enabled)
     setIsVoiceGuideEnabled(enabled)
     chrome.storage.local.set({ sensa_visual_voice_guide_enabled: enabled })
     playClickAudio(enabled ? "Voice guide enabled" : "Voice guide disabled")
   }
 
+  const handleSoundEffectsToggle = (enabled: boolean) => {
+    setIsSoundEffectsEnabled(enabled)
+    chrome.storage.local.set({ sensa_visual_sound_effects_enabled: enabled })
+    playClickAudio(enabled ? "Sound effects enabled" : "Sound effects disabled")
+    if (!enabled && audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => undefined)
+      audioCtxRef.current = null
+    }
+  }
+
   const handleVoiceChange = (voiceURI: string) => {
+    playClickSfx()
     setSelectedVoiceURI(voiceURI)
     const selected = voices.find((voice) => voice.voiceURI === voiceURI)
     chrome.storage.local.set({ sensa_visual_voice_uri: voiceURI, sensa_visual_voice_name: selected?.name || "" })
@@ -502,6 +700,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   }
 
   const handleResetToDefault = () => {
+    playClickSfx()
     const defaultVoice = voices.find((voice) => voice.name.includes("Google US English")) || voices[0]
     const defaultVoiceURI = defaultVoice?.voiceURI || ""
 
@@ -528,6 +727,8 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
 
   const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.target === event.currentTarget) {
+      playClickSfx()
+      playClickAudio("Closing settings")
       setIsMounted(false)
       setTimeout(onClose, 300)
     }
@@ -573,6 +774,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             </h2>
             <button 
               onClick={() => {
+                playClickSfx()
                 playClickAudio("Closing settings")
                 setIsMounted(false)
                 setTimeout(onClose, 300)
@@ -609,6 +811,21 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             </div>
 
             <div 
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
+              {...getHoverHandlers("Sound Effects")}
+              onClick={() => handleSoundEffectsToggle(!isSoundEffectsEnabled)}
+            >
+              <div className="flex items-center gap-3">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M19 9a5 5 0 0 1 0 6"/><path d="M21 7a9 9 0 0 1 0 10"/></svg>
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Sound Effects</span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer pointer-events-none">
+                <input type="checkbox" className="sr-only peer" checked={isSoundEffectsEnabled} readOnly />
+                <div className={`w-12 h-7 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-[20px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-200 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] shadow-inner`}></div>
+              </label>
+            </div>
+
+            <div 
               className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative z-50 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
               {...getHoverHandlers("Voice Selection")}
             >
@@ -619,7 +836,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
               <div className="relative w-[190px]">
                 <button 
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); setIsVoiceDropdownOpen((prev) => !prev); playClickAudio("Voice selection") }}
+                  onClick={(e) => { e.stopPropagation(); playClickSfx(); setIsVoiceDropdownOpen((prev) => !prev); playClickAudio("Voice selection") }}
                   className={`w-full text-left border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
                   aria-haspopup="listbox"
                   aria-expanded={isVoiceDropdownOpen}
@@ -647,8 +864,8 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
                           role="option"
                           aria-selected={selectedVoiceURI === voice.voiceURI}
                           className={`px-4 py-2.5 cursor-pointer block w-full text-left truncate transition-all font-medium m-1 rounded-lg ${selectedVoiceURI === voice.voiceURI ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white shadow-md" : isDark ? "text-gray-200 hover:bg-[#0A44FF]/20 hover:text-[#0A44FF]" : "text-gray-700 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF]"}`}
-                          onMouseEnter={() => previewVoice(voice)}
-                          onClick={() => { handleVoiceChange(voice.voiceURI); setIsVoiceDropdownOpen(false); playClickAudio(`${voice.name} selected`); window.speechSynthesis.cancel() }}
+                          onMouseEnter={() => { playHoverSfx(); previewVoice(voice) }}
+                          onClick={() => { handleVoiceChange(voice.voiceURI); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }}
                           style={{ fontFamily: `"${voice.name}", system-ui, sans-serif` }}
                         >
                           {voice.name}{voice.voiceURI === defaultVoiceURIRef.current ? " (Default)" : ""}
@@ -721,7 +938,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
                 <button 
                   type="button"
                   onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); setShowColorPicker((prev) => !prev) }}
+                  onClick={(e) => { e.stopPropagation(); playClickSfx(); setShowColorPicker((prev) => !prev); playClickAudio(showColorPicker ? "Highlight color closed" : "Highlight color opened") }}
                   className="w-10 h-10 rounded-full cursor-pointer shadow-[0_4px_12px_rgba(0,0,0,0.15)] border-2 border-white/40 ring-2 ring-black/5 focus:outline-none focus:ring-4 focus:ring-[#0A44FF]/50 transition-all active:scale-90 hover:scale-105"
                   style={{ backgroundColor: highlightColor }}
                   aria-label="Pick highlight color"

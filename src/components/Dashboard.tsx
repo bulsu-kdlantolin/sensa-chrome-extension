@@ -120,11 +120,6 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
     })
   }, [])
 
-  useEffect(() => {
-    if (!hasHydratedInitialMode) return
-    playClickAudio(currentViewMode === "visual" ? "Visual Mode Interface" : "Auditory Mode Interface")
-  }, [currentViewMode, hasHydratedInitialMode, playClickAudio])
-
   const getHoverHandlers = (label: string) => ({
     onMouseEnter: () => playHoverAudio(label),
     onMouseLeave: cancelHoverAudio,
@@ -134,6 +129,15 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
   const websiteHoverText = `Target website: ${websiteLabel}`
   const extensionHoverText = `Extension Status: ${extensionStatus === "online" ? "Connected" : "Offline"}`
+  const extensionStatusSpeech = extensionStatus === "online" ? "Connected" : "Offline"
+  const modeInterfaceAnnouncement = currentViewMode === "visual"
+    ? `Visual Mode Interface. Target website: ${websiteLabel}. Extension status: ${extensionStatusSpeech}.`
+    : "Auditory Mode Interface"
+
+  useEffect(() => {
+    if (!hasHydratedInitialMode) return
+    playClickAudio(modeInterfaceAnnouncement)
+  }, [hasHydratedInitialMode, modeInterfaceAnnouncement, playClickAudio])
 
   useEffect(() => {
     chrome.storage.local.get(["sensa_last_tab"], (res) => {

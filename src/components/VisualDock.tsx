@@ -186,8 +186,11 @@ export default function VisualDock({
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   const [isPlayOptimistic, setIsPlayOptimistic] = useState(isPlaying && !isPaused)
   const audioCtxRef = useRef<AudioContext | null>(null)
+  const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState(true)
+  const isSoundEffectsEnabledRef = useRef(true)
 
   const getAudioContext = () => {
+    if (!isSoundEffectsEnabledRef.current) return null
     if (!audioCtxRef.current) {
       const Ctor = window.AudioContext || (window as any).webkitAudioContext
       audioCtxRef.current = Ctor ? new Ctor() : null
@@ -199,6 +202,32 @@ export default function VisualDock({
 
     return audioCtxRef.current
   }
+
+  useEffect(() => {
+    isSoundEffectsEnabledRef.current = isSoundEffectsEnabled
+  }, [isSoundEffectsEnabled])
+
+  useEffect(() => {
+    chrome.storage.local.get(["sensa_visual_sound_effects_enabled"], (res) => {
+      if (typeof res.sensa_visual_sound_effects_enabled === "boolean") {
+        setIsSoundEffectsEnabled(res.sensa_visual_sound_effects_enabled)
+      }
+    })
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.sensa_visual_sound_effects_enabled?.newValue !== undefined) {
+        const next = !!changes.sensa_visual_sound_effects_enabled.newValue
+        setIsSoundEffectsEnabled(next)
+        if (!next && audioCtxRef.current) {
+          audioCtxRef.current.close().catch(() => undefined)
+          audioCtxRef.current = null
+        }
+      }
+    }
+
+    chrome.storage.onChanged.addListener(handleStorageChange)
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange)
+  }, [])
 
   const playHoverSfx = () => {
     const ctx = getAudioContext()

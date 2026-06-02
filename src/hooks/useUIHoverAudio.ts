@@ -3,10 +3,12 @@ import { useCallback, useEffect, useRef } from "react"
 export function useUIHoverAudio() {
 	const hoverTimeoutRef = useRef<number | null>(null)
 	const isHoverSpeakingRef = useRef(false)
+	const isActiveRef = useRef(true)
 	const selectedVoiceURIRef = useRef<string>("")
 	const selectedVoiceNameRef = useRef<string>("")
 	const pendingUtteranceRef = useRef<string | null>(null)
 	const voiceRetryTimerRef = useRef<number | null>(null)
+	const voicesChangedHandlerRef = useRef<(() => void) | null>(null)
 
 	useEffect(() => {
 		chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
@@ -40,25 +42,43 @@ export function useUIHoverAudio() {
 		}
 	}, [])
 
+	const clearVoiceRetry = useCallback(() => {
+		if (voiceRetryTimerRef.current !== null) {
+			window.clearTimeout(voiceRetryTimerRef.current)
+			voiceRetryTimerRef.current = null
+		}
+		pendingUtteranceRef.current = null
+		if (voicesChangedHandlerRef.current) {
+			window.speechSynthesis.removeEventListener("voiceschanged", voicesChangedHandlerRef.current)
+			voicesChangedHandlerRef.current = null
+		}
+	}, [])
+
 	const speakWithResolvedVoice = useCallback((text: string) => {
+		if (!isActiveRef.current) return
 		if (!text.trim()) return
 
 		const availableVoices = window.speechSynthesis.getVoices()
 		if (!availableVoices.length) {
+			clearVoiceRetry()
 			pendingUtteranceRef.current = text
 			if (voiceRetryTimerRef.current === null) {
 				voiceRetryTimerRef.current = window.setTimeout(() => {
 					voiceRetryTimerRef.current = null
+					if (!isActiveRef.current) return
 					const pending = pendingUtteranceRef.current
 					pendingUtteranceRef.current = null
 					if (pending) speakWithResolvedVoice(pending)
 				}, 300)
 			}
-			window.speechSynthesis.onvoiceschanged = () => {
+			const handleVoicesChanged = () => {
+				if (!isActiveRef.current) return
 				const pending = pendingUtteranceRef.current
 				pendingUtteranceRef.current = null
 				if (pending) speakWithResolvedVoice(pending)
 			}
+			voicesChangedHandlerRef.current = handleVoicesChanged
+			window.speechSynthesis.addEventListener("voiceschanged", handleVoicesChanged)
 			return
 		}
 
@@ -117,13 +137,14 @@ export function useUIHoverAudio() {
 
 	const cancelHoverAudio = useCallback(() => {
 		clearHoverTimeout()
+		clearVoiceRetry()
 
 		// Do not cancel global speech unless the current voice is hover-owned.
 		if (isHoverSpeakingRef.current) {
 			window.speechSynthesis.cancel()
 			isHoverSpeakingRef.current = false
 		}
-	}, [clearHoverTimeout])
+	}, [clearHoverTimeout, clearVoiceRetry])
 
 	const playHoverAudio = useCallback(
 		(text: string) => {
@@ -154,6 +175,7 @@ export function useUIHoverAudio() {
 	}, [clearHoverTimeout, speakWithResolvedVoice])
 
 	useEffect(() => {
+		isActiveRef.current = true
 		const handlePointerDown = () => {
 			clearHoverTimeout()
 		}
@@ -161,14 +183,16 @@ export function useUIHoverAudio() {
 		window.addEventListener("pointerdown", handlePointerDown, true)
 
 		return () => {
+			isActiveRef.current = false
 			window.removeEventListener("pointerdown", handlePointerDown, true)
 			clearHoverTimeout()
+			clearVoiceRetry()
 			if (isHoverSpeakingRef.current) {
 				window.speechSynthesis.cancel()
 				isHoverSpeakingRef.current = false
 			}
 		}
-	}, [clearHoverTimeout])
+	}, [clearHoverTimeout, clearVoiceRetry])
 
 	return { playHoverAudio, playClickAudio, cancelHoverAudio }
 }

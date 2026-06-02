@@ -13,6 +13,10 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   const onCloseRef = useRef(onClose)
   const onSpeedChangeRef = useRef(onSpeedChange)
+
+  const audioCtxRef = useRef<AudioContext | null>(null)
+  const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState(true)
+  const isSoundEffectsEnabledRef = useRef(true)
   
   // Dragging State
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
@@ -27,9 +31,113 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   const lastExecutedRef = useRef<Record<string, number>>({})
   const lastTranscriptRef = useRef<Record<string, string>>({})
 
+  const getAudioContext = () => {
+    if (!isSoundEffectsEnabledRef.current) return null
+    if (!audioCtxRef.current) {
+      const Ctor = window.AudioContext || (window as any).webkitAudioContext
+      audioCtxRef.current = Ctor ? new Ctor() : null
+    }
+
+    if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
+      audioCtxRef.current.resume().catch(() => undefined)
+    }
+
+    return audioCtxRef.current
+  }
+
+  useEffect(() => {
+    isSoundEffectsEnabledRef.current = isSoundEffectsEnabled
+  }, [isSoundEffectsEnabled])
+
+  useEffect(() => {
+    chrome.storage.local.get(["sensa_visual_sound_effects_enabled"], (res) => {
+      if (typeof res.sensa_visual_sound_effects_enabled === "boolean") {
+        setIsSoundEffectsEnabled(res.sensa_visual_sound_effects_enabled)
+      }
+    })
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.sensa_visual_sound_effects_enabled?.newValue !== undefined) {
+        const next = !!changes.sensa_visual_sound_effects_enabled.newValue
+        setIsSoundEffectsEnabled(next)
+        if (!next && audioCtxRef.current) {
+          audioCtxRef.current.close().catch(() => undefined)
+          audioCtxRef.current = null
+        }
+      }
+    }
+
+    chrome.storage.onChanged.addListener(handleStorageChange)
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange)
+  }, [])
+
+  const playHoverSfx = () => {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = "sine"
+    osc.frequency.setValueAtTime(720, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(420, ctx.currentTime + 0.08)
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.015)
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.1)
+  }
+
+  const playClickSfx = () => {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const makeClick = (freq: number, startAt: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.type = "square"
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + startAt)
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + startAt)
+      gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + startAt + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.05)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(ctx.currentTime + startAt)
+      osc.stop(ctx.currentTime + startAt + 0.06)
+    }
+
+    makeClick(900, 0)
+    makeClick(1200, 0.07)
+  }
+
   useEffect(() => {
     // Trigger entrance animation
     requestAnimationFrame(() => setIsMounted(true))
+  }, [])
+
+  useEffect(() => {
+    const resumeAudio = () => {
+      const ctx = getAudioContext()
+      if (ctx && ctx.state === "suspended") {
+        ctx.resume().catch(() => undefined)
+      }
+    }
+
+    window.addEventListener("pointerdown", resumeAudio)
+    window.addEventListener("keydown", resumeAudio)
+    return () => {
+      window.removeEventListener("pointerdown", resumeAudio)
+      window.removeEventListener("keydown", resumeAudio)
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => undefined)
+        audioCtxRef.current = null
+      }
+    }
   }, [])
 
   useEffect(() => {
@@ -90,9 +198,15 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   }
 
   const getHoverHandlers = (label: string) => ({
-    onMouseEnter: () => playHoverAudio(label),
+    onMouseEnter: () => {
+      playHoverSfx()
+      playHoverAudio(label)
+    },
     onMouseLeave: cancelHoverAudio,
-    onFocus: () => playHoverAudio(label),
+    onFocus: () => {
+      playHoverSfx()
+      playHoverAudio(label)
+    },
     onBlur: cancelHoverAudio
   })
 
@@ -102,6 +216,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     setSpeed((prev) => {
       const next = Math.max(0.5, +(prev - 0.25).toFixed(2))
       onSpeedChange?.(next)
+      playClickSfx()
       playClickAudio(`${next.toFixed(2).replace(/\.00$/, '')}x`)
       return next
     })
@@ -111,6 +226,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     setSpeed((prev) => {
       const next = Math.min(3, +(prev + 0.25).toFixed(2))
       onSpeedChange?.(next)
+      playClickSfx()
       playClickAudio(`${next.toFixed(2).replace(/\.00$/, '')}x`)
       return next
     })
@@ -125,6 +241,8 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.target === event.currentTarget) {
       setIsMounted(false)
+      playClickSfx()
+      playClickAudio("Closing speed settings")
       setTimeout(onClose, 300) // Wait for exit animation
     }
   }
@@ -182,6 +300,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       setSpeed(clamped)
       onSpeedChangeRef.current?.(clamped)
       if (announce) {
+        playClickSfx()
         playClickAudio(`${clamped.toFixed(2).replace(/\.00$/, "")}x`)
       }
     }
@@ -302,6 +421,8 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
             <button 
               onClick={() => {
                 setIsMounted(false)
+                playClickSfx()
+                playClickAudio("Closing speed settings")
                 setTimeout(onClose, 300)
               }}
               className={`${closeButtonClass} transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_10px_22px_-16px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 rounded-full p-2`}
@@ -350,10 +471,12 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
               }}
               onMouseUp={() => {
                 onSpeedChange?.(speed)
+                playClickSfx()
                 playClickAudio(`${speed.toFixed(2).replace(/\.00$/, '')}x`)
               }}
               onTouchEnd={() => {
                 onSpeedChange?.(speed)
+                playClickSfx()
                 playClickAudio(`${speed.toFixed(2).replace(/\.00$/, '')}x`)
               }}
               onKeyUp={(e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -368,6 +491,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
               className="reading-speed-slider w-full h-[14px] rounded-full appearance-none cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50"
               onMouseEnter={() => playHoverAudio("Reading Speed Slider")}
               onMouseLeave={cancelHoverAudio}
+              onPointerEnter={() => playHoverSfx()}
               style={{
                 background: `linear-gradient(to right, #0A44FF 0%, #0A44FF ${((speed - 0.5) / (3 - 0.5)) * 100}%, ${sliderUnfilled} ${((speed - 0.5) / (3 - 0.5)) * 100}%, ${sliderUnfilled} 100%)`
               }}
@@ -424,6 +548,8 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
               onClick={() => {
                 setSpeed(stop)
                 onSpeedChange?.(stop)
+                playClickSfx()
+                playClickAudio(`${stop}x`)
               }}
               aria-pressed={speed === stop}
               {...getHoverHandlers(`${stop}x`) }
@@ -443,6 +569,8 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           <button
             onClick={() => {
               setIsMounted(false)
+              playClickSfx()
+              playClickAudio("Cancel")
               setTimeout(onClose, 300)
             }}
             className={`h-11 px-6 rounded-xl border ${inputBorder} ${inputBg} ${textColor} text-[14px] font-semibold transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_10px_20px_-14px_rgba(15,23,42,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/40`}
@@ -453,6 +581,8 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           <button
             onClick={() => {
               commitSpeed()
+              playClickSfx()
+              playClickAudio(`Speed set to ${formattedSpeed}x`)
               setIsMounted(false)
               setTimeout(onClose, 300)
             }}

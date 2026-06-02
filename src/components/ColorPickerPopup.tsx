@@ -69,11 +69,69 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
     return rgbToHsv(parsed[0], parsed[1], parsed[2])
   });
   
+  const audioCtxRef = useRef<AudioContext | null>(null)
   const popupRef = useRef<HTMLDivElement>(null)
   const mainAreaRef = useRef<HTMLDivElement>(null);
   const hueSliderRef = useRef<HTMLDivElement>(null);
   const isDraggingMain = useRef(false);
   const isDraggingHue = useRef(false);
+
+  const getAudioContext = () => {
+    if (!audioCtxRef.current) {
+      const Ctor = window.AudioContext || (window as any).webkitAudioContext
+      audioCtxRef.current = Ctor ? new Ctor() : null
+    }
+
+    if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
+      audioCtxRef.current.resume().catch(() => undefined)
+    }
+
+    return audioCtxRef.current
+  }
+
+  const playHoverSfx = () => {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+
+    osc.type = "sine"
+    osc.frequency.setValueAtTime(720, ctx.currentTime)
+    osc.frequency.exponentialRampToValueAtTime(420, ctx.currentTime + 0.08)
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.015)
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09)
+
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.1)
+  }
+
+  const playClickSfx = () => {
+    const ctx = getAudioContext()
+    if (!ctx) return
+
+    const makeClick = (freq: number, startAt: number) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+
+      osc.type = "square"
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + startAt)
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime + startAt)
+      gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + startAt + 0.01)
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.05)
+
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.start(ctx.currentTime + startAt)
+      osc.stop(ctx.currentTime + startAt + 0.06)
+    }
+
+    makeClick(900, 0)
+    makeClick(1200, 0.07)
+  }
 
   // Derived colors for UI
   const [r, g, b] = hsvToRgb(hsv.h, hsv.s, hsv.v);
@@ -119,6 +177,26 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
       window.removeEventListener("keydown", handleEscape)
     }
   }, [onClose])
+
+  useEffect(() => {
+    const resumeAudio = () => {
+      const ctx = getAudioContext()
+      if (ctx && ctx.state === "suspended") {
+        ctx.resume().catch(() => undefined)
+      }
+    }
+
+    window.addEventListener("pointerdown", resumeAudio)
+    window.addEventListener("keydown", resumeAudio)
+    return () => {
+      window.removeEventListener("pointerdown", resumeAudio)
+      window.removeEventListener("keydown", resumeAudio)
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close().catch(() => undefined)
+        audioCtxRef.current = null
+      }
+    }
+  }, [])
 
   // --- DRAG LOGIC FOR MAIN AREA (Saturation / Brightness) ---
   const handleMainDrag = useCallback((clientX: number, clientY: number) => {
@@ -312,7 +390,12 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
 
       <div className="mt-[16px] flex justify-end">
         <button
-          onClick={onClose}
+          onMouseEnter={() => { if (accent !== "orange") playHoverSfx() }}
+          onFocus={() => { if (accent !== "orange") playHoverSfx() }}
+          onClick={() => {
+            if (accent !== "orange") playClickSfx()
+            onClose()
+          }}
           className={`px-[16px] py-[8px] text-[14px] font-semibold rounded-[6px] text-white transition-colors ${actionButtonClass}`}
         >
           Done
