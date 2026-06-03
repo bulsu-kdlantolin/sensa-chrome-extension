@@ -138,9 +138,6 @@ export default function FloatingDockManager() {
   const [highlightColor, setHighlightColor] = useState("#FFFE00")
   const selectedVoiceURIRef = useRef<string>("")
   const selectedVoiceNameRef = useRef<string>("")
-  const isYouTube = typeof window !== "undefined" && /(^|\.)youtube\.com$|(^|\.)youtu\.be$/.test(window.location.hostname)
-  const uiScale = isYouTube ? 1.08 : 1
-
   const speakOverlayFeedback = (message: string) => {
     if (typeof window === "undefined" || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
       return
@@ -474,7 +471,7 @@ export default function FloatingDockManager() {
       const target = ev.target as HTMLElement | null
       if (!target) return
       // Ignore clicks on interactive form controls, our extension UI, or the visual dock
-      if (target.closest('input, button, select, textarea, label, .sensa-popup, .sensa-modal, [data-sensa-visual-dock]')) return
+      if (target.closest('input, button, select, textarea, label, .sensa-popup, .sensa-modal, [data-sensa-visual-dock], [data-sensa-auditory-dock]')) return
       const sel = window.getSelection()
       if (!sel || sel.toString().trim().length === 0) {
         // Only cancel if highlight reader was actively reading something
@@ -508,7 +505,7 @@ export default function FloatingDockManager() {
   // Notice how the return now uses <> ... </> to group the Modal and the Dock separately
   return (
     <>
-      {/* Overlays must be mounted outside the zoomed UI so their SVG coordinates match the viewport pixels */}
+      {/* Overlays mounted outside the UI root so coordinates stay viewport-relative */}
       {isAuditoryActive && isFocusMode && <FocusModeOverlay intensity={0.7} />}
 
       {isAuditoryActive && isCaptionsActive && (
@@ -526,7 +523,7 @@ export default function FloatingDockManager() {
         />
       )}
 
-      <div style={{ zoom: uiScale } as React.CSSProperties}>
+      <div className="sensa-ui-root">
       {/* 1. THE SETTINGS MODAL (Floats dead center, outside the drag logic) */}
       {isVisualSettingsOpen && (
         <VisualSettingsModal
@@ -593,8 +590,6 @@ export default function FloatingDockManager() {
           onClose={() => setIsCaptionTransparencyOpen(false)}
         />
       )}
-
-      
 
       {/* 2. THE DRAGGABLE DOCK */}
       <div
@@ -667,7 +662,7 @@ export default function FloatingDockManager() {
           />
         )}
       </div>
-    </div>
+      </div>
     </>
   )
 }

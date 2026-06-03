@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react"
 import { Tooltip as SharedTooltip } from "./Tooltip"
+import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
 // ============================================================================
 // 🎯 SITE-ONLY DUAL ENGINE: Unfiltered Transient + Game Audio Interceptor
@@ -8,6 +9,7 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
   const barsRef = useRef<(HTMLDivElement | null)[]>([])
   const currentHeights = useRef([4, 6, 8, 6, 4])
   const tickRef = useRef(0)
+  const smoothedEnergyRef = useRef(0)
 
   useEffect(() => {
     let animationId: number
@@ -15,14 +17,18 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
     let analyser: AnalyserNode | null = null
     let dataArray: Uint8Array | null = null
     let hunterInterval: number | undefined
+    let connectedMediaCount = 0
 
     let gameAudioArray: Uint8Array | null = null
     let lastGameAudioTick = 0
+    let lastTime = performance.now()
 
     const shapeMask = [0.35, 0.7, 1.0, 0.7, 0.35]
     const maxHeights = [10, 14, 20, 14, 10]
     const idleHeights = [4, 6, 8, 6, 4]
-    
+    const ENERGY_GATE = 0.06
+    const GAME_SIGNAL_MIN = 18
+
     const borderBaseColor = isDark ? 'rgba(255,122,47,0.4)' : 'rgba(255,122,47,0.5)'
 
     const lerp = (start: number, end: number, amt: number) => (1 - amt) * start + amt * end
@@ -57,12 +63,20 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
         if (audioCtx.state === 'suspended') audioCtx.resume()
 
         const source = audioCtx.createMediaElementSource(mediaEl)
-        source.connect(analyser!) 
-        
+        source.connect(analyser!)
+
+        connectedMediaCount += 1
         ;(mediaEl as any)._sensaConnected = true
       } catch (e) {
         console.warn("Sensa: Media is cross-origin protected or already bound.", e)
       }
+    }
+
+    const isMediaPlaying = () => {
+      const allMedia = Array.from(document.querySelectorAll("video, audio")) as HTMLMediaElement[]
+      return allMedia.some(
+        (media) => !media.paused && media.currentTime > 0 && !media.muted && media.readyState >= 2
+      )
     }
 
     if (isActive) {
@@ -78,17 +92,24 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
       let smoothedColor = "#FF7A2F" 
 
       const draw = () => {
-        tickRef.current += 0.05
+        const time = performance.now()
+        // Prevent massive jumps if tab is inactive for a long time
+        const dt = Math.min((time - lastTime) / 1000, 0.1)
+        lastTime = time
+
+        // Normalize ticks to 60fps equivalent for consistent physics
+        tickRef.current += dt * 60 
         const tick = tickRef.current
 
-        let visualizerEnergy = 0
+        let rawEnergy = 0
         let voiceMusicBaseline = 0
         let greenPingPeak = 0
         let redAlarmPeak = 0
         let totalBroadbandEnergy = 0
-        let dominantFrequencyIndex = 20 
+        let dominantFrequencyIndex = 20
 
         let activeData: Uint8Array | null = null
+        const mediaPlaying = isMediaPlaying()
 
         const hasGamePacket = gameAudioArray && Date.now() - lastGameAudioTick < 100
         let gameSignal = 0
@@ -98,30 +119,31 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
           gameSignal = gameSum / 38
         }
 
-        if (hasGamePacket && gameAudioArray && gameSignal > 3) {
+        const hasStrongGameSignal = hasGamePacket && gameAudioArray && gameSignal >= GAME_SIGNAL_MIN
+
+        if (hasStrongGameSignal) {
           activeData = gameAudioArray
-        } else if (analyser && dataArray) {
+        } else if (mediaPlaying && analyser && dataArray && connectedMediaCount > 0) {
           analyser.getByteFrequencyData(dataArray as any)
           activeData = dataArray
-        } else if (hasGamePacket && gameAudioArray) {
-          activeData = gameAudioArray
         }
 
         if (activeData) {
-          let sum = 0;
+          let sum = 0
           for (let i = 2; i < 40; i++) sum += activeData[i]
-          visualizerEnergy = (sum / 38) / 255 
+          rawEnergy = (sum / 38) / 255
 
-          for (let i = 2; i < 11; i++) voiceMusicBaseline += activeData[i]  
-          voiceMusicBaseline = Math.max(1, voiceMusicBaseline / 9) 
+          for (let i = 2; i < 11; i++) voiceMusicBaseline += activeData[i]
+          voiceMusicBaseline = Math.max(1, voiceMusicBaseline / 9)
 
-          for (let i = 12; i < 26; i++) greenPingPeak = Math.max(greenPingPeak, activeData[i]) 
-          for (let i = 28; i < 60; i++) redAlarmPeak = Math.max(redAlarmPeak, activeData[i])   
+          for (let i = 12; i < 26; i++) greenPingPeak = Math.max(greenPingPeak, activeData[i])
+          for (let i = 28; i < 60; i++) redAlarmPeak = Math.max(redAlarmPeak, activeData[i])
 
           for (let i = 2; i < 70; i++) totalBroadbandEnergy += activeData[i]
           totalBroadbandEnergy /= 68
 
-          let weightedSum = 0, totalWeight = 0
+          let weightedSum = 0
+          let totalWeight = 0
           for (let i = 2; i < 90; i++) {
             weightedSum += i * activeData[i]
             totalWeight += activeData[i]
@@ -131,36 +153,48 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
           }
         }
 
-        let targetColor = "#FF7A2F" 
+        smoothedEnergyRef.current =
+          smoothedEnergyRef.current * 0.82 + rawEnergy * 0.18
+        const visualizerEnergy = smoothedEnergyRef.current
+        const hasAudio = visualizerEnergy >= ENERGY_GATE
 
-        if (dominantFrequencyIndex < 15) {
-          targetColor = "#FF9660"
-        } else if (dominantFrequencyIndex < 30) {
-          targetColor = "#FFB347"
-        } else if (dominantFrequencyIndex < 50) {
-          targetColor = "#FFD700"
-        } else if (dominantFrequencyIndex < 70) {
-          targetColor = "#FF8C00"
-        } else {
-          targetColor = "#FF4444"
-        }
+        let targetColor = "#FF7A2F"
 
-        smoothedColor = targetColor 
-
-        const isViolentSound = totalBroadbandEnergy > 160 
-        
-        if ((redAlarmPeak > 60 && redAlarmPeak > voiceMusicBaseline * 1.3) || isViolentSound) {
-          activeTheme = 'red'
-          themeHoldFrames = 50 
-        } 
-        else if (greenPingPeak > 60 && greenPingPeak > voiceMusicBaseline * 1.25 && !isViolentSound) {
-          if (activeTheme !== 'red' || themeHoldFrames === 0) {
-            activeTheme = 'green'
-            themeHoldFrames = 50 
+        if (hasAudio) {
+          if (dominantFrequencyIndex < 15) {
+            targetColor = "#FF9660"
+          } else if (dominantFrequencyIndex < 30) {
+            targetColor = "#FFB347"
+          } else if (dominantFrequencyIndex < 50) {
+            targetColor = "#FFD700"
+          } else if (dominantFrequencyIndex < 70) {
+            targetColor = "#FF8C00"
+          } else {
+            targetColor = "#FF4444"
           }
         }
 
-        if (themeHoldFrames > 0) {
+        smoothedColor = targetColor
+
+        if (hasAudio) {
+          const isViolentSound = totalBroadbandEnergy > 160
+
+          if ((redAlarmPeak > 60 && redAlarmPeak > voiceMusicBaseline * 1.3) || isViolentSound) {
+            activeTheme = 'red'
+            themeHoldFrames = 50
+          } else if (greenPingPeak > 60 && greenPingPeak > voiceMusicBaseline * 1.25 && !isViolentSound) {
+            if (activeTheme !== 'red' || themeHoldFrames === 0) {
+              activeTheme = 'green'
+              themeHoldFrames = 50
+            }
+          }
+
+          if (themeHoldFrames > 0) {
+            themeHoldFrames--
+          } else {
+            activeTheme = 'orange'
+          }
+        } else if (themeHoldFrames > 0) {
           themeHoldFrames--
         } else {
           activeTheme = 'orange'
@@ -170,27 +204,31 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
           if (!bar) return
           let targetHeight = idleHeights[i]
 
-          if (visualizerEnergy > 0.01) {
-            const noiseSpike = (visualizerEnergy * 28) * shapeMask[i] 
-            targetHeight = Math.min(maxHeights[i], idleHeights[i] + noiseSpike)
+          if (hasAudio) {
+            const voiceSpike = (visualizerEnergy * 28) * shapeMask[i]
+            targetHeight = Math.min(maxHeights[i], idleHeights[i] + voiceSpike)
           } else {
-            const breath = Math.sin(tick - i * 0.5) * 1.5
+            // Organic, staggered wave using the Delta-Time tick
+            const breath = Math.sin(tick * 0.03 - i * 0.15) * 1.2
             targetHeight = idleHeights[i] + breath
           }
 
           const isRising = targetHeight > currentHeights.current[i]
-          const amt = visualizerEnergy > 0.01 ? (isRising ? 0.9 : 0.12) : 0.05
+          const baseAmt = hasAudio ? (isRising ? 0.55 : 0.18) : 0.10
+          
+          // Framerate-independent lerp
+          const amt = 1 - Math.pow(1 - baseAmt, dt * 60)
           currentHeights.current[i] = lerp(currentHeights.current[i], targetHeight, amt)
 
-          bar.style.height = `${currentHeights.current[i]}px`
+          // Subpixel rendering via float values. NO Math.round() clamping!
+          bar.style.height = `${currentHeights.current[i].toFixed(2)}px`
           bar.style.backgroundColor = smoothedColor
         })
 
         const dockPills = document.querySelectorAll('.sensa-dock-pill') as NodeListOf<HTMLElement>
         dockPills.forEach(pill => {
           pill.style.borderColor = smoothedColor
-          if (visualizerEnergy > 0.05) {
-            // Added premium inset shadow during audio playback
+          if (hasAudio) {
             pill.style.boxShadow = `0 0 24px ${smoothedColor}70, inset 0 0 12px ${smoothedColor}20` 
           } else {
             pill.style.boxShadow = ''
@@ -199,13 +237,16 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
 
         animationId = requestAnimationFrame(draw)
       }
-      draw()
+      
+      animationId = requestAnimationFrame(draw)
     }
 
     return () => {
       window.removeEventListener('message', handleMessage)
       if (animationId) cancelAnimationFrame(animationId)
       if (hunterInterval !== undefined) window.clearInterval(hunterInterval)
+      if (audioCtx) audioCtx.close().catch(() => undefined)
+      smoothedEnergyRef.current = 0
       document.querySelectorAll('.sensa-dock-pill').forEach((pill) => {
         const htmlPill = pill as HTMLElement
         htmlPill.style.borderColor = borderBaseColor
@@ -261,7 +302,6 @@ export default function AuditoryDock({
   onClose
 }: AuditoryDockProps) {
   
-  // 🌟 PREMIUM GLASSMORPHISM: Merged your transform-gpu with Vercel's elegant gradients
   const glassPanelClass = isDark 
     ? "bg-[#1C1C1E]/85 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-3xl transform-gpu backface-hidden" 
     : "bg-white/90 shadow-[0_8px_32px_rgba(0,0,0,0.15)] backdrop-blur-3xl transform-gpu backface-hidden"
@@ -270,7 +310,6 @@ export default function AuditoryDock({
     ? "bg-[#1C1C1E]/85 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-3xl transform-gpu backface-hidden"
     : "bg-white/90 shadow-[0_8px_32px_rgba(0,0,0,0.15)] backdrop-blur-3xl transform-gpu backface-hidden"
     
-  // 🌟 PREMIUM SPRING PHYSICS: Applied the snappy cubic-bezier to your exact button dimensions
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
 
   const btnBaseClass = `relative group !w-[44px] !h-[44px] !min-w-[44px] !min-h-[44px] !p-0 !m-0 flex items-center justify-center rounded-full shrink-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent box-border will-change-[transform] transform-gpu backface-hidden ${springTransition}`
@@ -281,7 +320,6 @@ export default function AuditoryDock({
 
   const closeBtnClass = `${btnBaseClass} text-gray-500 dark:text-gray-400 transition-all duration-200 active:scale-90 hover:scale-105 ${isDark ? 'hover:bg-red-500/80 hover:text-white' : 'hover:bg-red-500/90 hover:text-white'}`
 
-  // 🌟 PREMIUM ACTIVE BUTTONS: Fiery Orange Gradient with outer/inner drop-shadows
   const activeButtonClass = `
     bg-gradient-to-br from-[#FF7A2F] to-[#E86A25] 
     text-white shadow-[0_4px_20px_rgba(255,122,47,0.4),inset_0_1px_0_rgba(255,255,255,0.2)]
@@ -289,7 +327,6 @@ export default function AuditoryDock({
     scale-105 ring-[0px] ring-[#FF7A2F]/0
   `
 
-  // Subtle separator line
   const dividerClass = isDark 
     ? "w-6 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-0.5" 
     : "w-6 h-px bg-gradient-to-r from-transparent via-black/10 to-transparent my-0.5"
@@ -299,6 +336,7 @@ export default function AuditoryDock({
       className="flex flex-col w-fit shrink-0 box-border relative z-50"
       role="toolbar" 
       aria-label="Auditory and Caption Controls"
+      data-sensa-auditory-dock
     >
       
       {/* ========================================================= */}

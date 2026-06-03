@@ -113,6 +113,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
   
   const [isMounted, setIsMounted] = useState(false)
   const [hasHydratedInitialMode, setHasHydratedInitialMode] = useState(false)
+  const hasAnnouncedVisualOnOpenRef = useRef(false)
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -130,14 +131,11 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
   const websiteHoverText = `Target website: ${websiteLabel}`
   const extensionHoverText = `Extension Status: ${extensionStatus === "online" ? "Connected" : "Offline"}`
   const extensionStatusSpeech = extensionStatus === "online" ? "Connected" : "Offline"
-  const modeInterfaceAnnouncement = currentViewMode === "visual"
-    ? `Visual Mode Interface. Target website: ${websiteLabel}. Extension status: ${extensionStatusSpeech}.`
-    : "Auditory Mode Interface"
 
-  useEffect(() => {
-    if (!hasHydratedInitialMode) return
-    playClickAudio(modeInterfaceAnnouncement)
-  }, [hasHydratedInitialMode, modeInterfaceAnnouncement, playClickAudio])
+  const getModeInterfaceAnnouncement = (mode: "visual" | "auditory") =>
+    mode === "visual"
+      ? `Visual Mode Interface. Target website: ${websiteLabel}. Extension status: ${extensionStatusSpeech}.`
+      : "Auditory Mode Interface"
 
   useEffect(() => {
     chrome.storage.local.get(["sensa_last_tab"], (res) => {
@@ -150,10 +148,26 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
     })
   }, [selectedMode, hasHydratedInitialMode])
 
+  // Announce visual mode on popup open only (not auditory).
+  useEffect(() => {
+    if (!hasHydratedInitialMode) return
+    if (currentViewMode !== "visual") return
+    if (hasAnnouncedVisualOnOpenRef.current) return
+
+    const timer = window.setTimeout(() => {
+      hasAnnouncedVisualOnOpenRef.current = true
+      playClickAudio(getModeInterfaceAnnouncement("visual"))
+    }, 500)
+
+    return () => window.clearTimeout(timer)
+  }, [hasHydratedInitialMode, currentViewMode, websiteLabel, extensionStatusSpeech, playClickAudio])
+
   const handleViewSwap = (newMode: "visual" | "auditory") => {
     if (newMode === currentViewMode) return
+    cancelHoverAudio()
     setCurrentViewMode(newMode)
-    
+    playClickAudio(getModeInterfaceAnnouncement(newMode))
+
     chrome.storage.local.set({
       sensa_last_tab: newMode,
       sensa_visual_active: false,
@@ -320,10 +334,11 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
               }`}
           />
           <button
+            type="button"
             onClick={() => handleViewSwap("visual")}
+            aria-label="Switch to Visual Mode Interface"
             className={`flex-1 relative z-10 flex items-center justify-center gap-2 font-black text-[15px] tracking-wide ${syncColors} focus-visible:outline-none rounded-full
               ${!isAuditory ? 'text-white' : (isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-800')}`}
-            {...getHoverHandlers("Visual Mode")}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-[18px] h-[18px]">
               <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
@@ -332,10 +347,11 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
             Visual
           </button>
           <button
+            type="button"
             onClick={() => handleViewSwap("auditory")}
+            aria-label="Switch to Auditory Mode Interface"
             className={`flex-1 relative z-10 flex items-center justify-center gap-2 font-black text-[15px] tracking-wide ${syncColors} focus-visible:outline-none rounded-full
               ${isAuditory ? 'text-white' : (isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-800')}`}
-            {...getHoverHandlers("Auditory Mode")}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-[18px] h-[18px]">
               <path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0"/>

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef } from "react"
 export function useUIHoverAudio() {
 	const hoverTimeoutRef = useRef<number | null>(null)
 	const isHoverSpeakingRef = useRef(false)
+	const speechOwnerRef = useRef<"none" | "hover" | "click">("none")
 	const isActiveRef = useRef(true)
 	const selectedVoiceURIRef = useRef<string>("")
 	const selectedVoiceNameRef = useRef<string>("")
@@ -54,61 +55,16 @@ export function useUIHoverAudio() {
 		}
 	}, [])
 
-	const speakWithResolvedVoice = useCallback((text: string) => {
+	const speakWithResolvedVoice = useCallback((text: string, owner: "hover" | "click" = "hover") => {
 		if (!isActiveRef.current) return
 		if (!text.trim()) return
 
-		const availableVoices = window.speechSynthesis.getVoices()
-		if (!availableVoices.length) {
-			clearVoiceRetry()
-			pendingUtteranceRef.current = text
-			if (voiceRetryTimerRef.current === null) {
-				voiceRetryTimerRef.current = window.setTimeout(() => {
-					voiceRetryTimerRef.current = null
-					if (!isActiveRef.current) return
-					const pending = pendingUtteranceRef.current
-					pendingUtteranceRef.current = null
-					if (pending) speakWithResolvedVoice(pending)
-				}, 300)
-			}
-			const handleVoicesChanged = () => {
-				if (!isActiveRef.current) return
-				const pending = pendingUtteranceRef.current
-				pendingUtteranceRef.current = null
-				if (pending) speakWithResolvedVoice(pending)
-			}
-			voicesChangedHandlerRef.current = handleVoicesChanged
-			window.speechSynthesis.addEventListener("voiceschanged", handleVoicesChanged)
-			return
-		}
+		const speakNow = () => {
+			window.speechSynthesis.cancel()
+			speechOwnerRef.current = owner
+			isHoverSpeakingRef.current = true
 
-		// If another non-hover speech flow is active, defer speaking until it's finished.
-		if ((window.speechSynthesis.speaking || window.speechSynthesis.pending) && !isHoverSpeakingRef.current) {
-			let retries = 0
-			const maxRetries = 15 // ~3 seconds max
-			const handle = window.setInterval(() => {
-				if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
-					window.clearInterval(handle)
-					// proceed to speak now
-					_internalSpeak(text)
-				} else if (++retries >= maxRetries) {
-					window.clearInterval(handle)
-					// give up to avoid blocking the UI
-				}
-			}, 200)
-			return
-		}
-
-		// Otherwise speak immediately (may cancel previous hover-owned speech)
-		_internalSpeak(text)
-
-		function _internalSpeak(msg: string) {
-			// Stop any previous hover announcement before speaking the next one, but only if it was hover-owned.
-			if (isHoverSpeakingRef.current) {
-				window.speechSynthesis.cancel()
-			}
-
-			const utterance = new SpeechSynthesisUtterance(msg)
+			const utterance = new SpeechSynthesisUtterance(text)
 			const voices = window.speechSynthesis.getVoices()
 			const preferredVoice =
 				voices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
@@ -120,28 +76,62 @@ export function useUIHoverAudio() {
 				utterance.lang = preferredVoice.lang
 			}
 
-		utterance.onstart = () => {
-			isHoverSpeakingRef.current = true
-		}
-		utterance.onend = () => {
-			isHoverSpeakingRef.current = false
-		}
-		utterance.onerror = () => {
-			isHoverSpeakingRef.current = false
+			const release = () => {
+				if (speechOwnerRef.current === owner) {
+					speechOwnerRef.current = "none"
+				}
+				isHoverSpeakingRef.current = false
+			}
+
+			utterance.onend = release
+			utterance.onerror = release
+			window.speechSynthesis.speak(utterance)
 		}
 
-		isHoverSpeakingRef.current = true
-		window.speechSynthesis.speak(utterance)
-	}
-	}, [])
+		const availableVoices = window.speechSynthesis.getVoices()
+		if (!availableVoices.length) {
+			clearVoiceRetry()
+			pendingUtteranceRef.current = text
+			if (voiceRetryTimerRef.current === null) {
+				voiceRetryTimerRef.current = window.setTimeout(() => {
+					voiceRetryTimerRef.current = null
+					if (!isActiveRef.current) return
+					const pending = pendingUtteranceRef.current
+					pendingUtteranceRef.current = null
+					if (pending) speakWithResolvedVoice(pending, owner)
+				}, 300)
+			}
+			const handleVoicesChanged = () => {
+				if (!isActiveRef.current) return
+				const pending = pendingUtteranceRef.current
+				pendingUtteranceRef.current = null
+				if (pending) speakWithResolvedVoice(pending, owner)
+			}
+			voicesChangedHandlerRef.current = handleVoicesChanged
+			window.speechSynthesis.addEventListener("voiceschanged", handleVoicesChanged)
+			return
+		}
+
+		// Click announcements always preempt; hover waits for non-hover speech (e.g. screen reader).
+		if (
+			owner === "hover" &&
+			(window.speechSynthesis.speaking || window.speechSynthesis.pending) &&
+			speechOwnerRef.current !== "hover"
+		) {
+			return
+		}
+
+		speakNow()
+	}, [clearVoiceRetry])
 
 	const cancelHoverAudio = useCallback(() => {
 		clearHoverTimeout()
 		clearVoiceRetry()
 
-		// Do not cancel global speech unless the current voice is hover-owned.
-		if (isHoverSpeakingRef.current) {
+		// Never cancel click-owned speech (e.g. mode switch announcements).
+		if (speechOwnerRef.current === "hover" && isHoverSpeakingRef.current) {
 			window.speechSynthesis.cancel()
+			speechOwnerRef.current = "none"
 			isHoverSpeakingRef.current = false
 		}
 	}, [clearHoverTimeout, clearVoiceRetry])
@@ -153,14 +143,12 @@ export function useUIHoverAudio() {
 			clearHoverTimeout()
 
 			hoverTimeoutRef.current = window.setTimeout(() => {
-				// If another speech flow (e.g., reader playback) is active, skip hover audio.
-				if ((window.speechSynthesis.speaking || window.speechSynthesis.pending) && !isHoverSpeakingRef.current) {
+				if (speechOwnerRef.current === "click") {
 					hoverTimeoutRef.current = null
 					return
 				}
 
-				// Delay then speak using resolved voice
-				speakWithResolvedVoice(text)
+				speakWithResolvedVoice(text, "hover")
 				hoverTimeoutRef.current = null
 			}, 150)
 		},
@@ -170,9 +158,9 @@ export function useUIHoverAudio() {
 	const playClickAudio = useCallback((text: string) => {
 		if (!text.trim()) return
 		clearHoverTimeout()
-		// Speak immediately, overriding hover delays
-		speakWithResolvedVoice(text)
-	}, [clearHoverTimeout, speakWithResolvedVoice])
+		clearVoiceRetry()
+		speakWithResolvedVoice(text, "click")
+	}, [clearHoverTimeout, clearVoiceRetry, speakWithResolvedVoice])
 
 	useEffect(() => {
 		isActiveRef.current = true
@@ -189,6 +177,7 @@ export function useUIHoverAudio() {
 			clearVoiceRetry()
 			if (isHoverSpeakingRef.current) {
 				window.speechSynthesis.cancel()
+				speechOwnerRef.current = "none"
 				isHoverSpeakingRef.current = false
 			}
 		}

@@ -206,7 +206,7 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
 
   const onHeaderMouseDown = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement
-    if (target.closest("button, input, select, textarea, ul, li")) return
+    if (target.closest("button, input, select, textarea, ul, li, label")) return
     e.preventDefault()
     draggingRef.current = true
     dragStartRef.current = { x: e.clientX, y: e.clientY }
@@ -232,6 +232,9 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
     ? "hover:bg-white/8 hover:border-white/15 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
     : "hover:bg-black/5 hover:border-black/10"
   const iconColor = isDark ? "text-[#FF7A2F]" : "text-[#FF7A2F]"
+  const toggleSwitchClass = isDark
+    ? "relative inline-block w-12 h-7 rounded-full bg-[#3A3A3C] shadow-[inset_0_1px_3px_rgba(0,0,0,0.45)] peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#FF7A2F]/50 peer-checked:bg-gradient-to-r peer-checked:from-[#FF7A2F] peer-checked:to-[#FF9F0A] peer-checked:shadow-[0_2px_14px_rgba(255,122,47,0.4)] peer-checked:after:translate-x-[20px] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-[#E8E8ED] after:border after:border-white/20 after:rounded-full after:h-6 after:w-6 after:transition-all after:shadow-[0_1px_4px_rgba(0,0,0,0.35)] peer-checked:after:border-white/40"
+    : "relative inline-block w-12 h-7 rounded-full bg-gray-300 shadow-inner peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#FF7A2F]/50 peer-checked:bg-gradient-to-r peer-checked:from-[#FF7A2F] peer-checked:to-[#FF9F0A] peer-checked:after:translate-x-[20px] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:border-gray-200 after:rounded-full after:h-6 after:w-6 after:transition-all"
 
   return (
     <div 
@@ -340,20 +343,25 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
             </div>
 
             {/* ORIGINAL TEXT TOGGLE */}
-            <div 
+            <label
               className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} ${sectionHoverClass} rounded-xl transition-colors cursor-pointer`}
               {...getHoverHandlers("Original Text")}
-              onClick={() => { persistSettings({ showOriginalText: !settings.showOriginalText }); }}
+              onMouseDown={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 pointer-events-none">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                 <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Original Text</span>
               </div>
-              <label className="relative inline-flex items-center cursor-pointer pointer-events-none">
-                <input type="checkbox" className="sr-only peer" checked={settings.showOriginalText} readOnly />
-                <div className={`w-12 h-7 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#FF7A2F]/50 rounded-full peer peer-checked:after:translate-x-[20px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-200 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-[#FF7A2F] peer-checked:to-[#FF9F0A] shadow-inner`}></div>
-              </label>
-            </div>
+              <span className="relative inline-flex items-center shrink-0 pointer-events-none">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={settings.showOriginalText}
+                  onChange={(e) => persistSettings({ showOriginalText: e.target.checked })}
+                />
+                <span className={toggleSwitchClass} aria-hidden="true" />
+              </span>
+            </label>
 
             {/* TEXT COLOR */}
             <div 
