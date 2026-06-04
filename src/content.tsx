@@ -527,10 +527,7 @@ export default function FloatingDockManager() {
       {/* 1. THE SETTINGS MODAL (Floats dead center, outside the drag logic) */}
       {isVisualSettingsOpen && (
         <VisualSettingsModal
-          onClose={() => {
-            setIsVisualSettingsOpen(false)
-            speakOverlayFeedback("Settings overlay closed")
-          }}
+          onClose={() => setIsVisualSettingsOpen(false)}
         />
       )}
 
@@ -621,10 +618,7 @@ export default function FloatingDockManager() {
               setIsReadingSpeedOpen(true)
               speakOverlayFeedback("Reading speed overlay opened")
             }}
-            onOpenSettings={() => {
-              setIsVisualSettingsOpen(true)
-              speakOverlayFeedback("Settings overlay opened")
-            }} 
+            onOpenSettings={() => setIsVisualSettingsOpen(true)} 
             onClose={() => {
               deactivateDock()
               chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null })

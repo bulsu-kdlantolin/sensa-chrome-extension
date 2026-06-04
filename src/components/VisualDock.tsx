@@ -280,9 +280,13 @@ export default function VisualDock({
     : "bg-white/90 border-black/10 shadow-[0_8px_32px_rgba(0,0,0,0.15)]"
   } ${isVoiceCommandActive ? "contrast-105 saturate-110 drop-shadow-[0_0_22px_rgba(10,68,255,0.14)]" : "contrast-100 saturate-100 drop-shadow-none"}`
 
-  const middleGlassPanelClass = `rounded-full backdrop-blur-3xl bg-white dark:bg-[#1C1C1E] shadow-[0_8px_32px_rgba(0,0,0,0.15)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6)] ${isVoiceCommandActive ? "contrast-105 saturate-110" : "contrast-100 saturate-100"}`
+  const dividerClass = isDark
+    ? "w-9 h-[2px] shrink-0 rounded-full bg-white/35 my-2"
+    : "w-9 h-[2px] shrink-0 rounded-full bg-neutral-300 my-2"
+
+  const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
     
-  const btnBaseClass = `relative group !w-[44px] !h-[44px] !min-w-[44px] !min-h-[44px] !p-0 !m-0 flex items-center justify-center rounded-full shrink-0 transform-gpu will-change-transform focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent box-border transition-all duration-200 hover:-translate-y-[1.5px] active:translate-y-0 active:scale-[0.97]`
+  const btnBaseClass = `relative group !w-[44px] !h-[44px] !min-w-[44px] !min-h-[44px] !p-0 !m-0 flex items-center justify-center rounded-full shrink-0 transform-gpu backface-hidden will-change-[transform] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent box-border transition-all duration-200 hover:-translate-y-[1.5px] active:translate-y-0 active:scale-[0.97]`
   
   const btnHoverClass = isDark 
     ? "hover:bg-white/15 text-gray-200 hover:text-white hover:shadow-[0_14px_28px_rgba(0,0,0,0.28)]"
@@ -585,16 +589,16 @@ export default function VisualDock({
       </div>
 
       <div 
-        className={`grid w-full relative z-10 [clip-path:inset(-50px_-200px_0px_-200px)] transition-all duration-[800ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        className={`grid w-full relative z-10 transform-gpu backface-hidden will-change-[grid-template-rows] ${springTransition} ${
           isMinimized ? "grid-rows-[0fr] mt-0" : "grid-rows-[1fr] mt-3"
         }`}
       >
         <div className="min-h-0 flex justify-center w-full">
           <div 
-            className={`flex flex-col items-center p-2 gap-1.5 w-fit origin-top transition-all ease-[cubic-bezier(0.16,1,0.3,1)] ${middleGlassPanelClass} ${
+            className={`relative flex flex-col items-center p-2 gap-1.5 w-fit origin-top transform-gpu backface-hidden will-change-[opacity,transform] ${springTransition} ${glassPanelClass} ${
               isMinimized 
-                ? "opacity-0 scale-[0.85] -translate-y-4 pointer-events-none duration-300" 
-                : "opacity-100 scale-100 translate-y-0 pointer-events-auto duration-[800ms]"
+                ? "opacity-0 scale-75 -translate-y-4 pointer-events-none" 
+                : "opacity-100 scale-100 translate-y-0 pointer-events-auto"
             }`}
           >
             <button
@@ -670,7 +674,7 @@ export default function VisualDock({
               </svg>
             </button>
 
-            <div className={`!w-7 !h-px my-1.5 shrink-0 transition-colors duration-300 ${isDark ? 'bg-white/20' : 'bg-black/15'}`} role="separator" />
+            <div className={dividerClass} role="separator" aria-hidden="true" />
 
             <button
               type="button"
@@ -727,7 +731,13 @@ export default function VisualDock({
             strokeWidth="2.5" 
             strokeLinecap="round" 
             strokeLinejoin="round" 
-            className={`!w-[22px] !h-[22px] shrink-0 transition-transform duration-[800ms] ease-[cubic-bezier(0.16,1,0.3,1)] ${isMinimized ? "rotate-180" : "rotate-0"}`} 
+            className="!w-[22px] !h-[22px] shrink-0 transform-gpu backface-hidden will-change-transform"
+            style={{
+              transform: `rotate(${isMinimized ? 180 : 0}deg) translateZ(0)`,
+              transformOrigin: "50% 50%",
+              willChange: "transform",
+              transition: "transform 260ms cubic-bezier(0.2, 0.9, 0.2, 1)",
+            }}
             aria-hidden="true"
           >
             <polyline points="7 15 12 10 17 15" />

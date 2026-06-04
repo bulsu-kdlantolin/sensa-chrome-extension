@@ -5,6 +5,175 @@ import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 const DEFAULT_HIGHLIGHT_COLOR = "#FFFE00"
 const DEFAULT_INPUT_DEVICE_ID = "default"
 const DEFAULT_OUTPUT_DEVICE_ID = "default"
+const DEFAULT_WAKE_WORD = "Sensa"
+const WAKE_WORD_LISTEN_MS = 10_000
+const WAKE_WORD_BAR_IDLE = [3, 5, 7, 5, 3]
+const WAKE_WORD_BAR_COLOR = "#FFFFFF"
+
+const extractFirstWakeWord = (text: string) => {
+  const cleaned = text.trim().replace(/[^a-zA-Z0-9\s'-]/gi, "")
+  const tokens = cleaned.split(/\s+/).filter(Boolean)
+  if (!tokens.length) return ""
+  const fillers = ["set", "to", "my", "word", "is", "the", "a", "this", "wake", "hello", "hey", "change"]
+  const filtered = tokens.filter(t => !fillers.includes(t.toLowerCase()) && t.length >= 2)
+  const target = filtered.length > 0 ? filtered[filtered.length - 1] : tokens[tokens.length - 1]
+  if (!target) return ""
+  return target.charAt(0).toUpperCase() + target.slice(1).toLowerCase()
+}
+
+function WakeWordMicButton({
+  isListening,
+  speechActive,
+  onClick,
+  disabled,
+}: {
+  isListening: boolean
+  speechActive: boolean
+  onClick: () => void
+  disabled?: boolean
+}) {
+  const barsRef = useRef<(HTMLDivElement | null)[]>([])
+  const currentHeights = useRef([...WAKE_WORD_BAR_IDLE])
+  const tickRef = useRef(0)
+  const isListeningRef = useRef(isListening)
+  const speechActiveRef = useRef(speechActive)
+
+  useEffect(() => {
+    isListeningRef.current = isListening
+  }, [isListening])
+
+  useEffect(() => {
+    speechActiveRef.current = speechActive
+  }, [speechActive])
+
+  useEffect(() => {
+    if (!isListening) return
+
+    let animationId = 0
+    const idleHeights = [3, 5, 7, 5, 3]
+    const maxHeights = [10, 15, 20, 15, 10]
+
+    const draw = () => {
+      animationId = requestAnimationFrame(draw)
+      if (!isListeningRef.current || document.visibilityState !== "visible") return
+
+      tickRef.current += 1
+      const tick = tickRef.current
+      const active = speechActiveRef.current
+
+      barsRef.current.forEach((bar, i) => {
+        if (!bar) return
+        let targetHeight = idleHeights[i]
+
+        if (active) {
+          const distFromCenter = Math.abs(i - 2)
+          const wave = (Math.sin(tick * 0.22 + i * 0.85) + 1) * 0.5
+          const voiceSpike = (maxHeights[i] - idleHeights[i]) * wave * (1 - distFromCenter * 0.12)
+          targetHeight = idleHeights[i] + voiceSpike
+        }
+
+        currentHeights.current[i] += (targetHeight - currentHeights.current[i]) * 0.28
+        const intensity = (currentHeights.current[i] - idleHeights[i]) / (maxHeights[i] - idleHeights[i])
+        const opacity = active ? Math.max(0.95, intensity + 0.75) : 0.5
+
+        bar.style.height = `${Math.round(currentHeights.current[i])}px`
+        bar.style.backgroundColor = WAKE_WORD_BAR_COLOR
+        bar.style.boxShadow = active
+          ? `0 0 ${5 + intensity * 10}px rgba(255, 255, 255, 0.9)`
+          : "none"
+        bar.style.opacity = `${opacity}`
+      })
+    }
+
+    draw()
+
+    return () => {
+      if (animationId) cancelAnimationFrame(animationId)
+      currentHeights.current = [...idleHeights]
+      barsRef.current.forEach((bar, i) => {
+        if (!bar) return
+        bar.style.height = `${idleHeights[i]}px`
+        bar.style.boxShadow = "none"
+        bar.style.opacity = "0.45"
+      })
+    }
+  }, [isListening, speechActive])
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
+      disabled={disabled}
+      aria-label={isListening ? "Stop recording wake word" : "Record wake word with microphone"}
+      aria-pressed={isListening}
+      className={`absolute inset-y-0 right-1.5 my-auto flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/50 disabled:cursor-not-allowed disabled:opacity-40 ${
+        isListening
+          ? "bg-gradient-to-br from-[#0A44FF] to-[#0099FF] text-white shadow-md shadow-[#0A44FF]/30"
+          : "text-[#0A44FF]/70 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF]"
+      }`}
+    >
+      {isListening ? (
+        <div className="flex items-center justify-center gap-[2px] w-[22px] h-[22px]" aria-hidden="true">
+          {[0, 1, 2, 3, 4].map((index) => (
+            <div
+              key={index}
+              ref={(el) => { barsRef.current[index] = el }}
+              className="w-[3px] rounded-full"
+              style={{ height: WAKE_WORD_BAR_IDLE[index], backgroundColor: WAKE_WORD_BAR_COLOR, opacity: 0.5 }}
+            />
+          ))}
+        </div>
+      ) : (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+          <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+          <line x1="12" y1="19" x2="12" y2="22" />
+        </svg>
+      )}
+    </button>
+  )
+}
+
+function SettingsToggle({
+  checked,
+  onToggle,
+  ariaLabel,
+}: {
+  checked: boolean
+  onToggle: (enabled: boolean) => void
+  ariaLabel: string
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      onClick={(e) => {
+        e.stopPropagation()
+        onToggle(!checked)
+      }}
+      className="relative inline-flex shrink-0 cursor-pointer items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50"
+    >
+      <span
+        className={`block h-7 w-12 rounded-full shadow-inner transition-colors duration-200 ${
+          checked
+            ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF]"
+            : "bg-gray-300 dark:bg-gray-600"
+        }`}
+      />
+      <span
+        className={`pointer-events-none absolute top-[2px] left-[2px] h-6 w-6 rounded-full border border-gray-200 bg-white shadow-sm transition-transform duration-200 ${
+          checked ? "translate-x-[20px]" : "translate-x-0"
+        }`}
+        aria-hidden="true"
+      />
+    </button>
+  )
+}
 
 interface VisualSettingsModalProps {
   onClose: () => void
@@ -15,6 +184,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   const audioCtxRef = useRef<AudioContext | null>(null)
   const [isVoiceGuideEnabled, setIsVoiceGuideEnabled] = useState<boolean>(true)
+  const isVoiceGuideEnabledRef = useRef(true)
   const highlightSoundDebounceRef = useRef<number | null>(null)
   const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState<boolean>(true)
   const isSoundEffectsEnabledRef = useRef<boolean>(true)
@@ -34,6 +204,19 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const defaultVoiceLabelRef = useRef<string>("")
   const defaultVoiceAppliedRef = useRef(false)
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false)
+  const [wakeWord, setWakeWord] = useState(DEFAULT_WAKE_WORD)
+  const [isCapturingWakeWord, setIsCapturingWakeWord] = useState(false)
+  const [wakeWordSpeechActive, setWakeWordSpeechActive] = useState(false)
+  const wakeWordCaptureRef = useRef<any>(null)
+  const isWakeWordCapturingRef = useRef(false)
+  const wakeWordCapturedRef = useRef(false)
+  const wakeWordLatestTranscriptRef = useRef("")
+  const wakeWordCaptureStartTimerRef = useRef<number | null>(null)
+  const wakeWordListenTimeoutRef = useRef<number | null>(null)
+  const wakeWordCaptureStartedAtRef = useRef(0)
+  const pauseSettingsRecognitionRef = useRef<(() => void) | null>(null)
+  const resumeSettingsRecognitionRef = useRef<(() => void) | null>(null)
+  const settingsRecognitionArmedRef = useRef(false)
 
   const [isMounted, setIsMounted] = useState(false)
   const onCloseRef = useRef(onClose)
@@ -58,32 +241,31 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       const Ctor = window.AudioContext || (window as any).webkitAudioContext
       audioCtxRef.current = Ctor ? new Ctor() : null
     }
-
     if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
       audioCtxRef.current.resume().catch(() => undefined)
     }
-
     return audioCtxRef.current
   }
 
-  React.useEffect(() => {
+  useEffect(() => {
     isSoundEffectsEnabledRef.current = isSoundEffectsEnabled
   }, [isSoundEffectsEnabled])
+
+  useEffect(() => {
+    isVoiceGuideEnabledRef.current = isVoiceGuideEnabled
+  }, [isVoiceGuideEnabled])
 
   const playHoverSfx = () => {
     const ctx = getAudioContext()
     if (!ctx) return
-
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
-
     osc.type = "sine"
     osc.frequency.setValueAtTime(720, ctx.currentTime)
     osc.frequency.exponentialRampToValueAtTime(420, ctx.currentTime + 0.08)
     gain.gain.setValueAtTime(0.0001, ctx.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.015)
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09)
-
     osc.connect(gain)
     gain.connect(ctx.destination)
     osc.start()
@@ -93,23 +275,19 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const playClickSfx = () => {
     const ctx = getAudioContext()
     if (!ctx) return
-
     const makeClick = (freq: number, startAt: number) => {
       const osc = ctx.createOscillator()
       const gain = ctx.createGain()
-
       osc.type = "square"
       osc.frequency.setValueAtTime(freq, ctx.currentTime + startAt)
       gain.gain.setValueAtTime(0.0001, ctx.currentTime + startAt)
       gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + startAt + 0.01)
       gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.05)
-
       osc.connect(gain)
       gain.connect(ctx.destination)
       osc.start(ctx.currentTime + startAt)
       osc.stop(ctx.currentTime + startAt + 0.06)
     }
-
     makeClick(900, 0)
     makeClick(1200, 0.07)
   }
@@ -117,85 +295,77 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const playPopSfx = () => {
     const ctx = getAudioContext()
     if (!ctx) return
-
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
-
     osc.type = "sine"
     osc.frequency.setValueAtTime(520, ctx.currentTime)
     osc.frequency.exponentialRampToValueAtTime(220, ctx.currentTime + 0.12)
     gain.gain.setValueAtTime(0.0001, ctx.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.07, ctx.currentTime + 0.02)
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.14)
-
     osc.connect(gain)
     gain.connect(ctx.destination)
     osc.start()
     osc.stop(ctx.currentTime + 0.16)
   }
 
-  const playActivateSfx = () => {
-    const ctx = getAudioContext()
-    if (!ctx) return
-
-    const makeClick = (freq: number, startAt: number) => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-
-      osc.type = "square"
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + startAt)
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime + startAt)
-      gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + startAt + 0.01)
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.05)
-
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start(ctx.currentTime + startAt)
-      osc.stop(ctx.currentTime + startAt + 0.06)
-    }
-
-    makeClick(900, 0)
-    makeClick(1200, 0.07)
-  }
-
-  const playDeactivateSfx = () => {
-    const ctx = getAudioContext()
-    if (!ctx) return
-
-    const makeClick = (freq: number, startAt: number) => {
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-
-      osc.type = "triangle"
-      osc.frequency.setValueAtTime(freq, ctx.currentTime + startAt)
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime + startAt)
-      gain.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime + startAt + 0.01)
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.06)
-
-      osc.connect(gain)
-      gain.connect(ctx.destination)
-      osc.start(ctx.currentTime + startAt)
-      osc.stop(ctx.currentTime + startAt + 0.07)
-    }
-
-    makeClick(720, 0)
-    makeClick(480, 0.08)
-  }
-
   const playToggleSfx = (enabled: boolean) => {
-    if (enabled) playActivateSfx()
-    else playDeactivateSfx()
+    if (enabled) playClickSfx()
+    else playHoverSfx()
+  }
+
+  const selectedVoiceURIRef = useRef(selectedVoiceURI)
+  const hasAnnouncedOpenRef = useRef(false)
+  const speakSettingsGuideRef = useRef<(message: string) => void>(() => {})
+
+  useEffect(() => {
+    selectedVoiceURIRef.current = selectedVoiceURI
+  }, [selectedVoiceURI])
+
+  const speakSettingsGuide = React.useCallback((message: string) => {
+    if (!message.trim()) return
+    const speakNow = () => {
+      const voices = window.speechSynthesis.getVoices()
+      if (!voices.length) return false
+      window.speechSynthesis.cancel()
+      const utterance = new SpeechSynthesisUtterance(message)
+      const uri = selectedVoiceURIRef.current || defaultVoiceURIRef.current
+      const preferred =
+        (uri ? voices.find((voice) => voice.voiceURI === uri) : undefined) ||
+        voices.find((voice) => voice.name.includes("Google US English"))
+      if (preferred) {
+        utterance.voice = preferred
+        utterance.lang = preferred.lang
+      }
+      window.speechSynthesis.speak(utterance)
+      return true
+    }
+    if (speakNow()) return
+    const onVoicesChanged = () => {
+      window.speechSynthesis.removeEventListener("voiceschanged", onVoicesChanged)
+      speakNow()
+    }
+    window.speechSynthesis.addEventListener("voiceschanged", onVoicesChanged)
+  }, [])
+
+  useEffect(() => {
+    speakSettingsGuideRef.current = speakSettingsGuide
+  }, [speakSettingsGuide])
+
+  const announceIfVoiceGuide = (message: string) => {
+    if (!isVoiceGuideEnabledRef.current) return
+    speakSettingsGuide(message)
   }
 
   const getHoverHandlers = (label: string) => ({
     onMouseEnter: () => {
       playHoverSfx()
-      playHoverAudio(label)
+      if (isVoiceGuideEnabledRef.current) playHoverAudio(label)
     },
     onMouseLeave: cancelHoverAudio,
     onFocus: () => {
       playHoverSfx()
-      playHoverAudio(label)
+      if (isVoiceGuideEnabledRef.current) playHoverAudio(label)
     },
     onBlur: cancelHoverAudio
   })
@@ -212,11 +382,17 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   }, [])
 
   useEffect(() => {
-    if (isMounted) {
-      playPopSfx()
-      playClickAudio("Settings opened")
+    if (!isMounted || hasAnnouncedOpenRef.current) return
+    playPopSfx()
+    if (!isVoiceGuideEnabledRef.current) {
+      hasAnnouncedOpenRef.current = true
+      return
     }
-  }, [isMounted, playClickAudio])
+    const voiceUri = selectedVoiceURI || defaultVoiceURIRef.current
+    if (!voiceUri) return
+    hasAnnouncedOpenRef.current = true
+    speakSettingsGuide("Settings opened")
+  }, [isMounted, selectedVoiceURI, speakSettingsGuide])
 
   useEffect(() => {
     const resumeAudio = () => {
@@ -225,7 +401,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
         ctx.resume().catch(() => undefined)
       }
     }
-
     window.addEventListener("pointerdown", resumeAudio)
     window.addEventListener("keydown", resumeAudio)
     return () => {
@@ -294,13 +469,11 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       const dy = ev.clientY - dragStartRef.current.y
       setOffset({ x: offsetStartRef.current.x + dx, y: offsetStartRef.current.y + dy })
     }
-
     const onUp = () => {
       if (!draggingRef.current) return
       draggingRef.current = false
       chrome.storage.local.set({ sensa_visual_settings_offset: offsetRef.current })
     }
-
     window.addEventListener("mousemove", onMove)
     window.addEventListener("mouseup", onUp)
     return () => {
@@ -327,18 +500,255 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       "sensa_visual_voice_guide_enabled",
       "sensa_visual_sound_effects_enabled",
       "sensa_visual_voice_uri",
-      "sensa_visual_highlight_mouse_screen_reader"
+      "sensa_visual_highlight_mouse_screen_reader",
+      "sensa_visual_wake_word"
     ], (res) => {
       if (typeof res.sensa_visual_highlight_color === "string") setHighlightColor(res.sensa_visual_highlight_color)
       if (typeof res.sensa_visual_input_device_id === "string") setSelectedInputDeviceId(res.sensa_visual_input_device_id)
       if (typeof res.sensa_visual_output_device_id === "string") setSelectedOutputDeviceId(res.sensa_visual_output_device_id)
       if (typeof res.sensa_visual_autoscroll_enabled === "boolean") setIsAutoscrollEnabled(res.sensa_visual_autoscroll_enabled)
-      if (typeof res.sensa_visual_voice_guide_enabled === "boolean") setIsVoiceGuideEnabled(res.sensa_visual_voice_guide_enabled)
+      if (typeof res.sensa_visual_voice_guide_enabled === "boolean") {
+        setIsVoiceGuideEnabled(res.sensa_visual_voice_guide_enabled)
+        isVoiceGuideEnabledRef.current = res.sensa_visual_voice_guide_enabled
+      }
       if (typeof res.sensa_visual_sound_effects_enabled === "boolean") setIsSoundEffectsEnabled(res.sensa_visual_sound_effects_enabled)
       if (typeof res.sensa_visual_voice_uri === "string") setSelectedVoiceURI(res.sensa_visual_voice_uri)
       if (typeof res.sensa_visual_highlight_mouse_screen_reader === "boolean") setIsHighlightMouseScreenReaderEnabled(res.sensa_visual_highlight_mouse_screen_reader)
+      if (typeof res.sensa_visual_wake_word === "string" && res.sensa_visual_wake_word.trim()) {
+        setWakeWord(res.sensa_visual_wake_word.trim())
+      }
     })
   }, [])
+
+  const resumeSettingsVoiceRecognition = () => {
+    window.setTimeout(() => resumeSettingsRecognitionRef.current?.(), 350)
+  }
+
+  const stopWakeWordCapture = (options?: { resumeSettings?: boolean }) => {
+    if (wakeWordCaptureStartTimerRef.current !== null) {
+      window.clearTimeout(wakeWordCaptureStartTimerRef.current)
+      wakeWordCaptureStartTimerRef.current = null
+    }
+    if (wakeWordListenTimeoutRef.current !== null) {
+      window.clearTimeout(wakeWordListenTimeoutRef.current)
+      wakeWordListenTimeoutRef.current = null
+    }
+    isWakeWordCapturingRef.current = false
+    wakeWordCapturedRef.current = false
+    wakeWordLatestTranscriptRef.current = ""
+    setWakeWordSpeechActive(false)
+    setIsCapturingWakeWord(false)
+    const recognition = wakeWordCaptureRef.current
+    if (recognition) {
+      wakeWordCaptureRef.current = null
+      recognition.onresult = null
+      recognition.onerror = null
+      recognition.onend = null
+      try { recognition.stop() } catch {}
+    }
+    if (options?.resumeSettings !== false) {
+      resumeSettingsVoiceRecognition()
+    }
+  }
+
+  const announceWakeWordListenFailed = () => {
+    announceIfVoiceGuide("No wake word heard, try again")
+  }
+
+  const applyCapturedWakeWord = (rawTranscript: string) => {
+    if (wakeWordCapturedRef.current) return false
+    const word = extractFirstWakeWord(rawTranscript)
+    if (!word) return false
+    wakeWordCapturedRef.current = true
+    setWakeWord(word)
+    chrome.storage.local.set({ sensa_visual_wake_word: word })
+    playClickSfx()
+    announceIfVoiceGuide(`Wake word set to ${word}`)
+    stopWakeWordCapture()
+    return true
+  }
+
+  const tryApplyWakeWordFromTranscript = (rawTranscript: string) => {
+    if (wakeWordCapturedRef.current) return true
+    return applyCapturedWakeWord(rawTranscript)
+  }
+
+  const collectTranscriptsFromEvent = (event: any) => {
+    const chunks: string[] = []
+    for (let i = 0; i < event.results.length; i++) {
+      const piece = event.results[i][0]?.transcript?.trim()
+      if (piece) chunks.push(piece)
+    }
+    return chunks
+  }
+
+  const beginWakeWordRecognition = () => {
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognitionCtor || !isWakeWordCapturingRef.current) return
+
+    window.speechSynthesis.cancel()
+    wakeWordCapturedRef.current = false
+    wakeWordLatestTranscriptRef.current = ""
+    setWakeWordSpeechActive(false)
+
+    const recognition = new SpeechRecognitionCtor()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = "en-US"
+    wakeWordCaptureRef.current = recognition
+    wakeWordCaptureStartedAtRef.current = Date.now()
+
+    let captured = false
+    const getListenElapsed = () => Date.now() - wakeWordCaptureStartedAtRef.current
+    const hasListenTimeRemaining = () => getListenElapsed() < WAKE_WORD_LISTEN_MS
+
+    const finishListenTimeout = () => {
+      if (captured || wakeWordCapturedRef.current || !isWakeWordCapturingRef.current) return
+      if (wakeWordLatestTranscriptRef.current && tryApplyWakeWordFromTranscript(wakeWordLatestTranscriptRef.current)) {
+        captured = true
+        return
+      }
+      stopWakeWordCapture()
+      announceWakeWordListenFailed()
+    }
+
+    if (wakeWordListenTimeoutRef.current !== null) {
+      window.clearTimeout(wakeWordListenTimeoutRef.current)
+    }
+    wakeWordListenTimeoutRef.current = window.setTimeout(finishListenTimeout, WAKE_WORD_LISTEN_MS)
+
+    const restartListening = () => {
+      if (captured || wakeWordCapturedRef.current || !isWakeWordCapturingRef.current || !hasListenTimeRemaining()) return
+      if (wakeWordCaptureRef.current !== recognition) return
+      try {
+        recognition.start()
+      } catch {
+        window.setTimeout(() => {
+          if (captured || wakeWordCapturedRef.current || !isWakeWordCapturingRef.current || !hasListenTimeRemaining()) return
+          if (wakeWordCaptureRef.current !== recognition) return
+          try { recognition.start() } catch {}
+        }, 300)
+      }
+    }
+
+    const markSpeechActive = () => setWakeWordSpeechActive(true)
+    const markSpeechInactive = () => setWakeWordSpeechActive(false)
+
+    recognition.onsoundstart = markSpeechActive
+    recognition.onspeechstart = markSpeechActive
+    recognition.onsoundend = markSpeechInactive
+    recognition.onspeechend = () => {
+      markSpeechInactive()
+      if (captured || wakeWordCapturedRef.current) return
+      const pending = wakeWordLatestTranscriptRef.current
+      if (pending && tryApplyWakeWordFromTranscript(pending)) {
+        captured = true
+      }
+    }
+
+    recognition.onresult = (event: any) => {
+      if (captured || wakeWordCapturedRef.current) return
+      const chunks = collectTranscriptsFromEvent(event)
+      const fullTranscript = chunks.join(" ").trim()
+      if (fullTranscript) wakeWordLatestTranscriptRef.current = fullTranscript
+      if (fullTranscript && tryApplyWakeWordFromTranscript(fullTranscript)) {
+        captured = true
+      }
+    }
+
+    recognition.onerror = (event: any) => {
+      if (event.error === "aborted") return
+      if (event.error === "no-speech" || event.error === "audio-capture") {
+        restartListening()
+        return
+      }
+      if (!hasListenTimeRemaining()) {
+        stopWakeWordCapture()
+        announceIfVoiceGuide("Could not hear your wake word, try again")
+        return
+      }
+      restartListening()
+    }
+
+    recognition.onend = () => {
+      if (captured || wakeWordCapturedRef.current || !isWakeWordCapturingRef.current) return
+      if (wakeWordCaptureRef.current !== recognition) return
+      const pending = wakeWordLatestTranscriptRef.current
+      if (pending && tryApplyWakeWordFromTranscript(pending)) {
+        captured = true
+        return
+      }
+      if (!hasListenTimeRemaining()) {
+        wakeWordCaptureRef.current = null
+        stopWakeWordCapture()
+        announceWakeWordListenFailed()
+        return
+      }
+      restartListening()
+    }
+
+    try {
+      recognition.start()
+    } catch {
+      stopWakeWordCapture()
+      announceIfVoiceGuide("Could not start microphone")
+    }
+  }
+
+  const primeMicrophoneForWakeWord = async () => {
+    const audio =
+      selectedInputDeviceId && selectedInputDeviceId !== DEFAULT_INPUT_DEVICE_ID
+        ? { deviceId: { exact: selectedInputDeviceId } }
+        : true
+    const stream = await navigator.mediaDevices.getUserMedia({ audio })
+    stream.getTracks().forEach((track) => track.stop())
+  }
+
+  const startWakeWordCapture = async () => {
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognitionCtor) {
+      announceIfVoiceGuide("Speech recognition is not supported in this browser")
+      return
+    }
+    stopWakeWordCapture({ resumeSettings: false })
+    isWakeWordCapturingRef.current = true
+    setIsCapturingWakeWord(true)
+    playClickSfx()
+    window.speechSynthesis.cancel()
+    pauseSettingsRecognitionRef.current?.()
+    try {
+      await primeMicrophoneForWakeWord()
+    } catch {
+      stopWakeWordCapture()
+      announceIfVoiceGuide("Microphone access is required to set a wake word")
+      return
+    }
+    wakeWordCaptureStartTimerRef.current = window.setTimeout(() => {
+      wakeWordCaptureStartTimerRef.current = null
+      if (!isWakeWordCapturingRef.current) return
+      beginWakeWordRecognition()
+    }, 350)
+  }
+
+  const handleWakeWordMicToggle = () => {
+    playClickSfx()
+    if (isCapturingWakeWord) {
+      stopWakeWordCapture()
+      announceIfVoiceGuide("Wake word recording cancelled")
+      return
+    }
+    startWakeWordCapture()
+  }
+
+  const handleWakeWordChange = (value: string) => {
+    const trimmed = value.replace(/\s+/g, " ").trimStart()
+    setWakeWord(trimmed)
+    if (trimmed) {
+      chrome.storage.local.set({ sensa_visual_wake_word: trimmed })
+    }
+  }
+
+  useEffect(() => () => stopWakeWordCapture({ resumeSettings: false }), [])
 
   React.useEffect(() => {
     const loadVoices = () => {
@@ -347,13 +757,11 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
         const defaultVoice = availableVoices.find((v) => v.name.includes("Google US English")) || availableVoices[0]
         defaultVoiceURIRef.current = defaultVoice?.voiceURI || ""
         defaultVoiceLabelRef.current = defaultVoice?.name || ""
-
         setVoices(availableVoices)
         setSelectedVoiceURI((prev) => {
           if (prev) return prev
           return defaultVoice?.voiceURI || ""
         })
-
         if (defaultVoice?.voiceURI && !defaultVoiceAppliedRef.current) {
           chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (stored) => {
             const hasStored = typeof stored.sensa_visual_voice_uri === "string" && stored.sensa_visual_voice_uri.length > 0
@@ -396,43 +804,33 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
 
     let isComponentMounted = true
     let restartTimer: number | null = null
-    const lastExecutedRef = { current: {} as Record<string, number> }
-    const lastTranscriptRef = { current: {} as Record<string, string> }
-
-    const normalizeTranscript = (text: string) =>
-      ` ${text.toLowerCase().replace(/[^a-z0-9\s]/gi, "").replace(/\s+/g, " ").trim()} `
-
-    const checkCommand = (id: string, patterns: string[], transcript: string, cooldownMs = 500) => {
-      const normalizedTranscript = normalizeTranscript(transcript)
-
-      if (patterns.some((pattern) => normalizedTranscript.includes(` ${pattern} `))) {
-        const now = Date.now()
-        const lastExecuted = lastExecutedRef.current[id] || 0
-        const lastTranscript = lastTranscriptRef.current[id] || ""
-        if (normalizedTranscript === lastTranscript && now - lastExecuted < 2500) {
-          return false
-        }
-
-        if (now - lastExecuted > cooldownMs) {
-          lastExecutedRef.current[id] = now
-          lastTranscriptRef.current[id] = normalizedTranscript
-          return true
-        }
-      }
-
-      return false
-    }
+    let settingsStartIndex = 0
 
     const scheduleRestart = () => {
-      if (!isComponentMounted) return
+      if (!isComponentMounted || isWakeWordCapturingRef.current) return
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
+        if (isWakeWordCapturingRef.current) return
         try { recognition.start() } catch {}
       }, 300)
     }
 
+    pauseSettingsRecognitionRef.current = () => {
+      if (restartTimer) {
+        window.clearTimeout(restartTimer)
+        restartTimer = null
+      }
+      try { recognition.stop() } catch {}
+    }
+
+    resumeSettingsRecognitionRef.current = () => {
+      if (!isComponentMounted || isWakeWordCapturingRef.current) return
+      scheduleRestart()
+    }
+
     const speakFeedback = (message: string) => {
-      playClickAudio(message)
+      if (!isVoiceGuideEnabledRef.current) return
+      speakSettingsGuideRef.current(message)
     }
 
     const setSettingsState = (updater: (state: typeof overlayStateRef.current) => void) => {
@@ -444,11 +842,9 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     const cycleVoice = (step: 1 | -1) => {
       const state = overlayStateRef.current
       if (!state.voices.length) return
-
       const currentIndex = Math.max(state.voices.findIndex((voice) => voice.voiceURI === state.selectedVoiceURI), 0)
       const nextVoice = state.voices[(currentIndex + step + state.voices.length) % state.voices.length]
       if (!nextVoice) return
-
       setSelectedVoiceURI(nextVoice.voiceURI)
       chrome.storage.local.set({ sensa_visual_voice_uri: nextVoice.voiceURI, sensa_visual_voice_name: nextVoice.name || "" })
       setIsVoiceDropdownOpen(false)
@@ -470,11 +866,9 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       }
       const options = [defaultDevice, ...devices]
       if (!options.length) return
-
       const currentIndex = Math.max(options.findIndex((device) => device.deviceId === currentId), 0)
       const nextDevice = options[(currentIndex + step + options.length) % options.length]
       if (!nextDevice) return
-
       if (kind === "input") {
         setSelectedInputDeviceId(nextDevice.deviceId)
         chrome.storage.local.set({ sensa_visual_input_device_id: nextDevice.deviceId })
@@ -482,19 +876,16 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
         setSelectedOutputDeviceId(nextDevice.deviceId)
         chrome.storage.local.set({ sensa_visual_output_device_id: nextDevice.deviceId })
       }
-
       speakFeedback(nextDevice.label || `${kind} device selected`)
     }
 
-    const voiceSelectionMatches = (transcript: string) => {
-      const normalizedTranscript = normalizeTranscript(transcript)
+    const voiceSelectionMatches = (text: string) => {
+      const cleanText = text.toLowerCase()
       const matchedVoice = overlayStateRef.current.voices.find((voice) => {
-        const normalizedVoiceName = normalizeTranscript(voice.name || "")
-        return normalizedTranscript.includes(normalizedVoiceName.trim()) || normalizedVoiceName.includes(normalizedTranscript.trim())
+        const name = (voice.name || "").toLowerCase()
+        return cleanText.includes(name) || name.includes(cleanText)
       })
-
       if (!matchedVoice) return false
-
       setSelectedVoiceURI(matchedVoice.voiceURI)
       chrome.storage.local.set({ sensa_visual_voice_uri: matchedVoice.voiceURI, sensa_visual_voice_name: matchedVoice.name || "" })
       setIsVoiceDropdownOpen(false)
@@ -507,102 +898,85 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       return true
     }
 
+    recognition.onstart = () => {
+      settingsStartIndex = 0
+      settingsRecognitionArmedRef.current = true
+    }
+
     recognition.onresult = (event: any) => {
-      const results = Array.from(event.results ?? [])
-      if (!results.length) return
+      if (!settingsRecognitionArmedRef.current || isWakeWordCapturingRef.current) return
+      let speechChunk = ""
+      for (let i = settingsStartIndex; i < event.results.length; i++) {
+        speechChunk += event.results[i][0].transcript + " "
+      }
+      const transcript = ` ${speechChunk.toLowerCase().replace(/[^a-z0-9\s]/gi, "").replace(/\s+/g, " ").trim()} `
+      if (!transcript.trim()) return
 
-      const transcripts = results
-        .map((result: any) => result?.[0]?.transcript || "")
-        .filter(Boolean)
-
-      if (!transcripts.length) return
-
-      const transcript = transcripts.slice(-2).join(" ")
+      const hasWord = (...phrases: string[]) => phrases.some(p => transcript.includes(p))
+      const wantsOn = hasWord("on", "enable", "enabled", "turn on", "activate", "active")
+      const wantsOff = hasWord("off", "disable", "disabled", "turn off", "deactivate")
       const state = overlayStateRef.current
-      const normalizedTranscript = normalizeTranscript(transcript)
-      const wantsOn = /\b(on|enable|enabled|turn on|activate|active)\b/.test(normalizedTranscript)
-      const wantsOff = /\b(off|disable|disabled|turn off|deactivate)\b/.test(normalizedTranscript)
+      let commandFired = false
 
       if (state.isVoiceDropdownOpen) {
-        if (checkCommand("voice-dropdown-close", ["close voice selection", "close dropdown", "cancel voice selection", "hide voices"], transcript, 350)) {
+        if (hasWord("close voice selection", "close dropdown", "cancel voice selection", "hide voices")) {
+          commandFired = true
           setIsVoiceDropdownOpen(false)
-          setSettingsState((next) => {
-            next.isVoiceDropdownOpen = false
-          })
+          setSettingsState((next) => { next.isVoiceDropdownOpen = false })
           speakFeedback("Voice selection closed")
-          return
-        }
-
-        if (checkCommand("voice-dropdown-next", ["next voice", "voice next", "next selection", "next voice option"], transcript, 350)) {
+        } else if (hasWord("next voice", "voice next", "next selection", "next voice option")) {
+          commandFired = true
           cycleVoice(1)
-          return
-        }
-
-        if (checkCommand("voice-dropdown-prev", ["previous voice", "prev voice", "voice previous", "last voice", "previous selection"], transcript, 350)) {
+        } else if (hasWord("previous voice", "prev voice", "voice previous", "last voice", "previous selection")) {
+          commandFired = true
           cycleVoice(-1)
-          return
+        } else if (voiceSelectionMatches(transcript)) {
+          commandFired = true
         }
-
-        if (voiceSelectionMatches(transcript)) return
+        if (commandFired) settingsStartIndex = event.results.length
         return
       }
 
-      if (checkCommand("settings-close", ["close settings", "close", "cancel", "back", "exit"], transcript, 350)) {
+      if (hasWord("close settings", "close", "cancel", "back", "exit")) {
+        commandFired = true
         setIsMounted(false)
         setTimeout(() => onCloseRef.current(), 300)
-        return
-      }
-
-      if (checkCommand("settings-reset", ["reset default", "reset defaults", "restore defaults", "reset settings"], transcript, 700)) {
+      } else if (hasWord("reset default", "reset defaults", "restore defaults", "reset settings")) {
+        commandFired = true
         handleResetToDefault()
-        return
-      }
-
-      if (checkCommand("settings-voice-guide", ["voice guide", "voice guidance"], transcript, 500)) {
+      } else if (hasWord("voice guide", "voice guidance")) {
+        commandFired = true
         handleVoiceGuideToggle(wantsOff ? false : wantsOn ? true : !state.isVoiceGuideEnabled)
-        return
-      }
-
-      if (checkCommand("settings-mouse-reader", ["mouse reader", "mouse highlight reader", "mouse highlight"], transcript, 500)) {
+      } else if (hasWord("mouse reader", "mouse highlight reader", "mouse highlight")) {
+        commandFired = true
         handleHighlightMouseScreenReaderToggle(wantsOff ? false : wantsOn ? true : !state.isHighlightMouseScreenReaderEnabled)
-        return
-      }
-
-      if (checkCommand("settings-autoscroll", ["autoscroll", "auto scroll", "scroll reading"], transcript, 500)) {
+      } else if (hasWord("autoscroll", "auto scroll", "scroll reading")) {
+        commandFired = true
         handleAutoscrollToggle(wantsOff ? false : wantsOn ? true : !state.isAutoscrollEnabled)
-        return
-      }
-
-      if (checkCommand("settings-color", ["highlight color", "color picker", "pick color"], transcript, 500)) {
+      } else if (hasWord("highlight color", "color picker", "pick color")) {
+        commandFired = true
         setShowColorPicker(true)
         speakFeedback("Highlight color opened")
-        return
-      }
-
-      if (checkCommand("settings-voice-selection", ["voice selection", "select voice", "voice voices"], transcript, 500)) {
+      } else if (hasWord("voice selection", "select voice", "voice voices")) {
+        commandFired = true
         setIsVoiceDropdownOpen(true)
         speakFeedback("Voice selection opened")
-        return
-      }
-
-      if (checkCommand("settings-input-next", ["next input", "next microphone", "input next", "microphone next"], transcript, 450)) {
+      } else if (hasWord("next input", "next microphone", "input next", "microphone next")) {
+        commandFired = true
         cycleDevice("input", 1)
-        return
-      }
-
-      if (checkCommand("settings-input-prev", ["previous input", "prev input", "previous microphone", "microphone previous"], transcript, 450)) {
+      } else if (hasWord("previous input", "prev input", "previous microphone", "microphone previous")) {
+        commandFired = true
         cycleDevice("input", -1)
-        return
-      }
-
-      if (checkCommand("settings-output-next", ["next output", "next speaker", "output next", "speaker next"], transcript, 450)) {
+      } else if (hasWord("next output", "next speaker", "output next", "speaker next")) {
+        commandFired = true
         cycleDevice("output", 1)
-        return
+      } else if (hasWord("previous output", "prev output", "previous speaker", "speaker previous")) {
+        commandFired = true
+        cycleDevice("output", -1)
       }
 
-      if (checkCommand("settings-output-prev", ["previous output", "prev output", "previous speaker", "speaker previous"], transcript, 450)) {
-        cycleDevice("output", -1)
-        return
+      if (commandFired) {
+        settingsStartIndex = event.results.length
       }
     }
 
@@ -613,10 +987,17 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
 
     recognition.onend = () => scheduleRestart()
 
-    try { recognition.start() } catch {}
+    const initialStartTimer = window.setTimeout(() => {
+      if (!isComponentMounted || isWakeWordCapturingRef.current) return
+      try { recognition.start() } catch {}
+    }, 1500)
 
     return () => {
       isComponentMounted = false
+      settingsRecognitionArmedRef.current = false
+      window.clearTimeout(initialStartTimer)
+      pauseSettingsRecognitionRef.current = null
+      resumeSettingsRecognitionRef.current = null
       if (restartTimer) window.clearTimeout(restartTimer)
       try { recognition.stop() } catch {}
       recognition.onresult = null
@@ -631,9 +1012,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     if (normalizedNew === normalizedPrev) return
     setHighlightColor(color)
     chrome.storage.local.set({ sensa_visual_highlight_color: color })
-
-    // Dragging the picker can emit dozens of updates per second.
-    // Debounce audio so we only play once after the user pauses.
     if (highlightSoundDebounceRef.current !== null) {
       window.clearTimeout(highlightSoundDebounceRef.current)
     }
@@ -703,7 +1081,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     playClickSfx()
     const defaultVoice = voices.find((voice) => voice.name.includes("Google US English")) || voices[0]
     const defaultVoiceURI = defaultVoice?.voiceURI || ""
-
     setShowColorPicker(false)
     setIsVoiceDropdownOpen(false)
     setHighlightColor(DEFAULT_HIGHLIGHT_COLOR)
@@ -712,7 +1089,8 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     setIsAutoscrollEnabled(true)
     setIsHighlightMouseScreenReaderEnabled(false)
     setSelectedVoiceURI(defaultVoiceURI)
-
+    setWakeWord(DEFAULT_WAKE_WORD)
+    stopWakeWordCapture()
     chrome.storage.local.set({
       sensa_visual_highlight_color: DEFAULT_HIGHLIGHT_COLOR,
       sensa_visual_input_device_id: DEFAULT_INPUT_DEVICE_ID,
@@ -720,7 +1098,8 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       sensa_visual_autoscroll_enabled: true,
       sensa_visual_highlight_mouse_screen_reader: false,
       sensa_visual_voice_uri: defaultVoiceURI,
-      sensa_visual_voice_name: defaultVoice?.name || ""
+      sensa_visual_voice_name: defaultVoice?.name || "",
+      sensa_visual_wake_word: DEFAULT_WAKE_WORD
     })
     playClickAudio("Settings reset to default")
   }
@@ -728,7 +1107,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.target === event.currentTarget) {
       playClickSfx()
-      playClickAudio("Closing settings")
+      announceIfVoiceGuide("Closing settings")
       setIsMounted(false)
       setTimeout(onClose, 300)
     }
@@ -758,259 +1137,270 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       aria-modal="true"
     >
       <div
-          className={`relative w-[480px] ${modalBg} rounded-[32px] border p-8 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3),_0_0_2px_rgba(255,255,255,0.2)_inset] transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-[0.95] translate-y-4'}`}
-          onMouseDown={onHeaderMouseDown}
-          style={{
-            transform: `translate(${offset.x}px, ${offset.y}px) scale(${isMounted ? 1 : 0.95})`,
-            cursor: draggingRef.current ? "grabbing" : "grab",
-            visibility: initialOffsetLoaded ? "visible" : "hidden"
-          }}
-        >
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-gray-400/30 pointer-events-none" />
+        className={`relative w-[480px] ${modalBg} rounded-[32px] border p-8 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3),_0_0_2px_rgba(255,255,255,0.2)_inset] transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-[0.95] translate-y-4'}`}
+        onMouseDown={onHeaderMouseDown}
+        style={{
+          transform: `translate(${offset.x}px, ${offset.y}px) scale(${isMounted ? 1 : 0.95})`,
+          cursor: draggingRef.current ? "grabbing" : "grab",
+          visibility: initialOffsetLoaded ? "visible" : "hidden"
+        }}
+      >
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-gray-400/30 pointer-events-none" />
 
-          <div className="flex justify-between items-center mb-8 mt-2">
-            <h2 className="text-[26px] font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#0A44FF] to-[#0099FF]">
-              Visual Settings
-            </h2>
-            <button 
-              onClick={() => {
-                playClickSfx()
-                playClickAudio("Closing settings")
-                setIsMounted(false)
-                setTimeout(onClose, 300)
-              }}
-              // 🚨 THE FIX: Set close button background to transparent so it isn't highlighted by default
-              className={`bg-transparent hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 hover:${textColor} transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 rounded-full p-2`}
-              aria-label="Close settings"
-              {...getHoverHandlers("Close")}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
+        <div className="flex justify-between items-center mb-8 mt-2">
+          <h2 className="text-[26px] font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#0A44FF] to-[#0099FF]">
+            Visual Settings
+          </h2>
+          <button 
+            onClick={() => {
+              playClickSfx()
+              announceIfVoiceGuide("Closing settings")
+              setIsMounted(false)
+              setTimeout(onClose, 300)
+            }}
+            className={`bg-transparent hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 hover:${textColor} transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 rounded-full p-2`}
+            aria-label="Close settings"
+            {...getHoverHandlers("Close")}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-3">
+          
+          <div 
+            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
+            {...getHoverHandlers("Voice Guide")}
+            onClick={() => handleVoiceGuideToggle(!isVoiceGuideEnabled)}
+          >
+            <div className="flex items-center gap-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Voice Guide</span>
+            </div>
+            <SettingsToggle
+              checked={isVoiceGuideEnabled}
+              onToggle={handleVoiceGuideToggle}
+              ariaLabel="Voice Guide"
+            />
           </div>
 
-          <div className="flex flex-col gap-3">
-            
-            {/* 🚨 THE FIX: Moved getHoverHandlers to the outer ROW div so hovering anywhere horizontally triggers the audio */}
-            <div 
-              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
-              {...getHoverHandlers("Voice Guide")}
-              onClick={() => handleVoiceGuideToggle(!isVoiceGuideEnabled)}
-            >
-              <div className="flex items-center gap-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
-                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Voice Guide</span>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer pointer-events-none">
-                <input type="checkbox" className="sr-only peer" checked={isVoiceGuideEnabled} readOnly />
-                {/* 🚨 THE FIX: Swapped translate-x-full to exact translate-x-[20px] math to perfect the spacing */}
-                <div className={`w-12 h-7 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-[20px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-200 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] shadow-inner`}></div>
-              </label>
+          <div 
+            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
+            {...getHoverHandlers("Sound Effects")}
+            onClick={() => handleSoundEffectsToggle(!isSoundEffectsEnabled)}
+          >
+            <div className="flex items-center gap-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M19 9a5 5 0 0 1 0 6"/><path d="M21 7a9 9 0 0 1 0 10"/></svg>
+              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Sound Effects</span>
             </div>
+            <SettingsToggle
+              checked={isSoundEffectsEnabled}
+              onToggle={handleSoundEffectsToggle}
+              ariaLabel="Sound Effects"
+            />
+          </div>
 
-            <div 
-              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
-              {...getHoverHandlers("Sound Effects")}
-              onClick={() => handleSoundEffectsToggle(!isSoundEffectsEnabled)}
-            >
-              <div className="flex items-center gap-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M19 9a5 5 0 0 1 0 6"/><path d="M21 7a9 9 0 0 1 0 10"/></svg>
-                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Sound Effects</span>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer pointer-events-none">
-                <input type="checkbox" className="sr-only peer" checked={isSoundEffectsEnabled} readOnly />
-                <div className={`w-12 h-7 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-[20px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-200 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] shadow-inner`}></div>
-              </label>
+          <div 
+            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative z-50 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
+            {...getHoverHandlers("Voice Selection")}
+          >
+            <div className="flex items-center gap-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><line x1="4" y1="6" x2="4" y2="18"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="16" y1="8" x2="16" y2="16"/><line x1="20" y1="11" x2="20" y2="13"/></svg>
+              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Voice Selection</span>
             </div>
-
-            <div 
-              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative z-50 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
-              {...getHoverHandlers("Voice Selection")}
-            >
-              <div className="flex items-center gap-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><line x1="4" y1="6" x2="4" y2="18"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="16" y1="8" x2="16" y2="16"/><line x1="20" y1="11" x2="20" y2="13"/></svg>
-                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Voice Selection</span>
-              </div>
-              <div className="relative w-[190px]">
-                <button 
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); playClickSfx(); setIsVoiceDropdownOpen((prev) => !prev); playClickAudio("Voice selection") }}
-                  className={`w-full text-left border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
-                  aria-haspopup="listbox"
-                  aria-expanded={isVoiceDropdownOpen}
-                >
-                  <span className="block truncate">
-                    {(() => {
-                      const selected = voices.find((v) => v.voiceURI === selectedVoiceURI)
-                      if (!selected) return "Loading..."
-                      const isDefault = selected.voiceURI === defaultVoiceURIRef.current
-                      return `${selected.name}${isDefault ? " (Default)" : ""}`
-                    })()}
-                  </span>
-                  <div className={`pointer-events-none absolute inset-y-0 right-3 flex items-center ${secondaryText}`}>
-                    <svg className={`fill-current h-4 w-4 transition-transform duration-300 ${isVoiceDropdownOpen ? "rotate-180" : ""}`} viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                  </div>
-                </button>
-
-                {isVoiceDropdownOpen && (
-                  <>
-                    <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }} />
-                    <ul className={`absolute right-0 z-50 mt-2 w-[240px] max-h-56 overflow-y-auto ${modalBg} border ${inputBorder} rounded-xl shadow-2xl py-2 text-[13px] custom-scrollbar`} role="listbox">
-                      {voices.map((voice) => (
-                        <li 
-                          key={voice.voiceURI}
-                          role="option"
-                          aria-selected={selectedVoiceURI === voice.voiceURI}
-                          className={`px-4 py-2.5 cursor-pointer block w-full text-left truncate transition-all font-medium m-1 rounded-lg ${selectedVoiceURI === voice.voiceURI ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white shadow-md" : isDark ? "text-gray-200 hover:bg-[#0A44FF]/20 hover:text-[#0A44FF]" : "text-gray-700 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF]"}`}
-                          onMouseEnter={() => { playHoverSfx(); previewVoice(voice) }}
-                          onClick={() => { handleVoiceChange(voice.voiceURI); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }}
-                          style={{ fontFamily: `"${voice.name}", system-ui, sans-serif` }}
-                        >
-                          {voice.name}{voice.voiceURI === defaultVoiceURIRef.current ? " (Default)" : ""}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div 
-              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
-              {...getHoverHandlers("Wake Word")}
-            >
-              <div className="flex items-center gap-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2l1.6 3.6L17 7l-3.4 1.4L12 12l-1.6-3.6L7 7l3.4-1.4L12 2z"/><path d="M4 14l.9 2 2 .9-2 .9-.9 2-.9-2-2-.9 2-.9.9-2z"/></svg>
-                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Wake Word</span>
-              </div>
-              <div className="relative w-[190px]">
-                <input 
-                  type="text" defaultValue="Sensa" aria-label="Wake Word"
-                  className={`w-full border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-10 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 transition-all hover:shadow-md`}
-                />
-                <div className={`absolute inset-y-0 right-4 flex items-center pointer-events-none ${secondaryText}`}>
-                  <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 opacity-50"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="22" /></svg>
-                </div>
-              </div>
-            </div>
-
-            <div 
-              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
-              {...getHoverHandlers("Mouse Highlight Reader")}
-              onClick={() => handleHighlightMouseScreenReaderToggle(!isHighlightMouseScreenReaderEnabled)}
-            >
-              <div className="flex items-center gap-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg>
-                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Mouse Reader</span>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer pointer-events-none">
-                <input type="checkbox" className="sr-only peer" checked={isHighlightMouseScreenReaderEnabled} readOnly />
-                <div className={`w-12 h-7 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-[20px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-200 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] shadow-inner`}></div>
-              </label>
-            </div>
-
-            <div 
-              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
-              {...getHoverHandlers("Autoscroll reading")}
-              onClick={() => handleAutoscrollToggle(!isAutoscrollEnabled)}
-            >
-              <div className="flex items-center gap-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M12 7l2 2-2 2"/><path d="M12 17l-2-2 2-2"/></svg>
-                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Autoscroll Reading</span>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer pointer-events-none">
-                <input type="checkbox" className="sr-only peer" checked={isAutoscrollEnabled} readOnly />
-                <div className={`w-12 h-7 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 rounded-full peer peer-checked:after:translate-x-[20px] peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-200 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] shadow-inner`}></div>
-              </label>
-            </div>
-
-            <div 
-              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
-              {...getHoverHandlers("Highlight color")}
-            >
-              <div className="flex items-center gap-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M14.5 4.5l5 5"/><path d="M11 8l-7 7-1 4 4-1 7-7"/><path d="M14 7l3 3"/></svg>
-                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Highlight Color</span>
-              </div>
-              <div className="relative flex items-center justify-end w-[190px]">
-                <button 
-                  type="button"
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={(e) => { e.stopPropagation(); playClickSfx(); setShowColorPicker((prev) => !prev); playClickAudio(showColorPicker ? "Highlight color closed" : "Highlight color opened") }}
-                  className="w-10 h-10 rounded-full cursor-pointer shadow-[0_4px_12px_rgba(0,0,0,0.15)] border-2 border-white/40 ring-2 ring-black/5 focus:outline-none focus:ring-4 focus:ring-[#0A44FF]/50 transition-all active:scale-90 hover:scale-105"
-                  style={{ backgroundColor: highlightColor }}
-                  aria-label="Pick highlight color"
-                />
-                {showColorPicker && (
-                  <ColorPickerPopup
-                    isDark={isDark} initialColor={highlightColor}
-                    onColorChange={handleHighlightChange} onClose={() => setShowColorPicker(false)}
-                    placement="end"
-                  />
-                )}
-              </div>
-            </div>
-
-            <div 
-              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
-              {...getHoverHandlers("Input Device")}
-            >
-              <div className="flex items-center gap-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
-                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Input Device</span>
-              </div>
-              <div className="relative w-[190px]">
-                <select
-                  value={selectedInputDeviceId} onChange={(e) => handleInputDeviceChange(e.target.value)} aria-label="Input Device"
-                  className={`appearance-none w-full border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
-                >
-                  <option value="default">Default - Microphone</option>
-                  {inputDevices.map((d, i) => <option key={d.deviceId || `in-${i}`} value={d.deviceId}>{d.label || `Microphone ${i + 1}`}</option>)}
-                </select>
+            <div className="relative w-[190px]">
+              <button 
+                type="button"
+                onClick={(e) => { e.stopPropagation(); playClickSfx(); setIsVoiceDropdownOpen((prev) => !prev); playClickAudio("Voice selection") }}
+                className={`w-full text-left border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
+                aria-haspopup="listbox"
+                aria-expanded={isVoiceDropdownOpen}
+              >
+                <span className="block truncate">
+                  {(() => {
+                    const selected = voices.find((v) => v.voiceURI === selectedVoiceURI)
+                    if (!selected) return "Loading..."
+                    const isDefault = selected.voiceURI === defaultVoiceURIRef.current
+                    return `${selected.name}${isDefault ? " (Default)" : ""}`
+                  })()}
+                </span>
                 <div className={`pointer-events-none absolute inset-y-0 right-3 flex items-center ${secondaryText}`}>
-                  <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                  <svg className={`fill-current h-4 w-4 transition-transform duration-300 ${isVoiceDropdownOpen ? "rotate-180" : ""}`} viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
                 </div>
-              </div>
-            </div>
+              </button>
 
-            <div 
-              className={`flex items-center justify-between py-3 px-3 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
-              {...getHoverHandlers("Output Device")}
-            >
-              <div className="flex items-center gap-3">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Output Device</span>
-              </div>
-              <div className="relative w-[190px]">
-                <select
-                  value={selectedOutputDeviceId} onChange={(e) => handleOutputDeviceChange(e.target.value)} aria-label="Output Device"
-                  className={`appearance-none w-full border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
-                >
-                  <option value="default">Default - Speaker</option>
-                  {outputDevices.map((d, i) => <option key={d.deviceId || `out-${i}`} value={d.deviceId}>{d.label || `Speaker ${i + 1}`}</option>)}
-                </select>
-                <div className={`pointer-events-none absolute inset-y-0 right-3 flex items-center ${secondaryText}`}>
-                  <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                </div>
-              </div>
+              {isVoiceDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }} />
+                  <ul className={`absolute right-0 z-50 mt-2 w-[240px] max-h-56 overflow-y-auto ${modalBg} border ${inputBorder} rounded-xl shadow-2xl py-2 text-[13px] custom-scrollbar`} role="listbox">
+                    {voices.map((voice) => (
+                      <li 
+                        key={voice.voiceURI}
+                        role="option"
+                        aria-selected={selectedVoiceURI === voice.voiceURI}
+                        className={`px-4 py-2.5 cursor-pointer block w-full text-left truncate transition-all font-medium m-1 rounded-lg ${selectedVoiceURI === voice.voiceURI ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white shadow-md" : isDark ? "text-gray-200 hover:bg-[#0A44FF]/20 hover:text-[#0A44FF]" : "text-gray-700 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF]"}`}
+                        onMouseEnter={() => { playHoverSfx(); previewVoice(voice) }}
+                        onClick={() => { handleVoiceChange(voice.voiceURI); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }}
+                        style={{ fontFamily: `"${voice.name}", system-ui, sans-serif` }}
+                      >
+                        {voice.name}{voice.voiceURI === defaultVoiceURIRef.current ? " (Default)" : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
             </div>
-
           </div>
 
-          <div className="mt-8 flex justify-center">
-            <button 
-              type="button"
-              onClick={handleResetToDefault}
-              // 🚨 THE FIX: Upgraded hover state to cast a premium, subtle blue glow.
-              className={`flex items-center gap-2 bg-transparent hover:bg-[#0A44FF]/10 hover:text-[#0A44FF] hover:border-[#0A44FF]/30 dark:hover:bg-[#0A44FF]/20 dark:hover:border-[#0A44FF]/40 ${textColor} border ${inputBorder} font-semibold h-11 px-8 rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 text-[14px] tracking-wide hover:shadow-sm`}
-              {...getHoverHandlers("Reset to default")}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
-              Restore Defaults
-            </button>
+          <div 
+            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
+            {...getHoverHandlers("Wake Word")}
+          >
+            <div className="flex items-center gap-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2l1.6 3.6L17 7l-3.4 1.4L12 12l-1.6-3.6L7 7l3.4-1.4L12 2z"/><path d="M4 14l.9 2 2 .9-2 .9-.9 2-.9-2-2-.9 2-.9.9-2z"/></svg>
+              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Wake Word</span>
+            </div>
+            <div className="relative w-[190px]">
+              <input
+                type="text"
+                value={wakeWord}
+                onChange={(e) => handleWakeWordChange(e.target.value)}
+                onKeyDown={(e) => e.stopPropagation()}
+                placeholder="e.g. Sensa"
+                aria-label="Wake Word"
+                disabled={isCapturingWakeWord}
+                className={`w-full border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-12 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 transition-all hover:shadow-md disabled:opacity-70 ${
+                  isCapturingWakeWord ? "ring-2 ring-[#0A44FF]/50" : ""
+                }`}
+              />
+              <WakeWordMicButton
+                isListening={isCapturingWakeWord}
+                speechActive={wakeWordSpeechActive}
+                onClick={handleWakeWordMicToggle}
+                disabled={!(window as any).SpeechRecognition && !(window as any).webkitSpeechRecognition}
+              />
+            </div>
           </div>
+
+          <div 
+            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
+            {...getHoverHandlers("Mouse Highlight Reader")}
+            onClick={() => handleHighlightMouseScreenReaderToggle(!isHighlightMouseScreenReaderEnabled)}
+          >
+            <div className="flex items-center gap-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg>
+              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Mouse Reader</span>
+            </div>
+            <SettingsToggle
+              checked={isHighlightMouseScreenReaderEnabled}
+              onToggle={handleHighlightMouseScreenReaderToggle}
+              ariaLabel="Mouse Reader"
+            />
+          </div>
+
+          <div 
+            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
+            {...getHoverHandlers("Autoscroll reading")}
+            onClick={() => handleAutoscrollToggle(!isAutoscrollEnabled)}
+          >
+            <div className="flex items-center gap-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M12 7l2 2-2 2"/><path d="M12 17l-2-2 2-2"/></svg>
+              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Autoscroll Reading</span>
+            </div>
+            <SettingsToggle
+              checked={isAutoscrollEnabled}
+              onToggle={handleAutoscrollToggle}
+              ariaLabel="Autoscroll Reading"
+            />
+          </div>
+
+          <div 
+            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
+            {...getHoverHandlers("Highlight color")}
+          >
+            <div className="flex items-center gap-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M14.5 4.5l5 5"/><path d="M11 8l-7 7-1 4 4-1 7-7"/><path d="M14 7l3 3"/></svg>
+              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Highlight Color</span>
+            </div>
+            <div className="relative flex items-center justify-end w-[190px]">
+              <button 
+                type="button"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); playClickSfx(); setShowColorPicker((prev) => !prev); playClickAudio(showColorPicker ? "Highlight color closed" : "Highlight color opened") }}
+                className="w-10 h-10 rounded-full cursor-pointer shadow-[0_4px_12px_rgba(0,0,0,0.15)] border-2 border-white/40 ring-2 ring-black/5 focus:outline-none focus:ring-4 focus:ring-[#0A44FF]/50 transition-all active:scale-90 hover:scale-105"
+                style={{ backgroundColor: highlightColor }}
+                aria-label="Pick highlight color"
+              />
+              {showColorPicker && (
+                <ColorPickerPopup
+                  isDark={isDark} initialColor={highlightColor}
+                  onColorChange={handleHighlightChange} onClose={() => setShowColorPicker(false)}
+                  placement="end"
+                />
+              )}
+            </div>
+          </div>
+
+          <div 
+            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
+            {...getHoverHandlers("Input Device")}
+          >
+            <div className="flex items-center gap-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Input Device</span>
+            </div>
+            <div className="relative w-[190px]">
+              <select
+                value={selectedInputDeviceId} onChange={(e) => handleInputDeviceChange(e.target.value)} aria-label="Input Device"
+                className={`appearance-none w-full border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
+              >
+                <option value="default">Default - Microphone</option>
+                {inputDevices.map((d, i) => <option key={d.deviceId || `in-${i}`} value={d.deviceId}>{d.label || `Microphone ${i + 1}`}</option>)}
+              </select>
+              <div className={`pointer-events-none absolute inset-y-0 right-3 flex items-center ${secondaryText}`}>
+                <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+              </div>
+            </div>
+          </div>
+
+          <div 
+            className={`flex items-center justify-between py-3 px-3 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
+            {...getHoverHandlers("Output Device")}
+          >
+            <div className="flex items-center gap-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Output Device</span>
+            </div>
+            <div className="relative w-[190px]">
+              <select
+                value={selectedOutputDeviceId} onChange={(e) => handleOutputDeviceChange(e.target.value)} aria-label="Output Device"
+                className={`appearance-none w-full border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
+              >
+                <option value="default">Default - Speaker</option>
+                {outputDevices.map((d, i) => <option key={d.deviceId || `out-${i}`} value={d.deviceId}>{d.label || `Speaker ${i + 1}`}</option>)}
+              </select>
+              <div className={`pointer-events-none absolute inset-y-0 right-3 flex items-center ${secondaryText}`}>
+                <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div className="mt-8 flex justify-center">
+          <button 
+            type="button"
+            onClick={handleResetToDefault}
+            className={`flex items-center gap-2 bg-transparent hover:bg-[#0A44FF]/10 hover:text-[#0A44FF] hover:border-[#0A44FF]/30 dark:hover:bg-[#0A44FF]/20 dark:hover:border-[#0A44FF]/40 ${textColor} border ${inputBorder} font-semibold h-11 px-8 rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 text-[14px] tracking-wide hover:shadow-sm`}
+            {...getHoverHandlers("Reset to default")}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
+            Restore Defaults
+          </button>
+        </div>
 
       </div>
     </div>

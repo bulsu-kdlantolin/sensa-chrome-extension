@@ -69,7 +69,8 @@ export function useUIHoverAudio() {
 			const preferredVoice =
 				voices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
 				voices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
-				voices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current))
+				voices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
+				voices.find((voice) => voice.name.includes("Google US English"))
 
 			if (preferredVoice) {
 				utterance.voice = preferredVoice
@@ -92,23 +93,29 @@ export function useUIHoverAudio() {
 		if (!availableVoices.length) {
 			clearVoiceRetry()
 			pendingUtteranceRef.current = text
-			if (voiceRetryTimerRef.current === null) {
-				voiceRetryTimerRef.current = window.setTimeout(() => {
-					voiceRetryTimerRef.current = null
-					if (!isActiveRef.current) return
-					const pending = pendingUtteranceRef.current
-					pendingUtteranceRef.current = null
-					if (pending) speakWithResolvedVoice(pending, owner)
-				}, 300)
-			}
+
 			const handleVoicesChanged = () => {
 				if (!isActiveRef.current) return
 				const pending = pendingUtteranceRef.current
+				if (!pending) return
 				pendingUtteranceRef.current = null
-				if (pending) speakWithResolvedVoice(pending, owner)
+				clearVoiceRetry()
+				speakWithResolvedVoice(pending, owner)
 			}
+
 			voicesChangedHandlerRef.current = handleVoicesChanged
 			window.speechSynthesis.addEventListener("voiceschanged", handleVoicesChanged)
+
+			voiceRetryTimerRef.current = window.setTimeout(() => {
+				voiceRetryTimerRef.current = null
+				if (!isActiveRef.current) return
+				const pending = pendingUtteranceRef.current
+				if (!pending) return
+				pendingUtteranceRef.current = null
+				clearVoiceRetry()
+				speakWithResolvedVoice(pending, owner)
+			}, 800)
+
 			return
 		}
 
