@@ -2,16 +2,13 @@ import React, { useEffect, useRef, useState } from "react"
 import { Tooltip } from "./Tooltip"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
-// ============================================================================
-// 🎙️ THE GOD-TIER MIC ICON (With Hardware Audio Anchor)
-// ============================================================================
+const DEFAULT_WAKE_WORD = "Sensa"
+
 const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {  
   const barsRef = useRef<(HTMLDivElement | null)[]>([])
   const currentHeights = useRef([4, 6, 8, 6, 4])
   const tickRef = useRef(0)
   
-  // 🚨 THE ANCHOR FIX: We use a ref to track isActive so we don't have to 
-  // put it in the useEffect dependency array. This prevents the mic from restarting!
   const isActiveRef = useRef(isActive)
   useEffect(() => {
     isActiveRef.current = isActive
@@ -22,10 +19,11 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
     let audioCtx: AudioContext | null = null
     let analyser: AnalyserNode | null = null
     let stream: MediaStream | null = null
-    let dataArray: Uint8Array<ArrayBuffer> | null = null
+    let dataArray: Uint8Array | null = null
     let smoothedEnergy = 0
+    let lastTime = performance.now()
     
-    const silenceGate = 0.02 
+    const ENERGY_GATE = 0.06
 
     const colors = [
       "rgba(147, 197, 253, 1)", 
@@ -38,31 +36,38 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
     const maxHeights = [12, 18, 26, 18, 12]
     const idleHeights = [4, 6, 8, 6, 4]
 
-    // We start the mic ONCE when the component mounts and hold it open forever.
+    const stopMic = () => {
+      if (stream) {
+        stream.getTracks().forEach((track) => track.stop())
+        stream = null
+      }
+      if (audioCtx) {
+        audioCtx.close().catch(() => undefined)
+        audioCtx = null
+      }
+      analyser = null
+      dataArray = null
+      smoothedEnergy = 0
+    }
+
     const startMic = async () => {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true })
         audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
         analyser = audioCtx.createAnalyser()
         analyser.fftSize = 256
-        analyser.smoothingTimeConstant = 0.5 
+        analyser.smoothingTimeConstant = 0.5
 
         const source = audioCtx.createMediaStreamSource(stream)
         source.connect(analyser)
-        dataArray = new Uint8Array(new ArrayBuffer(analyser.fftSize))
-        
-        draw() // Start drawing loop once mic is hot
-      } catch (err) {
-        console.warn("Mic visualizer: access denied.", err)
-        draw() // Fallback to drawing idle state if mic fails
-      }
+        dataArray = new Uint8Array(analyser.fftSize)
+      } catch (err) {}
     }
 
     const getLiveEnergy = () => {
-      // If voice commands are disabled, we return 0 so the bars don't spike
       if (!isActiveRef.current || !analyser || !dataArray) return 0
-      
-      analyser.getByteTimeDomainData(dataArray)
+      analyser.getByteTimeDomainData(dataArray as Uint8Array<ArrayBuffer>)
+
       let sum = 0
       for (let i = 0; i < dataArray.length; i++) {
         const normalized = (dataArray[i] - 128) / 128
@@ -70,57 +75,72 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
       }
 
       const rms = Math.sqrt(sum / dataArray.length)
-      const boosted = Math.min(1, rms * 12.0) 
-      smoothedEnergy = smoothedEnergy * 0.3 + boosted * 0.7 
+      const rawEnergy = Math.min(1, rms * 12.0)
+      smoothedEnergy = smoothedEnergy * 0.82 + rawEnergy * 0.18
 
-      if (smoothedEnergy <= silenceGate) return 0
-      return (smoothedEnergy - silenceGate) / (1 - silenceGate)
+      if (smoothedEnergy < ENERGY_GATE) {
+        smoothedEnergy *= 0.9
+        return 0
+      }
+      return (smoothedEnergy - ENERGY_GATE) / (1 - ENERGY_GATE)
     }
 
-    const draw = () => {
+    const draw = (time: number) => {
       animationId = requestAnimationFrame(draw)
-      if (document.visibilityState !== "visible") return
+      if (document.visibilityState !== "visible") {
+        smoothedEnergy = 0
+        return
+      }
 
-      tickRef.current += 1
+      const dt = Math.min((time - lastTime) / 1000, 0.1)
+      lastTime = time
+      tickRef.current += dt * 60
       const tick = tickRef.current
       const liveEnergy = getLiveEnergy()
+      const hasAudio = isActiveRef.current && liveEnergy > 0
 
       barsRef.current.forEach((bar, i) => {
         if (!bar) return
         
         let targetHeight = idleHeights[i]
 
-        if (isActiveRef.current) {
-          // Reacts physically to your voice volume
+        if (hasAudio) {
           const distFromCenter = Math.abs(i - 2)
-          const voiceSpike = liveEnergy * 40 * (1 - distFromCenter * 0.15)
+          const voiceSpike = liveEnergy * 28 * (1 - distFromCenter * 0.15)
           targetHeight = Math.min(maxHeights[i], idleHeights[i] + voiceSpike)
         } else {
-          // Subtle, calm breathing when asleep
-          const breath = Math.sin(tick * 0.04) * 1.5
-          targetHeight = idleHeights[i] + Math.max(0, breath)
+          const breath = Math.sin(tick * 0.03 - i * 0.15) * 1.2
+          targetHeight = idleHeights[i] + breath
         }
 
-        currentHeights.current[i] += (targetHeight - currentHeights.current[i]) * 0.25
-        const intensity = (currentHeights.current[i] - idleHeights[i]) / (maxHeights[i] - idleHeights[i])
-        const shadowRadius = intensity * 8
-        const opacity = Math.max(0.5, intensity + 0.5)
+        const baseAmt = hasAudio ? 0.18 : 0.10
+        const amt = 1 - Math.pow(1 - baseAmt, dt * 60)
+        currentHeights.current[i] += (targetHeight - currentHeights.current[i]) * amt
 
-        bar.style.height = `${Math.round(currentHeights.current[i])}px`
+        bar.style.height = `${currentHeights.current[i].toFixed(2)}px`
         bar.style.backgroundColor = colors[i]
-        bar.style.boxShadow = `0 0 ${shadowRadius}px ${colors[i].replace('1)', `${opacity})`)}`
-        bar.style.opacity = `${opacity}`
+
+        if (hasAudio) {
+          const intensity = (currentHeights.current[i] - idleHeights[i]) / (maxHeights[i] - idleHeights[i])
+          const shadowRadius = intensity * 8
+          const opacity = Math.max(0.5, intensity + 0.5)
+          bar.style.boxShadow = `0 0 ${shadowRadius}px ${colors[i].replace('1)', `${opacity})`)}`
+          bar.style.opacity = `${opacity}`
+        } else {
+          bar.style.boxShadow = "none"
+          bar.style.opacity = "0.5"
+        }
       })
     }
 
-    startMic()
+    animationId = requestAnimationFrame(draw)
+    if (isActive) startMic()
 
     return () => {
-      if (animationId) cancelAnimationFrame(animationId)
-      if (stream) stream.getTracks().forEach((track) => track.stop())
-      if (audioCtx) audioCtx.close().catch(() => undefined)
+      cancelAnimationFrame(animationId)
+      stopMic()
     }
-  }, []) // 🚨 EMPTY DEPENDENCY ARRAY: This component never restarts the mic!
+  }, [isActive]) 
 
   return (
     <div className="flex items-center justify-center gap-[3px] !w-[24px] !h-[24px] shrink-0" aria-hidden="true">
@@ -132,8 +152,7 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
           style={{ 
             height: "4px", 
             backgroundColor: "currentColor",
-            willChange: "height, box-shadow, opacity",
-            transition: `all 150ms ease-out`
+            willChange: "height, box-shadow, opacity"
           }}
         />
       ))}
@@ -141,9 +160,6 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
   )
 }
 
-// ============================================================================
-// MAIN VISUAL DOCK COMPONENT
-// ============================================================================
 interface VisualDockProps {
   isDark: boolean
   isMinimized: boolean
@@ -195,11 +211,9 @@ export default function VisualDock({
       const Ctor = window.AudioContext || (window as any).webkitAudioContext
       audioCtxRef.current = Ctor ? new Ctor() : null
     }
-
     if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
       audioCtxRef.current.resume().catch(() => undefined)
     }
-
     return audioCtxRef.current
   }
 
@@ -232,17 +246,14 @@ export default function VisualDock({
   const playHoverSfx = () => {
     const ctx = getAudioContext()
     if (!ctx) return
-
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
-
     osc.type = "sine"
     osc.frequency.setValueAtTime(720, ctx.currentTime)
     osc.frequency.exponentialRampToValueAtTime(420, ctx.currentTime + 0.08)
     gain.gain.setValueAtTime(0.0001, ctx.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.015)
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09)
-
     osc.connect(gain)
     gain.connect(ctx.destination)
     osc.start()
@@ -252,41 +263,32 @@ export default function VisualDock({
   const playClickSfx = () => {
     const ctx = getAudioContext()
     if (!ctx) return
-
     const makeClick = (freq: number, startAt: number) => {
       const osc = ctx.createOscillator()
       const gain = ctx.createGain()
-
       osc.type = "square"
       osc.frequency.setValueAtTime(freq, ctx.currentTime + startAt)
       gain.gain.setValueAtTime(0.0001, ctx.currentTime + startAt)
       gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + startAt + 0.01)
       gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + startAt + 0.05)
-
       osc.connect(gain)
       gain.connect(ctx.destination)
       osc.start(ctx.currentTime + startAt)
       osc.stop(ctx.currentTime + startAt + 0.06)
     }
-
     makeClick(900, 0)
     makeClick(1200, 0.07)
   }
   
+  const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
   const iconMotionClass = `transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform`
-  
   const glassPanelClass = `rounded-full backdrop-blur-3xl border transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isDark
     ? "bg-[#1C1C1E]/85 border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.6)]"
     : "bg-white/90 border-black/10 shadow-[0_8px_32px_rgba(0,0,0,0.15)]"
   } ${isVoiceCommandActive ? "contrast-105 saturate-110 drop-shadow-[0_0_22px_rgba(10,68,255,0.14)]" : "contrast-100 saturate-100 drop-shadow-none"}`
 
-  const dividerClass = isDark
-    ? "w-9 h-[2px] shrink-0 rounded-full bg-white/35 my-2"
-    : "w-9 h-[2px] shrink-0 rounded-full bg-neutral-300 my-2"
-
-  const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
-    
-  const btnBaseClass = `relative group !w-[44px] !h-[44px] !min-w-[44px] !min-h-[44px] !p-0 !m-0 flex items-center justify-center rounded-full shrink-0 transform-gpu backface-hidden will-change-[transform] focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent box-border transition-all duration-200 hover:-translate-y-[1.5px] active:translate-y-0 active:scale-[0.97]`
+  const middleGlassPanelClass = `rounded-full backdrop-blur-3xl bg-white dark:bg-[#1C1C1E] shadow-[0_8px_32px_rgba(0,0,0,0.15)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6)] ${isVoiceCommandActive ? "contrast-105 saturate-110" : "contrast-100 saturate-100"}`
+  const btnBaseClass = `relative group !w-[44px] !h-[44px] !min-w-[44px] !min-h-[44px] !p-0 !m-0 flex items-center justify-center rounded-full shrink-0 transform-gpu will-change-transform focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent box-border transition-all duration-200 hover:-translate-y-[1.5px] active:translate-y-0 active:scale-[0.97]`
   
   const btnHoverClass = isDark 
     ? "hover:bg-white/15 text-gray-200 hover:text-white hover:shadow-[0_14px_28px_rgba(0,0,0,0.28)]"
@@ -312,7 +314,6 @@ export default function VisualDock({
         ctx.resume().catch(() => undefined)
       }
     }
-
     window.addEventListener("pointerdown", resumeAudio)
     window.addEventListener("keydown", resumeAudio)
     return () => {
@@ -325,13 +326,32 @@ export default function VisualDock({
     }
   }, [])
   
+  const tabVisibleAtRef = useRef(performance.now())
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        tabVisibleAtRef.current = performance.now()
+        cancelHoverAudio()
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
+  }, [cancelHoverAudio])
+
+  const shouldSkipHoverAudio = () =>
+    document.visibilityState !== "visible" ||
+    performance.now() - tabVisibleAtRef.current < 600
+
   const getHoverHandlers = (label: string) => ({
     onMouseEnter: () => {
+      if (shouldSkipHoverAudio()) return
       playHoverSfx()
       playHoverAudio(label)
     },
     onMouseLeave: cancelHoverAudio,
-    onFocus: () => {
+    onFocus: (e: React.FocusEvent) => {
+      if (!e.relatedTarget || shouldSkipHoverAudio()) return
       playHoverSfx()
       playHoverAudio(label)
     },
@@ -353,6 +373,8 @@ export default function VisualDock({
     isVoiceCommandActive, isMinimized, isPlaying, isPaused, onToggleVoiceCommand, onTogglePlay, onNext, onPrev, onRestart,
     onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio
   })
+  
+  const wakeWordRef = useRef(DEFAULT_WAKE_WORD)
 
   useEffect(() => {
     callbacksRef.current = {
@@ -361,7 +383,24 @@ export default function VisualDock({
     }
   })
 
-  // 🚨 STABILIZED SPEECH ENGINE
+  useEffect(() => {
+    chrome.storage.local.get(["sensa_visual_wake_word"], (res) => {
+      const stored = res.sensa_visual_wake_word
+      if (typeof stored === "string" && stored.trim()) {
+        wakeWordRef.current = stored.trim()
+      }
+    })
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.sensa_visual_wake_word === undefined) return
+      const next = changes.sensa_visual_wake_word.newValue
+      wakeWordRef.current = typeof next === "string" && next.trim() ? next.trim() : DEFAULT_WAKE_WORD
+    }
+
+    chrome.storage.onChanged.addListener(handleStorageChange)
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange)
+  }, [])
+
   useEffect(() => {
     if (isVoiceCommandsSuspended) return
 
@@ -377,26 +416,16 @@ export default function VisualDock({
     let restartTimer: number | null = null
     let voiceToggleLockUntil = 0
     let isPermanentlyDead = false
+    
+    let consumedString = ""
+    let currentResultIndex = 0
 
     const scheduleRestart = () => {
       if (!isComponentMounted || isPermanentlyDead) return
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
         try { recognition.start() } catch (e) {}
-      }, 400) 
-    }
-
-    const checkCommand = (id: string, pattern: RegExp, transcript: string, cooldownMs = 800) => {
-      if (pattern.test(transcript)) {
-        const now = Date.now()
-        const lastExecuted = callbacksRef.current as any
-        const lastTime = lastExecuted[`_last_${id}`] || 0
-        if (now - lastTime > cooldownMs) {
-          lastExecuted[`_last_${id}`] = now
-          return true
-        }
-      }
-      return false
+      }, 300) 
     }
 
     const lockVoiceToggle = () => {
@@ -404,101 +433,116 @@ export default function VisualDock({
     }
 
     recognition.onresult = (event: any) => {
-      const { 
-        isVoiceCommandActive, isMinimized, isPlaying, isPaused, onToggleVoiceCommand, onTogglePlay, onNext, onPrev,
-        onRestart, onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio 
-      } = callbacksRef.current
+      const cbs = callbacksRef.current
 
-      let interimTranscript = ""
-      for (let i = event.resultIndex; i < event.results.length; ++i) {
-        interimTranscript += event.results[i][0].transcript
+      if (event.resultIndex !== currentResultIndex) {
+        consumedString = ""
+        currentResultIndex = event.resultIndex
       }
 
-      const transcript = ` ${interimTranscript.toLowerCase().replace(/[^a-z0-9\s]/gi, "").replace(/\s+/g, " ").trim()} `
-      if (!transcript.trim()) return
+      let liveText = ""
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        liveText += event.results[i][0].transcript
+      }
+      liveText = liveText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
 
+      let newSpeech = liveText
+      if (liveText.startsWith(consumedString) && consumedString.length > 0) {
+        newSpeech = liveText.slice(consumedString.length).trim()
+      }
+
+      if (!newSpeech) return
+
+      const paddedSpeech = ` ${newSpeech} `
+      const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
+      
       const canToggleVoiceMode = Date.now() >= voiceToggleLockUntil
+      const currentWakeWord = (wakeWordRef.current || DEFAULT_WAKE_WORD).toLowerCase().trim()
       let commandFired = false
 
-      if (!isVoiceCommandActive) {
-        if (canToggleVoiceMode && checkCommand('speak', /\b(speak|peak|spik|speed|wake|listen|start)\b/i, transcript, 500)) {
+      if (!cbs.isVoiceCommandActive) {
+        const isCustom = currentWakeWord !== "sensa"
+        const wakeMatched = isCustom 
+          ? paddedSpeech.includes(` ${currentWakeWord} `)
+          : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "wake", "listen", "start")
+
+        if (canToggleVoiceMode && wakeMatched) {
           commandFired = true
           lockVoiceToggle()
-          playClickAudio?.('Voice commands activated')
-          try { onToggleVoiceCommand() } catch {}
+          cbs.playClickAudio?.("Voice commands activated")
+          try { cbs.onToggleVoiceCommand() } catch {}
         }
       } else {
-        if (canToggleVoiceMode && checkCommand('stoplistening', /\b(stop|sleep|mute)\b/i, transcript, 500)) {
+        if (canToggleVoiceMode && check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate")) {
           commandFired = true
           lockVoiceToggle()
-          playClickAudio?.('Voice commands deactivated')
-          try { onToggleVoiceCommand() } catch {}
+          cbs.playClickAudio?.('Voice commands deactivated')
+          try { cbs.onToggleVoiceCommand() } catch {}
         } 
-        else if (checkCommand('play', /\b(play|resume|continue|lay|bay|clay|pay|pray|start reading)\b/i, transcript, 500)) {
+        else if (check("play", "resume", "continue", "start reading", "read")) {
           commandFired = true
-          if (!isPlaying || isPaused) { playClickAudio?.('Play'); onTogglePlay(); }
+          if (!cbs.isPlaying || cbs.isPaused) { cbs.playClickAudio?.('Play'); cbs.onTogglePlay(); }
         } 
-        else if (checkCommand('pause', /\b(pause|stop reading|halt|paws|pass|boss|pulse|pose|stop playing)\b/i, transcript, 500)) {
+        else if (check("pause", "halt", "stop reading", "stop playing", "stop")) {
           commandFired = true
-          if (isPlaying && !isPaused) { playClickAudio?.('Pause'); onTogglePlay(); }
+          if (cbs.isPlaying && !cbs.isPaused) { cbs.playClickAudio?.('Pause'); cbs.onTogglePlay(); }
         } 
-        else if (checkCommand('next', /\b(next|skip|forward)\b/i, transcript, 500)) {
+        else if (check("next", "skip", "forward", "necks")) {
           commandFired = true
-          playClickAudio?.('Next'); onNext();
+          cbs.playClickAudio?.('Next'); cbs.onNext();
         } 
-        else if (checkCommand('prev', /\b(previous|back|prev)\b/i, transcript, 500)) {
+        else if (check("previous", "prev", "back", "go back")) {
           commandFired = true
-          playClickAudio?.('Previous'); onPrev();
+          cbs.playClickAudio?.('Previous'); cbs.onPrev();
         } 
-        else if (checkCommand('restart', /\b(restart|start over|restore|re start|reset|refresh)\b/i, transcript, 500)) {
+        else if (check("restart", "start over", "reset", "refresh")) {
           commandFired = true
-          playClickAudio?.('Restart'); onRestart();
+          cbs.playClickAudio?.('Restart'); cbs.onRestart();
         } 
-        else if (checkCommand('speed', /\b(speed|rate)\b/i, transcript, 500)) {
+        else if (check("speed", "rate", "reading speed", "voice speed")) {
           commandFired = true
-          playClickAudio?.('Reading speed'); onOpenReadingSpeed();
+          cbs.playClickAudio?.('Reading speed'); cbs.onOpenReadingSpeed();
         } 
-        else if (checkCommand('settings', /\b(setting|options)\b/i, transcript, 1200)) {
+        else if (check("setting", "settings", "options", "open settings")) {
           commandFired = true
-          playClickAudio?.('Settings'); onOpenSettings();
+          cbs.playClickAudio?.('Settings'); cbs.onOpenSettings();
         } 
-        else if (checkCommand('minimize', /\b(minimize|collapse|hide|mini)\b/i, transcript, 500)) {
+        else if (check("minimize", "collapse", "hide", "mini")) {
           commandFired = true
-          if (!isMinimized) { playClickAudio?.('Minimize'); onMinimizeToggle(); }
+          if (!cbs.isMinimized) { cbs.playClickAudio?.('Minimize'); cbs.onMinimizeToggle(); }
         } 
-        else if (checkCommand('expand', /\b(expand|maximize|show)\b/i, transcript, 500)) {
+        else if (check("expand", "maximize", "show", "open")) {
           commandFired = true
-          if (isMinimized) { playClickAudio?.('Expand'); onMinimizeToggle(); }
+          if (cbs.isMinimized) { cbs.playClickAudio?.('Expand'); cbs.onMinimizeToggle(); }
         } 
-        else if (checkCommand('close', /\b(close|exit|quit|clothes|dose|shut down|dismiss)\b/i, transcript, 500)) {
+        else if (check("close", "exit", "quit", "dismiss", "duck", "dark")) {
           commandFired = true
-          playClickAudio?.('Close'); onClose();
+          cbs.playClickAudio?.('Close'); cbs.onClose();
         } 
-        else if (checkCommand('top', /\b(top|go up)\b/i, transcript, 500)) {
+        else if (check("top", "go up")) {
           commandFired = true
           window.scrollTo({ top: 0, behavior: "smooth" })
         } 
-        else if (checkCommand('bottom', /\b(bottom|down below)\b/i, transcript, 500)) {
+        else if (check("bottom", "down below")) {
           commandFired = true
           window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })
         } 
-        else if (checkCommand('scrollup', /\b(scroll up|up)\b/i, transcript, 500) && !transcript.includes(" to up ")) {
+        else if (check("scroll up", "up") && !check("go up", "top")) {
           commandFired = true
           window.scrollBy({ top: -600, behavior: "smooth" })
         } 
-        else if (checkCommand('scrolldown', /\b(scroll down|down)\b/i, transcript, 500) && !transcript.includes(" down below ")) {
+        else if (check("scroll down", "down") && !check("down below", "bottom")) {
           commandFired = true
           window.scrollBy({ top: 600, behavior: "smooth" })
         }
       }
 
       if (commandFired) {
-        try { recognition.abort() } catch (e) {}
+        consumedString = liveText
       }
     }
 
     recognition.onerror = (event: any) => {
-      // If Chrome strictly blocks the mic, stop trying to aggressively restart it.
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         isPermanentlyDead = true
         return
@@ -508,7 +552,6 @@ export default function VisualDock({
 
     recognition.onend = () => scheduleRestart()
 
-    // Auto-Revive if Chrome blocked it on initial page load
     const reviveEngineOnClick = () => {
       if (isPermanentlyDead && !isVoiceCommandsSuspended) {
         isPermanentlyDead = false
@@ -595,7 +638,7 @@ export default function VisualDock({
       >
         <div className="min-h-0 flex justify-center w-full">
           <div 
-            className={`relative flex flex-col items-center p-2 gap-1.5 w-fit origin-top transform-gpu backface-hidden will-change-[opacity,transform] ${springTransition} ${glassPanelClass} ${
+            className={`flex flex-col items-center p-2 gap-1.5 w-fit origin-top transform-gpu backface-hidden will-change-[opacity,transform] ${springTransition} ${middleGlassPanelClass} ${
               isMinimized 
                 ? "opacity-0 scale-75 -translate-y-4 pointer-events-none" 
                 : "opacity-100 scale-100 translate-y-0 pointer-events-auto"
@@ -674,7 +717,7 @@ export default function VisualDock({
               </svg>
             </button>
 
-            <div className={dividerClass} role="separator" aria-hidden="true" />
+            <div className={`!w-7 !min-h-[2px] rounded-full my-1.5 shrink-0 transition-colors duration-300 ${isDark ? 'bg-white/40' : 'bg-black/30'}`} role="separator" aria-hidden="true" />
 
             <button
               type="button"
@@ -701,9 +744,9 @@ export default function VisualDock({
               {...getHoverHandlers("Settings")}
             >
               <Tooltip label="Settings" isDark={isDark} />
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`${iconMotionClass} !w-[24px] !h-[24px] shrink-0`} aria-hidden="true">
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`${iconMotionClass} !w-[24px] !h-[24px] shrink-0`} aria-hidden="true">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                <circle cx="12" cy="12" r="3"/>
               </svg>
             </button>
           </div>
@@ -735,8 +778,7 @@ export default function VisualDock({
             style={{
               transform: `rotate(${isMinimized ? 180 : 0}deg) translateZ(0)`,
               transformOrigin: "50% 50%",
-              willChange: "transform",
-              transition: "transform 260ms cubic-bezier(0.2, 0.9, 0.2, 1)",
+              transition: "transform 260ms cubic-bezier(0.2, 0.9, 0.2, 1)"
             }}
             aria-hidden="true"
           >

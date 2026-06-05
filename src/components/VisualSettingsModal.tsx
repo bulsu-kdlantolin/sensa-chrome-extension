@@ -6,7 +6,7 @@ const DEFAULT_HIGHLIGHT_COLOR = "#FFFE00"
 const DEFAULT_INPUT_DEVICE_ID = "default"
 const DEFAULT_OUTPUT_DEVICE_ID = "default"
 const DEFAULT_WAKE_WORD = "Sensa"
-const WAKE_WORD_LISTEN_MS = 10_000
+const WAKE_WORD_LISTEN_MS = 8000
 const WAKE_WORD_BAR_IDLE = [3, 5, 7, 5, 3]
 const WAKE_WORD_BAR_COLOR = "#FFFFFF"
 
@@ -14,8 +14,10 @@ const extractFirstWakeWord = (text: string) => {
   const cleaned = text.trim().replace(/[^a-zA-Z0-9\s'-]/gi, "")
   const tokens = cleaned.split(/\s+/).filter(Boolean)
   if (!tokens.length) return ""
-  const fillers = ["set", "to", "my", "word", "is", "the", "a", "this", "wake", "hello", "hey", "change"]
+  
+  const fillers = ["set", "to", "my", "word", "is", "the", "a", "this", "wake", "hello", "hey", "change", "please", "can", "you", "make"]
   const filtered = tokens.filter(t => !fillers.includes(t.toLowerCase()) && t.length >= 2)
+  
   const target = filtered.length > 0 ? filtered[filtered.length - 1] : tokens[tokens.length - 1]
   if (!target) return ""
   return target.charAt(0).toUpperCase() + target.slice(1).toLowerCase()
@@ -133,44 +135,6 @@ function WakeWordMicButton({
           <line x1="12" y1="19" x2="12" y2="22" />
         </svg>
       )}
-    </button>
-  )
-}
-
-function SettingsToggle({
-  checked,
-  onToggle,
-  ariaLabel,
-}: {
-  checked: boolean
-  onToggle: (enabled: boolean) => void
-  ariaLabel: string
-}) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={ariaLabel}
-      onClick={(e) => {
-        e.stopPropagation()
-        onToggle(!checked)
-      }}
-      className="relative inline-flex shrink-0 cursor-pointer items-center rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50"
-    >
-      <span
-        className={`block h-7 w-12 rounded-full shadow-inner transition-colors duration-200 ${
-          checked
-            ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF]"
-            : "bg-gray-300 dark:bg-gray-600"
-        }`}
-      />
-      <span
-        className={`pointer-events-none absolute top-[2px] left-[2px] h-6 w-6 rounded-full border border-gray-200 bg-white shadow-sm transition-transform duration-200 ${
-          checked ? "translate-x-[20px]" : "translate-x-0"
-        }`}
-        aria-hidden="true"
-      />
     </button>
   )
 }
@@ -484,7 +448,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
 
   const onHeaderMouseDown = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement
-    if (target.closest("button, input, select, textarea, ul, li")) return
+    if (target.closest("button, input, select, textarea, ul, li, label, [data-toggle-row]")) return
     e.preventDefault()
     draggingRef.current = true
     dragStartRef.current = { x: e.clientX, y: e.clientY }
@@ -573,15 +537,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     return applyCapturedWakeWord(rawTranscript)
   }
 
-  const collectTranscriptsFromEvent = (event: any) => {
-    const chunks: string[] = []
-    for (let i = 0; i < event.results.length; i++) {
-      const piece = event.results[i][0]?.transcript?.trim()
-      if (piece) chunks.push(piece)
-    }
-    return chunks
-  }
-
   const beginWakeWordRecognition = () => {
     const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognitionCtor || !isWakeWordCapturingRef.current) return
@@ -648,11 +603,17 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
 
     recognition.onresult = (event: any) => {
       if (captured || wakeWordCapturedRef.current) return
-      const chunks = collectTranscriptsFromEvent(event)
-      const fullTranscript = chunks.join(" ").trim()
-      if (fullTranscript) wakeWordLatestTranscriptRef.current = fullTranscript
-      if (fullTranscript && tryApplyWakeWordFromTranscript(fullTranscript)) {
-        captured = true
+      
+      let newSpeech = ""
+      for(let i = event.resultIndex; i < event.results.length; i++){
+        newSpeech += event.results[i][0].transcript + " "
+      }
+      
+      if (newSpeech.trim()) {
+        wakeWordLatestTranscriptRef.current = newSpeech
+        if (tryApplyWakeWordFromTranscript(newSpeech)) {
+          captured = true
+        }
       }
     }
 
@@ -804,7 +765,8 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
 
     let isComponentMounted = true
     let restartTimer: number | null = null
-    let settingsStartIndex = 0
+    let consumedString = ""
+    let currentResultIndex = 0
 
     const scheduleRestart = () => {
       if (!isComponentMounted || isWakeWordCapturingRef.current) return
@@ -899,84 +861,95 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     }
 
     recognition.onstart = () => {
-      settingsStartIndex = 0
       settingsRecognitionArmedRef.current = true
     }
 
     recognition.onresult = (event: any) => {
       if (!settingsRecognitionArmedRef.current || isWakeWordCapturingRef.current) return
-      let speechChunk = ""
-      for (let i = settingsStartIndex; i < event.results.length; i++) {
-        speechChunk += event.results[i][0].transcript + " "
-      }
-      const transcript = ` ${speechChunk.toLowerCase().replace(/[^a-z0-9\s]/gi, "").replace(/\s+/g, " ").trim()} `
-      if (!transcript.trim()) return
 
-      const hasWord = (...phrases: string[]) => phrases.some(p => transcript.includes(p))
-      const wantsOn = hasWord("on", "enable", "enabled", "turn on", "activate", "active")
-      const wantsOff = hasWord("off", "disable", "disabled", "turn off", "deactivate")
+      if (event.resultIndex !== currentResultIndex) {
+        consumedString = ""
+        currentResultIndex = event.resultIndex
+      }
+
+      let liveText = ""
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        liveText += event.results[i][0].transcript + " "
+      }
+      liveText = liveText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
+
+      let newSpeech = liveText
+      if (liveText.startsWith(consumedString) && consumedString.length > 0) {
+        newSpeech = liveText.slice(consumedString.length).trim()
+      }
+
+      if (!newSpeech) return
+      const paddedSpeech = ` ${newSpeech} `
+      const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
+
       const state = overlayStateRef.current
       let commandFired = false
 
       if (state.isVoiceDropdownOpen) {
-        if (hasWord("close voice selection", "close dropdown", "cancel voice selection", "hide voices")) {
+        if (check("close voice selection", "close dropdown", "cancel", "hide voices")) {
           commandFired = true
           setIsVoiceDropdownOpen(false)
           setSettingsState((next) => { next.isVoiceDropdownOpen = false })
           speakFeedback("Voice selection closed")
-        } else if (hasWord("next voice", "voice next", "next selection", "next voice option")) {
+        } else if (check("next voice", "voice next", "next selection")) {
           commandFired = true
           cycleVoice(1)
-        } else if (hasWord("previous voice", "prev voice", "voice previous", "last voice", "previous selection")) {
+        } else if (check("previous voice", "prev voice", "last voice")) {
           commandFired = true
           cycleVoice(-1)
-        } else if (voiceSelectionMatches(transcript)) {
+        } else if (voiceSelectionMatches(newSpeech)) {
           commandFired = true
         }
-        if (commandFired) settingsStartIndex = event.results.length
-        return
-      }
+      } else {
+        const wantsOn = check("on", "enable", "enabled", "turn on", "activate")
+        const wantsOff = check("off", "disable", "disabled", "turn off", "deactivate")
 
-      if (hasWord("close settings", "close", "cancel", "back", "exit")) {
-        commandFired = true
-        setIsMounted(false)
-        setTimeout(() => onCloseRef.current(), 300)
-      } else if (hasWord("reset default", "reset defaults", "restore defaults", "reset settings")) {
-        commandFired = true
-        handleResetToDefault()
-      } else if (hasWord("voice guide", "voice guidance")) {
-        commandFired = true
-        handleVoiceGuideToggle(wantsOff ? false : wantsOn ? true : !state.isVoiceGuideEnabled)
-      } else if (hasWord("mouse reader", "mouse highlight reader", "mouse highlight")) {
-        commandFired = true
-        handleHighlightMouseScreenReaderToggle(wantsOff ? false : wantsOn ? true : !state.isHighlightMouseScreenReaderEnabled)
-      } else if (hasWord("autoscroll", "auto scroll", "scroll reading")) {
-        commandFired = true
-        handleAutoscrollToggle(wantsOff ? false : wantsOn ? true : !state.isAutoscrollEnabled)
-      } else if (hasWord("highlight color", "color picker", "pick color")) {
-        commandFired = true
-        setShowColorPicker(true)
-        speakFeedback("Highlight color opened")
-      } else if (hasWord("voice selection", "select voice", "voice voices")) {
-        commandFired = true
-        setIsVoiceDropdownOpen(true)
-        speakFeedback("Voice selection opened")
-      } else if (hasWord("next input", "next microphone", "input next", "microphone next")) {
-        commandFired = true
-        cycleDevice("input", 1)
-      } else if (hasWord("previous input", "prev input", "previous microphone", "microphone previous")) {
-        commandFired = true
-        cycleDevice("input", -1)
-      } else if (hasWord("next output", "next speaker", "output next", "speaker next")) {
-        commandFired = true
-        cycleDevice("output", 1)
-      } else if (hasWord("previous output", "prev output", "previous speaker", "speaker previous")) {
-        commandFired = true
-        cycleDevice("output", -1)
+        if (check("close settings", "close", "cancel", "back", "exit")) {
+          commandFired = true
+          setIsMounted(false)
+          setTimeout(() => onCloseRef.current(), 300)
+        } else if (check("reset default", "reset defaults", "restore defaults", "reset settings")) {
+          commandFired = true
+          handleResetToDefault()
+        } else if (check("voice guide", "voice guidance")) {
+          commandFired = true
+          handleVoiceGuideToggle(wantsOff ? false : wantsOn ? true : !state.isVoiceGuideEnabled)
+        } else if (check("mouse reader", "mouse highlight reader", "mouse highlight")) {
+          commandFired = true
+          handleHighlightMouseScreenReaderToggle(wantsOff ? false : wantsOn ? true : !state.isHighlightMouseScreenReaderEnabled)
+        } else if (check("autoscroll", "auto scroll", "scroll reading")) {
+          commandFired = true
+          handleAutoscrollToggle(wantsOff ? false : wantsOn ? true : !state.isAutoscrollEnabled)
+        } else if (check("highlight color", "color picker", "pick color")) {
+          commandFired = true
+          setShowColorPicker(true)
+          speakFeedback("Highlight color opened")
+        } else if (check("voice selection", "select voice", "voice voices")) {
+          commandFired = true
+          setIsVoiceDropdownOpen(true)
+          speakFeedback("Voice selection opened")
+        } else if (check("next input", "next microphone", "input next")) {
+          commandFired = true
+          cycleDevice("input", 1)
+        } else if (check("previous input", "prev input", "previous microphone")) {
+          commandFired = true
+          cycleDevice("input", -1)
+        } else if (check("next output", "next speaker", "output next")) {
+          commandFired = true
+          cycleDevice("output", 1)
+        } else if (check("previous output", "prev output", "previous speaker")) {
+          commandFired = true
+          cycleDevice("output", -1)
+        }
       }
 
       if (commandFired) {
-        settingsStartIndex = event.results.length
+        consumedString = liveText
       }
     }
 
@@ -1128,6 +1101,9 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const secondaryText = isDark ? "text-gray-400" : "text-gray-500"
   const dividerClass = isDark ? "border-white/10" : "border-black/5"
   const iconColor = isDark ? "text-[#0A44FF]" : "text-[#0A44FF]"
+  const toggleSwitchClass = isDark
+    ? "relative inline-block w-12 h-7 rounded-full bg-gray-600 shadow-inner peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] peer-checked:after:translate-x-[20px] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:border-white/20 after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:after:border-white"
+    : "relative inline-block w-12 h-7 rounded-full bg-gray-300 shadow-inner peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] peer-checked:after:translate-x-[20px] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:border-gray-200 after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:after:border-white"
 
   return (
     <div 
@@ -1171,37 +1147,45 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
 
         <div className="flex flex-col gap-3">
           
-          <div 
+          <label
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
             {...getHoverHandlers("Voice Guide")}
-            onClick={() => handleVoiceGuideToggle(!isVoiceGuideEnabled)}
+            onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 pointer-events-none">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
               <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Voice Guide</span>
             </div>
-            <SettingsToggle
-              checked={isVoiceGuideEnabled}
-              onToggle={handleVoiceGuideToggle}
-              ariaLabel="Voice Guide"
-            />
-          </div>
+            <span className="relative inline-flex items-center shrink-0 pointer-events-none">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={isVoiceGuideEnabled}
+                onChange={(e) => handleVoiceGuideToggle(e.target.checked)}
+              />
+              <span className={toggleSwitchClass} aria-hidden="true" />
+            </span>
+          </label>
 
-          <div 
+          <label
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
             {...getHoverHandlers("Sound Effects")}
-            onClick={() => handleSoundEffectsToggle(!isSoundEffectsEnabled)}
+            onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 pointer-events-none">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M19 9a5 5 0 0 1 0 6"/><path d="M21 7a9 9 0 0 1 0 10"/></svg>
               <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Sound Effects</span>
             </div>
-            <SettingsToggle
-              checked={isSoundEffectsEnabled}
-              onToggle={handleSoundEffectsToggle}
-              ariaLabel="Sound Effects"
-            />
-          </div>
+            <span className="relative inline-flex items-center shrink-0 pointer-events-none">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={isSoundEffectsEnabled}
+                onChange={(e) => handleSoundEffectsToggle(e.target.checked)}
+              />
+              <span className={toggleSwitchClass} aria-hidden="true" />
+            </span>
+          </label>
 
           <div 
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative z-50 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
@@ -1285,37 +1269,45 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             </div>
           </div>
 
-          <div 
+          <label
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
             {...getHoverHandlers("Mouse Highlight Reader")}
-            onClick={() => handleHighlightMouseScreenReaderToggle(!isHighlightMouseScreenReaderEnabled)}
+            onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 pointer-events-none">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg>
               <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Mouse Reader</span>
             </div>
-            <SettingsToggle
-              checked={isHighlightMouseScreenReaderEnabled}
-              onToggle={handleHighlightMouseScreenReaderToggle}
-              ariaLabel="Mouse Reader"
-            />
-          </div>
+            <span className="relative inline-flex items-center shrink-0 pointer-events-none">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={isHighlightMouseScreenReaderEnabled}
+                onChange={(e) => handleHighlightMouseScreenReaderToggle(e.target.checked)}
+              />
+              <span className={toggleSwitchClass} aria-hidden="true" />
+            </span>
+          </label>
 
-          <div 
+          <label
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
             {...getHoverHandlers("Autoscroll reading")}
-            onClick={() => handleAutoscrollToggle(!isAutoscrollEnabled)}
+            onMouseDown={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 pointer-events-none">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M12 7l2 2-2 2"/><path d="M12 17l-2-2 2-2"/></svg>
               <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Autoscroll Reading</span>
             </div>
-            <SettingsToggle
-              checked={isAutoscrollEnabled}
-              onToggle={handleAutoscrollToggle}
-              ariaLabel="Autoscroll Reading"
-            />
-          </div>
+            <span className="relative inline-flex items-center shrink-0 pointer-events-none">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={isAutoscrollEnabled}
+                onChange={(e) => handleAutoscrollToggle(e.target.checked)}
+              />
+              <span className={toggleSwitchClass} aria-hidden="true" />
+            </span>
+          </label>
 
           <div 
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}

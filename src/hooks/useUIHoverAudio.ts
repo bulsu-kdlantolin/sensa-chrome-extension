@@ -10,6 +10,7 @@ export function useUIHoverAudio() {
 	const pendingUtteranceRef = useRef<string | null>(null)
 	const voiceRetryTimerRef = useRef<number | null>(null)
 	const voicesChangedHandlerRef = useRef<(() => void) | null>(null)
+	const tabVisibleAtRef = useRef(performance.now())
 
 	useEffect(() => {
 		chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
@@ -146,6 +147,8 @@ export function useUIHoverAudio() {
 	const playHoverAudio = useCallback(
 		(text: string) => {
 			if (!text.trim()) return
+			if (document.visibilityState !== "visible") return
+			if (performance.now() - tabVisibleAtRef.current < 600) return
 
 			clearHoverTimeout()
 
@@ -174,12 +177,25 @@ export function useUIHoverAudio() {
 		const handlePointerDown = () => {
 			clearHoverTimeout()
 		}
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === "visible") {
+				tabVisibleAtRef.current = performance.now()
+				clearHoverTimeout()
+				if (speechOwnerRef.current === "hover" && isHoverSpeakingRef.current) {
+					window.speechSynthesis.cancel()
+					speechOwnerRef.current = "none"
+					isHoverSpeakingRef.current = false
+				}
+			}
+		}
 
 		window.addEventListener("pointerdown", handlePointerDown, true)
+		document.addEventListener("visibilitychange", handleVisibilityChange)
 
 		return () => {
 			isActiveRef.current = false
 			window.removeEventListener("pointerdown", handlePointerDown, true)
+			document.removeEventListener("visibilitychange", handleVisibilityChange)
 			clearHoverTimeout()
 			clearVoiceRetry()
 			if (isHoverSpeakingRef.current) {

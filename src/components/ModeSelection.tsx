@@ -25,8 +25,8 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const voiceReadyRetryRef = useRef<number | null>(null)
   const voicesChangedHandlerRef = useRef<(() => void) | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
+  const isTTSPlayingRef = useRef(false)
   
-  // Apple-style spring animation curve
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 
   const titleText = "Welcome to Sensa"
@@ -232,11 +232,18 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
       utterance.lang = preferredVoice.lang
     }
 
+    utterance.onstart = () => {
+      isTTSPlayingRef.current = true
+    }
+
     utterance.onend = () => {
+      isTTSPlayingRef.current = false
       if (narrationCanceledRef.current) return
       onDone()
     }
+    
     utterance.onerror = () => {
+      isTTSPlayingRef.current = false
       if (narrationCanceledRef.current) return
       onDone()
     }
@@ -382,6 +389,107 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     }
   }, [])
 
+  useEffect(() => {
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognitionCtor) return
+
+    const recognition = new SpeechRecognitionCtor()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = "en-US"
+
+    let isComponentMounted = true
+    let restartTimer: number | null = null
+    let isPermanentlyDead = false
+    let ignoreSpeechUntil = 0
+    let globalBuffer = ""
+
+    const scheduleRestart = () => {
+      if (!isComponentMounted || isPermanentlyDead) return
+      if (restartTimer) window.clearTimeout(restartTimer)
+      restartTimer = window.setTimeout(() => {
+        try { recognition.start() } catch {}
+      }, 300)
+    }
+
+    recognition.onresult = (event: any) => {
+      if (isTTSPlayingRef.current || window.speechSynthesis.speaking) {
+        globalBuffer = ""
+        return
+      }
+      
+      if (Date.now() < ignoreSpeechUntil) return
+
+      let interimChunk = ""
+      let newFinals = ""
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const text = event.results[i][0].transcript
+        if (event.results[i].isFinal) {
+          newFinals += text + " "
+        } else {
+          interimChunk += text + " "
+        }
+      }
+
+      globalBuffer += newFinals
+      if (globalBuffer.length > 150) {
+        globalBuffer = globalBuffer.slice(-150)
+      }
+
+      const activeString = (globalBuffer + " " + interimChunk).toLowerCase()
+      const transcript = ` ${activeString.replace(/[^a-z0-9\s]/gi, " ").trim()} `
+      
+      if (!transcript.trim()) return
+
+      const check = (pattern: RegExp) => pattern.test(transcript)
+      let commandFired = false
+
+      if (check(/(visual mode|visual|vision mode)/i)) {
+        commandFired = true
+        playPopSfx()
+        onSelectMode("visual")
+      } else if (check(/(auditory mode|auditory|audio mode)/i)) {
+        commandFired = true
+        playPopSfx()
+        onSelectMode("auditory")
+      }
+
+      if (commandFired) {
+        globalBuffer = "" 
+        ignoreSpeechUntil = Date.now() + 1500
+      }
+    }
+
+    recognition.onerror = (event: any) => {
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        isPermanentlyDead = true
+        return
+      }
+      scheduleRestart()
+    }
+
+    recognition.onend = () => scheduleRestart()
+
+    const reviveEngineOnClick = () => {
+      if (isPermanentlyDead) {
+        isPermanentlyDead = false
+        try { recognition.start() } catch (e) {}
+      }
+    }
+
+    window.addEventListener("click", reviveEngineOnClick)
+
+    try { recognition.start() } catch (e) {}
+
+    return () => {
+      isComponentMounted = false
+      window.removeEventListener("click", reviveEngineOnClick)
+      if (restartTimer) window.clearTimeout(restartTimer)
+      try { recognition.stop() } catch {}
+    }
+  }, [onSelectMode])
+
   const handleSkipStep = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
     if (target.closest("button")) return
@@ -443,7 +551,6 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
         .animate-pop { animation: pop-in 0.7s cubic-bezier(0.23,1,0.32,1) forwards; opacity: 0; }
       `}} />
 
-      {/* 🚨 CSS INJECTION FOR AMBIENT DUAL-TONE ORBS */}
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes float-blue {
           0%, 100% { transform: translate(0, 0) scale(1); }
@@ -482,18 +589,12 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
         .animate-logo-light { animation: logo-light-flow 4s ease-in-out infinite; }
       `}} />
 
-      {/* 🌌 AMBIENT DUAL-TONE BACKGROUND ENGINE */}
-      {/* Sensa Blue Orb (Top Left - Visual) */}
       <div className={`absolute -top-16 -left-16 w-64 h-64 rounded-full mix-blend-multiply filter blur-[60px] animate-float-blue pointer-events-none transform-gpu ${isDark ? 'bg-[#0A44FF]/25' : 'bg-[#0A44FF]/15'}`} />
       
-      {/* Sensa Orange Orb (Bottom Right - Auditory) */}
       <div className={`absolute -bottom-16 -right-16 w-64 h-64 rounded-full mix-blend-multiply filter blur-[60px] animate-float-orange pointer-events-none transform-gpu ${isDark ? 'bg-[#FF7A2F]/25' : 'bg-[#FF7A2F]/15'}`} />
 
-
-      {/* 🛡️ CONTENT WRAPPER */}
       <div className="relative z-10 w-full flex flex-col items-center">
         
-        {/* 🌟 Brand Header */}
         <div className="flex flex-col items-center gap-1 mb-2 transform-gpu">
           <img 
             src={sensaLogo} 
@@ -513,9 +614,6 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
 
         <div className="w-full flex flex-col gap-4">
 
-          {/* ========================================================= */}
-          {/* 👁️ VISUAL MODE CARD (Sensa Blue) */}
-          {/* ========================================================= */}
           {visibleCards >= 1 && (
             <button
               onClick={() => onSelectMode("visual")}
@@ -530,7 +628,6 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
                 }`}
               style={{ animationDelay: "0.2s" }}
             >
-            {/* Card Icon */}
             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 mr-4 ${springTransition} group-hover:scale-110 ${isDark ? 'bg-[#0A44FF]/22 text-[#6AA2FF]' : 'bg-[#0A44FF]/12 text-[#0A44FF]'}`}>
               <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
@@ -538,7 +635,6 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
               </svg>
             </div>
             
-            {/* Card Text */}
             <div className="flex flex-col">
               <h2 className={`text-[18px] font-extrabold tracking-tight mb-0.5 ${springTransition} ${isDark ? 'text-white group-hover:text-[#6AA2FF]' : 'text-gray-900 group-hover:text-[#0A44FF]'}`}>
                 Visual Mode
@@ -550,9 +646,6 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
             </button>
           )}
 
-          {/* ========================================================= */}
-          {/* 🦻 AUDITORY MODE CARD (Sensa Orange) */}
-          {/* ========================================================= */}
           {visibleCards >= 2 && (
             <button
               onClick={() => onSelectMode("auditory")}
@@ -567,7 +660,6 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
                 }`}
               style={{ animationDelay: "0.28s" }}
             >
-            {/* Card Icon */}
             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 mr-4 ${springTransition} group-hover:scale-110 ${isDark ? 'bg-[#FF7A2F]/22 text-[#FFC09B]' : 'bg-[#FF7A2F]/12 text-[#FF7A2F]'}`}>
               <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0"/>
@@ -575,7 +667,6 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
               </svg>
             </div>
             
-            {/* Card Text */}
             <div className="flex flex-col">
               <h2 className={`text-[18px] font-extrabold tracking-tight mb-0.5 ${springTransition} ${isDark ? 'text-white group-hover:text-[#FFC09B]' : 'text-gray-900 group-hover:text-[#FF7A2F]'}`}>
                 Auditory Mode
