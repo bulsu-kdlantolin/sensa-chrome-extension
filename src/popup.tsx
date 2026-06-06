@@ -64,6 +64,25 @@ export default function IndexPopup() {
     return () => clearTimeout(timeoutId)
   }, [])
 
+  // Voice command on Mode Selection writes activeMode directly to storage — sync popup view
+  useEffect(() => {
+    const handleVoiceModeApplied = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      const profileChange = changes.sensa_user_profile
+      if (!profileChange?.newValue) return
+
+      const profile = profileChange.newValue as SensaUserProfile
+      const activeMode = profile.globalSettings?.activeMode
+      if (!activeMode) return
+
+      setUserProfile(profile)
+      setCurrentTheme(profile.globalSettings.theme)
+      setCurrentView((prev) => (prev === "MODE_SELECTION" ? "WELCOME" : prev))
+    }
+
+    chrome.storage.onChanged.addListener(handleVoiceModeApplied)
+    return () => chrome.storage.onChanged.removeListener(handleVoiceModeApplied)
+  }, [])
+
   // 2. Safely update persistent JSON database
   const updateProfile = (updates: Partial<SensaUserProfile>) : Promise<void> => {
     return new Promise((resolve) => {

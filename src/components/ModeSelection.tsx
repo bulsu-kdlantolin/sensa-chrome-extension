@@ -26,7 +26,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const voicesChangedHandlerRef = useRef<(() => void) | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const isTTSPlayingRef = useRef(false)
-  
+
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 
   const titleText = "Welcome to Sensa"
@@ -45,27 +45,22 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
       const Ctor = window.AudioContext || (window as any).webkitAudioContext
       audioCtxRef.current = Ctor ? new Ctor() : null
     }
-
     if (audioCtxRef.current && audioCtxRef.current.state === "suspended") {
       audioCtxRef.current.resume().catch(() => undefined)
     }
-
     return audioCtxRef.current
   }
 
   const playTypingSfx = () => {
     const ctx = getAudioContext()
     if (!ctx) return
-
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
-
     osc.type = "triangle"
     osc.frequency.setValueAtTime(980, ctx.currentTime)
     gain.gain.setValueAtTime(0.0001, ctx.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.045, ctx.currentTime + 0.01)
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.06)
-
     osc.connect(gain)
     gain.connect(ctx.destination)
     osc.start()
@@ -75,17 +70,14 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const playPopSfx = () => {
     const ctx = getAudioContext()
     if (!ctx) return
-
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
-
     osc.type = "sine"
     osc.frequency.setValueAtTime(520, ctx.currentTime)
     osc.frequency.exponentialRampToValueAtTime(220, ctx.currentTime + 0.12)
     gain.gain.setValueAtTime(0.0001, ctx.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.07, ctx.currentTime + 0.02)
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.14)
-
     osc.connect(gain)
     gain.connect(ctx.destination)
     osc.start()
@@ -95,17 +87,14 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const playHoverSfx = () => {
     const ctx = getAudioContext()
     if (!ctx) return
-
     const osc = ctx.createOscillator()
     const gain = ctx.createGain()
-
     osc.type = "sine"
     osc.frequency.setValueAtTime(720, ctx.currentTime)
     osc.frequency.exponentialRampToValueAtTime(420, ctx.currentTime + 0.08)
     gain.gain.setValueAtTime(0.0001, ctx.currentTime)
     gain.gain.exponentialRampToValueAtTime(0.05, ctx.currentTime + 0.015)
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.09)
-
     osc.connect(gain)
     gain.connect(ctx.destination)
     osc.start()
@@ -137,6 +126,151 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
       chrome.storage.onChanged.removeListener(handleStorageChange)
     }
   }, [])
+
+  useEffect(() => {
+    const sendVoiceBridgeMessage = (action: "start" | "stop") => {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const tabId = tabs[0]?.id
+        if (!tabId) return
+        chrome.tabs.sendMessage(tabId, { type: "sensa-mode-selection-voice", action }, () => {
+          void chrome.runtime.lastError
+        })
+      })
+    }
+
+    const handleProfileVoiceSelect = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      const profileChange = changes.sensa_user_profile
+      if (!profileChange?.newValue) return
+
+      const activeMode = (profileChange.newValue as { globalSettings?: { activeMode?: string } }).globalSettings?.activeMode
+      if (activeMode !== "visual" && activeMode !== "auditory") return
+
+      narrationCanceledRef.current = true
+      window.speechSynthesis.cancel()
+      isTTSPlayingRef.current = false
+      playPopSfx()
+    }
+
+    window.speechSynthesis.cancel()
+
+    chrome.storage.local.set({ sensa_mode_selection_listening: true }, () => {
+      sendVoiceBridgeMessage("start")
+    })
+
+    chrome.storage.onChanged.addListener(handleProfileVoiceSelect)
+
+    const retryTimers = [400, 1200].map((delay) =>
+      window.setTimeout(() => sendVoiceBridgeMessage("start"), delay)
+    )
+
+    return () => {
+      retryTimers.forEach((timer) => window.clearTimeout(timer))
+      chrome.storage.onChanged.removeListener(handleProfileVoiceSelect)
+      chrome.storage.local.set({ sensa_mode_selection_listening: false })
+      sendVoiceBridgeMessage("stop")
+    }
+  }, [])
+
+  useEffect(() => {
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognitionCtor) return
+
+    const recognition = new SpeechRecognitionCtor()
+    recognition.continuous = true
+    recognition.interimResults = true
+    recognition.lang = "en-US"
+
+    let isComponentMounted = true
+    let restartTimer: number | null = null
+    let isPermanentlyDead = false
+    let ignoreSpeechUntil = 0
+    let globalBuffer = ""
+
+    const scheduleRestart = () => {
+      if (!isComponentMounted || isPermanentlyDead) return
+      if (restartTimer) window.clearTimeout(restartTimer)
+      restartTimer = window.setTimeout(() => {
+        try { recognition.start() } catch {}
+      }, 300)
+    }
+
+    recognition.onresult = (event: any) => {
+      if (isTTSPlayingRef.current || window.speechSynthesis.speaking) {
+        globalBuffer = ""
+        return
+      }
+
+      if (Date.now() < ignoreSpeechUntil) return
+
+      let interimChunk = ""
+      let newFinals = ""
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const text = event.results[i][0].transcript
+        if (event.results[i].isFinal) {
+          newFinals += text + " "
+        } else {
+          interimChunk += text + " "
+        }
+      }
+
+      globalBuffer += newFinals
+      if (globalBuffer.length > 150) {
+        globalBuffer = globalBuffer.slice(-150)
+      }
+
+      const activeString = (globalBuffer + " " + interimChunk).toLowerCase()
+      const transcript = ` ${activeString.replace(/[^a-z0-9\s]/gi, " ").trim()} `
+      
+      if (!transcript.trim()) return
+
+      const check = (pattern: RegExp) => pattern.test(transcript)
+      let commandFired = false
+
+      if (check(/(visual mode|visual|vision mode)/i)) {
+        commandFired = true
+        playPopSfx()
+        onSelectMode("visual")
+      } else if (check(/(auditory mode|auditory|audio mode)/i)) {
+        commandFired = true
+        playPopSfx()
+        onSelectMode("auditory")
+      }
+
+      if (commandFired) {
+        globalBuffer = "" 
+        ignoreSpeechUntil = Date.now() + 1500
+      }
+    }
+
+    recognition.onerror = (event: any) => {
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        isPermanentlyDead = true
+        return
+      }
+      scheduleRestart()
+    }
+
+    recognition.onend = () => scheduleRestart()
+
+    const reviveEngineOnClick = () => {
+      if (isPermanentlyDead) {
+        isPermanentlyDead = false
+        try { recognition.start() } catch {}
+      }
+    }
+
+    window.addEventListener("click", reviveEngineOnClick)
+
+    try { recognition.start() } catch {}
+
+    return () => {
+      isComponentMounted = false
+      window.removeEventListener("click", reviveEngineOnClick)
+      if (restartTimer) window.clearTimeout(restartTimer)
+      try { recognition.stop() } catch {}
+    }
+  }, [onSelectMode])
 
   const speakWithResolvedVoice = (text: string, onDone: () => void) => {
     if (!text.trim()) {
@@ -241,7 +375,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
       if (narrationCanceledRef.current) return
       onDone()
     }
-    
+
     utterance.onerror = () => {
       isTTSPlayingRef.current = false
       if (narrationCanceledRef.current) return
@@ -268,14 +402,18 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   useEffect(() => {
     if (narrationStageRef.current !== "idle") return
 
-    narrationStageRef.current = "titleDone"
     narrationCanceledRef.current = false
 
-    speakWithResolvedVoice(titleText, () => {
-      setStartDescription(true)
-    })
+    const narrationTimer = window.setTimeout(() => {
+      if (narrationCanceledRef.current || narrationStageRef.current !== "idle") return
+      narrationStageRef.current = "titleDone"
+      speakWithResolvedVoice(titleText, () => {
+        setStartDescription(true)
+      })
+    }, 350)
 
     return () => {
+      window.clearTimeout(narrationTimer)
       narrationCanceledRef.current = true
       window.speechSynthesis.cancel()
       if (voiceRetryTimerRef.current !== null) {
@@ -388,107 +526,6 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
       window.removeEventListener("keydown", resumeAudio)
     }
   }, [])
-
-  useEffect(() => {
-    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SpeechRecognitionCtor) return
-
-    const recognition = new SpeechRecognitionCtor()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = "en-US"
-
-    let isComponentMounted = true
-    let restartTimer: number | null = null
-    let isPermanentlyDead = false
-    let ignoreSpeechUntil = 0
-    let globalBuffer = ""
-
-    const scheduleRestart = () => {
-      if (!isComponentMounted || isPermanentlyDead) return
-      if (restartTimer) window.clearTimeout(restartTimer)
-      restartTimer = window.setTimeout(() => {
-        try { recognition.start() } catch {}
-      }, 300)
-    }
-
-    recognition.onresult = (event: any) => {
-      if (isTTSPlayingRef.current || window.speechSynthesis.speaking) {
-        globalBuffer = ""
-        return
-      }
-      
-      if (Date.now() < ignoreSpeechUntil) return
-
-      let interimChunk = ""
-      let newFinals = ""
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const text = event.results[i][0].transcript
-        if (event.results[i].isFinal) {
-          newFinals += text + " "
-        } else {
-          interimChunk += text + " "
-        }
-      }
-
-      globalBuffer += newFinals
-      if (globalBuffer.length > 150) {
-        globalBuffer = globalBuffer.slice(-150)
-      }
-
-      const activeString = (globalBuffer + " " + interimChunk).toLowerCase()
-      const transcript = ` ${activeString.replace(/[^a-z0-9\s]/gi, " ").trim()} `
-      
-      if (!transcript.trim()) return
-
-      const check = (pattern: RegExp) => pattern.test(transcript)
-      let commandFired = false
-
-      if (check(/(visual mode|visual|vision mode)/i)) {
-        commandFired = true
-        playPopSfx()
-        onSelectMode("visual")
-      } else if (check(/(auditory mode|auditory|audio mode)/i)) {
-        commandFired = true
-        playPopSfx()
-        onSelectMode("auditory")
-      }
-
-      if (commandFired) {
-        globalBuffer = "" 
-        ignoreSpeechUntil = Date.now() + 1500
-      }
-    }
-
-    recognition.onerror = (event: any) => {
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-        isPermanentlyDead = true
-        return
-      }
-      scheduleRestart()
-    }
-
-    recognition.onend = () => scheduleRestart()
-
-    const reviveEngineOnClick = () => {
-      if (isPermanentlyDead) {
-        isPermanentlyDead = false
-        try { recognition.start() } catch (e) {}
-      }
-    }
-
-    window.addEventListener("click", reviveEngineOnClick)
-
-    try { recognition.start() } catch (e) {}
-
-    return () => {
-      isComponentMounted = false
-      window.removeEventListener("click", reviveEngineOnClick)
-      if (restartTimer) window.clearTimeout(restartTimer)
-      try { recognition.stop() } catch {}
-    }
-  }, [onSelectMode])
 
   const handleSkipStep = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement

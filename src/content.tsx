@@ -14,6 +14,10 @@ import LiveCaptionBox from "./components/LiveCaptionBox"
 import type { SensaUserProfile } from "./lib/storage"
 import { useSpeech } from "./hooks/useSpeech"
 import { useLiveCaptions } from "./hooks/useLiveCaptions"
+import {
+  startModeSelectionVoiceListener,
+  stopModeSelectionVoiceListener
+} from "./lib/modeSelectionVoiceBridge"
 
 import { audioInterceptorScript } from "./audioInterceptor"
 
@@ -115,6 +119,7 @@ export default function FloatingDockManager() {
   const [isReadingSpeedOpen, setIsReadingSpeedOpen] = useState(false)
   const [readingSpeed, setReadingSpeed] = useState(1)
   const [isVoiceCommandActive, setIsVoiceCommandActive] = useState(false)
+  const [isModeSelectionVoiceActive, setIsModeSelectionVoiceActive] = useState(false)
   const [visualInputDeviceId, setVisualInputDeviceId] = useState("default")
   const [isVisualAutoscrollEnabled, setIsVisualAutoscrollEnabled] = useState(true)
   const [isHighlightMouseScreenReaderEnabled, setIsHighlightMouseScreenReaderEnabled] = useState(false)
@@ -269,13 +274,27 @@ export default function FloatingDockManager() {
     })
 
     const handleRuntimeMessage = (
-      message: { type?: string; mode?: "visual" | "auditory" | null },
+      message: { type?: string; mode?: "visual" | "auditory" | null; action?: "start" | "stop" },
       _sender: chrome.runtime.MessageSender,
       sendResponse: (response?: any) => void
     ) => {
       if (message.type === "sensa-health-check") {
         sendResponse({ ok: true, activeMode: activeModeRef.current })
-        return
+        return true
+      }
+
+      if (message.type === "sensa-mode-selection-voice") {
+        if (message.action === "start") {
+          void startModeSelectionVoiceListener().then((started) => {
+            setIsModeSelectionVoiceActive(started)
+            sendResponse({ ok: started })
+          })
+        } else {
+          stopModeSelectionVoiceListener()
+          setIsModeSelectionVoiceActive(false)
+          sendResponse({ ok: true })
+        }
+        return true
       }
 
       if (message.type !== "sensa-activate-mode") return
@@ -382,6 +401,8 @@ export default function FloatingDockManager() {
     return () => {
       chrome.storage.onChanged.removeListener(handleStorageChange)
       chrome.runtime.onMessage.removeListener(handleRuntimeMessage)
+      stopModeSelectionVoiceListener()
+      setIsModeSelectionVoiceActive(false)
     }
   }, [])
 
@@ -607,7 +628,7 @@ export default function FloatingDockManager() {
             isPaused={isPaused}              // <-- NEW PROP
             isVoiceCommandActive={isVoiceCommandActive}
             canRestart={isPlaying || isPaused}
-            isVoiceCommandsSuspended={isSettingsOverlayOpen || isReadingSpeedOpen}
+            isVoiceCommandsSuspended={isSettingsOverlayOpen || isReadingSpeedOpen || isModeSelectionVoiceActive}
             onTogglePlay={togglePlayPause}   // <-- NEW PROP
             onToggleVoiceCommand={() => setIsVoiceCommandActive(prev => !prev)}
             onNext={next}                    // <-- NEW PROP
