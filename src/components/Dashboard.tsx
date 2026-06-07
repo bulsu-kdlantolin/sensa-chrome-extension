@@ -148,6 +148,20 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
     })
   }, [selectedMode, hasHydratedInitialMode])
 
+  useEffect(() => {
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.sensa_last_tab?.newValue !== undefined) {
+        setCurrentViewMode(changes.sensa_last_tab.newValue)
+      } else if (changes.sensa_visual_active?.newValue === true) {
+        setCurrentViewMode("visual")
+      } else if (changes.sensa_auditory_active?.newValue === true) {
+        setCurrentViewMode("auditory")
+      }
+    }
+    chrome.storage.onChanged.addListener(handleStorageChange)
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange)
+  }, [])
+
   // Announce visual mode on popup open only (not auditory).
   useEffect(() => {
     if (!hasHydratedInitialMode) return

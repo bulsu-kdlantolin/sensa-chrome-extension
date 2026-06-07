@@ -2,6 +2,55 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import sensaLogo from "data-base64:../../assets/sensa-logo.png"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
+const getLevenshteinDistance = (a: string, b: string): number => {
+  const tmp: number[][] = [];
+  for (let i = 0; i <= a.length; i++) {
+    tmp.push([i]);
+  }
+  for (let j = 0; j <= b.length; j++) {
+    tmp[0][j] = j;
+  }
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      tmp[i][j] = Math.min(
+        tmp[i - 1][j] + 1,
+        tmp[i][j - 1] + 1,
+        tmp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+  }
+  return tmp[a.length][b.length];
+};
+
+const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
+  if (text.includes(target)) return true;
+  
+  const tokens = text.split(/\s+/).filter(Boolean);
+  const targetTokens = target.split(/\s+/).filter(Boolean);
+  
+  if (targetTokens.length === 1) {
+    for (const t of tokens) {
+      if (getLevenshteinDistance(t, target) <= maxDistance) return true;
+    }
+  } else {
+    const n = targetTokens.length;
+    for (let i = 0; i <= tokens.length - n; i++) {
+      const ngram = tokens.slice(i, i + n).join(" ");
+      if (getLevenshteinDistance(ngram, target) <= maxDistance) return true;
+    }
+  }
+  return false;
+};
+
+const normalizeInput = (rawText: string): string => {
+  let text = rawText.toLowerCase();
+  text = text.replace(/[^a-z0-9\s]/gi, " ");
+  text = text.replace(/\s+/g, " ").trim();
+  const fillerWords = new Set(["the", "a", "please", "hey", "can", "you", "change", "set", "to", "my", "select", "sincere", "sansa", "sensor", "sensia"]);
+  const tokens = text.split(" ").filter(t => !fillerWords.has(t));
+  return tokens.join(" ");
+};
+
 interface ModeSelectionProps {
   theme: "light" | "dark"
   onSelectMode: (mode: "visual" | "auditory") => void
@@ -26,6 +75,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const voicesChangedHandlerRef = useRef<(() => void) | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const isTTSPlayingRef = useRef(false)
+  const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
 
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 
@@ -130,10 +180,22 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   useEffect(() => {
     const sendVoiceBridgeMessage = (action: "start" | "stop") => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        const tabId = tabs[0]?.id
-        if (!tabId) return
-        chrome.tabs.sendMessage(tabId, { type: "sensa-mode-selection-voice", action }, () => {
-          void chrome.runtime.lastError
+        // Find the first tab with an HTTP/HTTPS protocol, or fallback to the first active tab in current view.
+        const activeTab = tabs?.find(t => t.url && (t.url.startsWith("http://") || t.url.startsWith("https://"))) || tabs?.[0]
+        const tabId = activeTab?.id
+        if (!tabId) {
+          console.warn("[Sensa Debug] No active tab ID found, voice bridge message NOT sent.")
+          return
+        }
+        if (activeTab.url && (activeTab.url.startsWith("chrome://") || activeTab.url.startsWith("edge://") || activeTab.url.startsWith("about:"))) {
+          console.warn(`[Sensa Debug] Tab URL ${activeTab.url} is a restricted page. Voice bridge cannot be used here.`)
+          return
+        }
+        chrome.tabs.sendMessage(tabId, { type: "sensa-mode-selection-voice", action }, (response) => {
+          const err = chrome.runtime.lastError?.message
+          if (err) {
+            console.error("[Sensa Debug] Failed to send message to tab voice bridge:", err)
+          }
         })
       })
     }
@@ -151,6 +213,19 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
       playPopSfx()
     }
 
+    const handleTabLogMessage = (msg: any) => {
+      if (msg && msg.type === "sensa-tab-log") {
+        const prefix = `[Sensa Tab Log -> ${msg.level.toUpperCase()}]`
+        if (msg.level === "error") {
+          console.error(prefix, msg.message)
+        } else if (msg.level === "warn") {
+          console.warn(prefix, msg.message)
+        } else {
+          console.log(prefix, msg.message)
+        }
+      }
+    }
+
     window.speechSynthesis.cancel()
 
     chrome.storage.local.set({ sensa_mode_selection_listening: true }, () => {
@@ -158,119 +233,17 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     })
 
     chrome.storage.onChanged.addListener(handleProfileVoiceSelect)
-
-    const retryTimers = [400, 1200].map((delay) =>
-      window.setTimeout(() => sendVoiceBridgeMessage("start"), delay)
-    )
+    chrome.runtime.onMessage.addListener(handleTabLogMessage)
 
     return () => {
-      retryTimers.forEach((timer) => window.clearTimeout(timer))
       chrome.storage.onChanged.removeListener(handleProfileVoiceSelect)
+      chrome.runtime.onMessage.removeListener(handleTabLogMessage)
       chrome.storage.local.set({ sensa_mode_selection_listening: false })
       sendVoiceBridgeMessage("stop")
     }
   }, [])
 
-  useEffect(() => {
-    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SpeechRecognitionCtor) return
-
-    const recognition = new SpeechRecognitionCtor()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = "en-US"
-
-    let isComponentMounted = true
-    let restartTimer: number | null = null
-    let isPermanentlyDead = false
-    let ignoreSpeechUntil = 0
-    let globalBuffer = ""
-
-    const scheduleRestart = () => {
-      if (!isComponentMounted || isPermanentlyDead) return
-      if (restartTimer) window.clearTimeout(restartTimer)
-      restartTimer = window.setTimeout(() => {
-        try { recognition.start() } catch {}
-      }, 300)
-    }
-
-    recognition.onresult = (event: any) => {
-      if (isTTSPlayingRef.current || window.speechSynthesis.speaking) {
-        globalBuffer = ""
-        return
-      }
-
-      if (Date.now() < ignoreSpeechUntil) return
-
-      let interimChunk = ""
-      let newFinals = ""
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const text = event.results[i][0].transcript
-        if (event.results[i].isFinal) {
-          newFinals += text + " "
-        } else {
-          interimChunk += text + " "
-        }
-      }
-
-      globalBuffer += newFinals
-      if (globalBuffer.length > 150) {
-        globalBuffer = globalBuffer.slice(-150)
-      }
-
-      const activeString = (globalBuffer + " " + interimChunk).toLowerCase()
-      const transcript = ` ${activeString.replace(/[^a-z0-9\s]/gi, " ").trim()} `
-      
-      if (!transcript.trim()) return
-
-      const check = (pattern: RegExp) => pattern.test(transcript)
-      let commandFired = false
-
-      if (check(/(visual mode|visual|vision mode)/i)) {
-        commandFired = true
-        playPopSfx()
-        onSelectMode("visual")
-      } else if (check(/(auditory mode|auditory|audio mode)/i)) {
-        commandFired = true
-        playPopSfx()
-        onSelectMode("auditory")
-      }
-
-      if (commandFired) {
-        globalBuffer = "" 
-        ignoreSpeechUntil = Date.now() + 1500
-      }
-    }
-
-    recognition.onerror = (event: any) => {
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-        isPermanentlyDead = true
-        return
-      }
-      scheduleRestart()
-    }
-
-    recognition.onend = () => scheduleRestart()
-
-    const reviveEngineOnClick = () => {
-      if (isPermanentlyDead) {
-        isPermanentlyDead = false
-        try { recognition.start() } catch {}
-      }
-    }
-
-    window.addEventListener("click", reviveEngineOnClick)
-
-    try { recognition.start() } catch {}
-
-    return () => {
-      isComponentMounted = false
-      window.removeEventListener("click", reviveEngineOnClick)
-      if (restartTimer) window.clearTimeout(restartTimer)
-      try { recognition.stop() } catch {}
-    }
-  }, [onSelectMode])
+  // SpeechRecognition is completely handled by the active tab content script voice bridge, not in the popup.
 
   const speakWithResolvedVoice = (text: string, onDone: () => void) => {
     if (!text.trim()) {
@@ -361,6 +334,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     window.speechSynthesis.cancel()
 
     const utterance = new SpeechSynthesisUtterance(text)
+    activeUtteranceRef.current = utterance
     if (preferredVoice) {
       utterance.voice = preferredVoice
       utterance.lang = preferredVoice.lang
@@ -532,6 +506,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     if (target.closest("button")) return
 
     window.speechSynthesis.cancel()
+    isTTSPlayingRef.current = false
 
     if (narrationStageRef.current === "idle") {
       narrationStageRef.current = "titleDone"

@@ -52,7 +52,15 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
 
     const startMic = async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            noiseSuppression: true,
+            echoCancellation: true,
+            autoGainControl: true,
+            channelCount: 1,
+            sampleRate: 48000
+          }
+        })
         audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
         analyser = audioCtx.createAnalyser()
         analyser.fftSize = 256
@@ -66,7 +74,7 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
 
     const getLiveEnergy = () => {
       if (!isActiveRef.current || !analyser || !dataArray) return 0
-      analyser.getByteTimeDomainData(dataArray as Uint8Array<ArrayBuffer>)
+      analyser.getByteTimeDomainData(dataArray as any)
 
       let sum = 0
       for (let i = 0; i < dataArray.length; i++) {

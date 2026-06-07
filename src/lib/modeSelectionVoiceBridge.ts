@@ -9,12 +9,29 @@ let ignoreSpeechUntil = 0
 let consumedString = ""
 let currentResultIndex = 0
 let commandApplied = false
+let globalBuffer = ""
 
 const getSpeechRecognitionCtor = () =>
   (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
 export function isModeSelectionVoiceActive() {
   return isActive
+}
+
+const tabLog = (message: string, level: "log" | "warn" | "error" = "log") => {
+  console[level](message)
+  try {
+    chrome.runtime.sendMessage({
+      type: "sensa-tab-log",
+      message,
+      level
+    }, () => {
+      // Ignore error if receiver doesn't exist (e.g. popup is closed)
+      const err = chrome.runtime.lastError
+    })
+  } catch {
+    // Ignore runtime errors
+  }
 }
 
 const clearRestartTimer = () => {
@@ -39,32 +56,53 @@ const scheduleRestart = () => {
   restartTimer = window.setTimeout(tryStart, 300)
 }
 
-const normalizeTranscript = (text: string) =>
-  text.toLowerCase().replace(/[^a-z0-9\s]/gi, " ").replace(/\s+/g, " ").trim()
-
-const detectMode = (raw: string): ModeSelectionVoiceMode | null => {
-  const text = normalizeTranscript(raw)
-  if (!text) return null
-
-  if (
-    text.includes("auditory mode") ||
-    text.includes("audio mode") ||
-    /\bauditory\b/.test(text) ||
-    /\bauditor\b/.test(text)
-  ) {
-    return "auditory"
+const getLevenshteinDistance = (a: string, b: string): number => {
+  const tmp: number[][] = []
+  for (let i = 0; i <= a.length; i++) {
+    tmp.push([i])
   }
-
-  if (
-    text.includes("visual mode") ||
-    text.includes("vision mode") ||
-    /\bvisual\b/.test(text) ||
-    /\bvisuals\b/.test(text)
-  ) {
-    return "visual"
+  for (let j = 0; j <= b.length; j++) {
+    tmp[0][j] = j
   }
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      tmp[i][j] = Math.min(
+        tmp[i - 1][j] + 1,
+        tmp[i][j - 1] + 1,
+        tmp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      )
+    }
+  }
+  return tmp[a.length][b.length]
+}
 
-  return null
+const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
+  if (text.includes(target)) return true
+
+  const tokens = text.split(/\s+/).filter(Boolean)
+  const targetTokens = target.split(/\s+/).filter(Boolean)
+
+  if (targetTokens.length === 1) {
+    for (const t of tokens) {
+      if (getLevenshteinDistance(t, target) <= maxDistance) return true
+    }
+  } else {
+    const n = targetTokens.length
+    for (let i = 0; i <= tokens.length - n; i++) {
+      const ngram = tokens.slice(i, i + n).join(" ")
+      if (getLevenshteinDistance(ngram, target) <= maxDistance) return true
+    }
+  }
+  return false
+}
+
+const normalizeInput = (rawText: string): string => {
+  let text = rawText.toLowerCase()
+  text = text.replace(/[^a-z0-9\s]/gi, " ")
+  text = text.replace(/\s+/g, " ").trim()
+  const fillerWords = new Set(["the", "a", "please", "hey", "can", "you", "change", "set", "to", "my", "select", "sincere", "sansa", "sensor", "sensia"])
+  const tokens = text.split(" ").filter(t => !fillerWords.has(t))
+  return tokens.join(" ")
 }
 
 const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
@@ -75,14 +113,18 @@ const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
   isActive = false
   teardownRecognition()
 
+  tabLog(`[Sensa Tab Voice Bridge] Applying chosen mode selection: ${mode}`)
+
   chrome.storage.local.get(["sensa_user_profile", "sensa_mode_selection_listening"], (res) => {
     if (!res.sensa_mode_selection_listening) {
+      tabLog("[Sensa Tab Voice Bridge] sensa_mode_selection_listening is false, selection ignored.", "warn")
       commandApplied = false
       return
     }
 
     const profile = (res.sensa_user_profile as SensaUserProfile | undefined) ?? DEFAULT_PROFILE
     if (profile.globalSettings?.activeMode) {
+      tabLog("[Sensa Tab Voice Bridge] Profile already has an active mode, selection ignored.", "warn")
       commandApplied = false
       return
     }
@@ -97,26 +139,10 @@ const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
         }
       },
       sensa_last_tab: mode
+    }, () => {
+      tabLog(`[Sensa Tab Voice Bridge] Storage updated. activeMode is now: ${mode}`)
     })
   })
-}
-
-const handleTranscript = (liveText: string) => {
-  if (commandApplied || Date.now() < ignoreSpeechUntil) return
-
-  const normalized = normalizeTranscript(liveText)
-  if (!normalized) return
-
-  let newSpeech = normalized
-  if (normalized.startsWith(consumedString) && consumedString.length > 0) {
-    newSpeech = normalized.slice(consumedString.length).trim()
-  }
-
-  const mode = detectMode(newSpeech) ?? detectMode(normalized)
-  if (!mode) return
-
-  consumedString = normalized
-  applyModeSelection(mode)
 }
 
 const teardownRecognition = () => {
@@ -135,20 +161,38 @@ const teardownRecognition = () => {
 }
 
 const primeMicrophone = async () => {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+    throw new Error("navigator.mediaDevices.getUserMedia is not available")
+  }
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      noiseSuppression: true,
+      echoCancellation: true,
+      autoGainControl: true,
+      channelCount: 1,
+      sampleRate: 48000
+    }
+  })
   stream.getTracks().forEach((track) => track.stop())
 }
 
 export async function startModeSelectionVoiceListener(): Promise<boolean> {
+  if (isActive && recognition) {
+    return true
+  }
+
   const SpeechRecognitionCtor = getSpeechRecognitionCtor()
-  if (!SpeechRecognitionCtor) return false
+  if (!SpeechRecognitionCtor) {
+    tabLog("[Sensa Tab Voice Bridge] SpeechRecognition is NOT supported in this browser.", "warn")
+    return false
+  }
 
   stopModeSelectionVoiceListener()
 
   try {
     await primeMicrophone()
-  } catch {
-    return false
+  } catch (e) {
+    tabLog(`[Sensa Tab Voice Bridge] Failed to acquire microphone permissions in tab, trying to proceed anyway: ${e}`, "warn")
   }
 
   isActive = true
@@ -156,6 +200,7 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
   consumedString = ""
   currentResultIndex = 0
   ignoreSpeechUntil = 0
+  globalBuffer = ""
 
   await new Promise<void>((resolve) => {
     chrome.storage.local.set({ sensa_mode_selection_listening: true }, () => resolve())
@@ -168,15 +213,8 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
   instance.lang = "en-US"
 
   instance.onresult = (event: SpeechRecognitionEvent) => {
-    if (commandApplied) return
-
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      const chunk = normalizeTranscript(event.results[i][0].transcript)
-      const chunkMode = detectMode(chunk)
-      if (chunkMode) {
-        applyModeSelection(chunkMode)
-        return
-      }
+    if (commandApplied) {
+      return
     }
 
     if (event.resultIndex !== currentResultIndex) {
@@ -184,16 +222,81 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
       currentResultIndex = event.resultIndex
     }
 
-    let liveText = ""
+    let interimChunk = ""
+    let newFinals = ""
+
     for (let i = event.resultIndex; i < event.results.length; i++) {
-      liveText += event.results[i][0].transcript
+      const text = event.results[i][0].transcript
+      if (event.results[i].isFinal) {
+        newFinals += text + " "
+      } else {
+        interimChunk += text + " "
+      }
     }
 
-    handleTranscript(liveText)
+    globalBuffer += newFinals
+    if (globalBuffer.length > 150) {
+      globalBuffer = globalBuffer.slice(-150)
+    }
+
+    const rawTranscript = (globalBuffer + " " + interimChunk).trim()
+    if (!rawTranscript) return
+
+    const normalizedTranscript = normalizeInput(rawTranscript)
+    if (!normalizedTranscript) return
+
+    let visualScore = 0
+    let auditoryScore = 0
+
+    // Visual Score Cues
+    if (normalizedTranscript.includes("visual mode") || normalizedTranscript.includes("vision mode")) {
+      visualScore += 5
+    } else if (fuzzyMatch(normalizedTranscript, "visual mode", 2) || fuzzyMatch(normalizedTranscript, "vision mode", 2)) {
+      visualScore += 4
+    } else if (normalizedTranscript.includes("visual") || normalizedTranscript.includes("vision")) {
+      visualScore += 3
+    } else if (fuzzyMatch(normalizedTranscript, "visual", 1) || fuzzyMatch(normalizedTranscript, "vision", 1)) {
+      visualScore += 2
+    }
+
+    // Auditory Score Cues
+    if (normalizedTranscript.includes("auditory mode") || normalizedTranscript.includes("audio mode") || normalizedTranscript.includes("sound mode")) {
+      auditoryScore += 5
+    } else if (
+      fuzzyMatch(normalizedTranscript, "auditory mode", 2) || 
+      fuzzyMatch(normalizedTranscript, "audio mode", 2) ||
+      fuzzyMatch(normalizedTranscript, "sound mode", 2)
+    ) {
+      auditoryScore += 4
+    } else if (normalizedTranscript.includes("auditory") || normalizedTranscript.includes("audio") || normalizedTranscript.includes("auditor")) {
+      auditoryScore += 3
+    } else if (
+      fuzzyMatch(normalizedTranscript, "auditory", 1) || 
+      fuzzyMatch(normalizedTranscript, "audio", 1) ||
+      fuzzyMatch(normalizedTranscript, "auditor", 1)
+    ) {
+      auditoryScore += 2
+    }
+
+    let chosenCommand: "visual" | "auditory" | null = null
+    const threshold = 3
+
+    if (visualScore >= threshold && visualScore > auditoryScore) {
+      chosenCommand = "visual"
+    } else if (auditoryScore >= threshold && auditoryScore > visualScore) {
+      chosenCommand = "auditory"
+    }
+
+    if (chosenCommand) {
+      globalBuffer = "" 
+      applyModeSelection(chosenCommand)
+    }
   }
 
   instance.onerror = (event: SpeechRecognitionErrorEvent) => {
+    tabLog(`[Sensa Tab Voice Bridge] SpeechRecognition error in tab: ${event.error}`, "error")
     if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+      tabLog("[Sensa Tab Voice Bridge] Microphone access denied, stopping tab listener.", "warn")
       isActive = false
       teardownRecognition()
       chrome.storage.local.set({ sensa_mode_selection_listening: false })
@@ -202,13 +305,18 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
     scheduleRestart()
   }
 
-  instance.onend = () => scheduleRestart()
+  instance.onend = () => {
+    scheduleRestart()
+  }
 
   tryStart()
   return true
 }
 
 export function stopModeSelectionVoiceListener() {
+  if (!isActive && !recognition) {
+    return
+  }
   isActive = false
   commandApplied = false
   consumedString = ""

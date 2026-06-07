@@ -657,10 +657,16 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   }
 
   const primeMicrophoneForWakeWord = async () => {
-    const audio =
-      selectedInputDeviceId && selectedInputDeviceId !== DEFAULT_INPUT_DEVICE_ID
-        ? { deviceId: { exact: selectedInputDeviceId } }
-        : true
+    const audio = {
+      deviceId: selectedInputDeviceId && selectedInputDeviceId !== DEFAULT_INPUT_DEVICE_ID
+        ? { exact: selectedInputDeviceId }
+        : undefined,
+      noiseSuppression: true,
+      echoCancellation: true,
+      autoGainControl: true,
+      channelCount: 1,
+      sampleRate: 48000
+    }
     const stream = await navigator.mediaDevices.getUserMedia({ audio })
     stream.getTracks().forEach((track) => track.stop())
   }
@@ -742,7 +748,15 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     const loadDevices = async () => {
       if (!navigator.mediaDevices?.enumerateDevices) return
       try {
-        await navigator.mediaDevices.getUserMedia({ audio: true })
+        await navigator.mediaDevices.getUserMedia({
+          audio: {
+            noiseSuppression: true,
+            echoCancellation: true,
+            autoGainControl: true,
+            channelCount: 1,
+            sampleRate: 48000
+          }
+        })
       } catch {}
       const devices = await navigator.mediaDevices.enumerateDevices()
       setInputDevices(devices.filter((d) => d.kind === "audioinput"))
