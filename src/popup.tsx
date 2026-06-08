@@ -83,6 +83,34 @@ export default function IndexPopup() {
     return () => chrome.storage.onChanged.removeListener(handleVoiceModeApplied)
   }, [])
 
+  // Establish a connection port with the active tab's content script to track when popup is open
+  useEffect(() => {
+    let port: chrome.runtime.Port | null = null
+
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const activeTab = tabs?.find(t => t.url && (t.url.startsWith("http://") || t.url.startsWith("https://"))) || tabs?.[0]
+      const tabId = activeTab?.id
+      if (!tabId) return
+
+      if (activeTab.url && (activeTab.url.startsWith("chrome://") || activeTab.url.startsWith("edge://") || activeTab.url.startsWith("about:"))) {
+        return
+      }
+
+      try {
+        port = chrome.tabs.connect(tabId, { name: "sensa-popup" })
+      } catch (e) {
+        console.warn("[Sensa Popup] Failed to connect port to tab:", e)
+      }
+    })
+
+    return () => {
+      if (port) {
+        port.disconnect()
+      }
+    }
+  }, [])
+
+
   // 2. Safely update persistent JSON database
   const updateProfile = (updates: Partial<SensaUserProfile>) : Promise<void> => {
     return new Promise((resolve) => {

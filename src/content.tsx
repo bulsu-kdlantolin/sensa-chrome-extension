@@ -18,6 +18,14 @@ import {
   startModeSelectionVoiceListener,
   stopModeSelectionVoiceListener
 } from "./lib/modeSelectionVoiceBridge"
+import {
+  startWelcomeVoiceListener,
+  stopWelcomeVoiceListener
+} from "./lib/welcomeVoiceBridge"
+import {
+  startVisualModeVoiceListener,
+  stopVisualModeVoiceListener
+} from "./lib/visualModeVoiceBridge"
 
 import { audioInterceptorScript } from "./audioInterceptor"
 
@@ -107,6 +115,22 @@ export default function FloatingDockManager() {
   // NEW STATE: Tracks if the settings popup is open
   const [isVisualSettingsOpen, setIsVisualSettingsOpen] = useState(false) 
   const [isAuditorySettingsOpen, setIsAuditorySettingsOpen] = useState(false)
+  const [isPopupOpen, setIsPopupOpen] = useState(false)
+
+  useEffect(() => {
+    const handleConnect = (port: chrome.runtime.Port) => {
+      if (port.name === "sensa-popup") {
+        setIsPopupOpen(true)
+        port.onDisconnect.addListener(() => {
+          setIsPopupOpen(false)
+        })
+      }
+    }
+    chrome.runtime.onConnect.addListener(handleConnect)
+    return () => {
+      chrome.runtime.onConnect.removeListener(handleConnect)
+    }
+  }, [])
   const [isCaptionLanguageOpen, setIsCaptionLanguageOpen] = useState(false)
   const [isTextSizeOpen, setIsTextSizeOpen] = useState(false)
   const [isCaptionTransparencyOpen, setIsCaptionTransparencyOpen] = useState(false)
@@ -221,15 +245,10 @@ export default function FloatingDockManager() {
 
   const syncActiveMode = (mode: "visual" | "auditory" | null) => {
     setActiveMode(mode)
-    chrome.storage.local.set({ sensa_visual_active: false, sensa_auditory_active: false })
-    if (mode === "visual") {
-      chrome.storage.local.set({ sensa_visual_active: true, sensa_auditory_active: false })
-      return
-    }
-    if (mode === "auditory") {
-      chrome.storage.local.set({ sensa_visual_active: false, sensa_auditory_active: true })
-      return
-    }
+    chrome.storage.local.set({
+      sensa_visual_active: mode === "visual",
+      sensa_auditory_active: mode === "auditory"
+    })
   }
 
   const deactivateDock = () => {
@@ -292,6 +311,30 @@ export default function FloatingDockManager() {
         } else {
           stopModeSelectionVoiceListener()
           setIsModeSelectionVoiceActive(false)
+          sendResponse({ ok: true })
+        }
+        return true
+      }
+
+      if (message.type === "sensa-welcome-voice") {
+        if (message.action === "start") {
+          void startWelcomeVoiceListener().then((started) => {
+            sendResponse({ ok: started })
+          })
+        } else {
+          stopWelcomeVoiceListener()
+          sendResponse({ ok: true })
+        }
+        return true
+      }
+
+      if (message.type === "sensa-visual-mode-voice") {
+        if (message.action === "start") {
+          void startVisualModeVoiceListener().then((started) => {
+            sendResponse({ ok: started })
+          })
+        } else {
+          stopVisualModeVoiceListener()
           sendResponse({ ok: true })
         }
         return true
@@ -628,7 +671,7 @@ export default function FloatingDockManager() {
             isPaused={isPaused}              // <-- NEW PROP
             isVoiceCommandActive={isVoiceCommandActive}
             canRestart={isPlaying || isPaused}
-            isVoiceCommandsSuspended={isSettingsOverlayOpen || isReadingSpeedOpen || isModeSelectionVoiceActive}
+            isVoiceCommandsSuspended={isSettingsOverlayOpen || isReadingSpeedOpen || isModeSelectionVoiceActive || isPopupOpen}
             onTogglePlay={togglePlayPause}   // <-- NEW PROP
             onToggleVoiceCommand={() => setIsVoiceCommandActive(prev => !prev)}
             onNext={next}                    // <-- NEW PROP

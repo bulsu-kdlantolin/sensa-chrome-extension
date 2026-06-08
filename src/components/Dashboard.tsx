@@ -114,6 +114,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
   const [isMounted, setIsMounted] = useState(false)
   const [hasHydratedInitialMode, setHasHydratedInitialMode] = useState(false)
   const hasAnnouncedVisualOnOpenRef = useRef(false)
+  const announceTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -132,9 +133,11 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
   const extensionHoverText = `Extension Status: ${extensionStatus === "online" ? "Connected" : "Offline"}`
   const extensionStatusSpeech = extensionStatus === "online" ? "Connected" : "Offline"
 
-  const getModeInterfaceAnnouncement = (mode: "visual" | "auditory") =>
+  const getModeInterfaceAnnouncement = (mode: "visual" | "auditory", isWelcome = false) =>
     mode === "visual"
-      ? `Visual Mode Interface. Target website: ${websiteLabel}. Extension status: ${extensionStatusSpeech}.`
+      ? (isWelcome
+          ? `We are now in the Visual Mode interface. Target website: ${websiteLabel}. Extension status: ${extensionStatusSpeech}.`
+          : `Visual Mode Interface. Target website: ${websiteLabel}. Extension status: ${extensionStatusSpeech}.`)
       : "Auditory Mode Interface"
 
   useEffect(() => {
@@ -168,12 +171,24 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
     if (currentViewMode !== "visual") return
     if (hasAnnouncedVisualOnOpenRef.current) return
 
-    const timer = window.setTimeout(() => {
-      hasAnnouncedVisualOnOpenRef.current = true
-      playClickAudio(getModeInterfaceAnnouncement("visual"))
-    }, 500)
+    chrome.storage.local.get(["sensa_visual_entered_from_welcome"], (res) => {
+      const isFromWelcome = !!res.sensa_visual_entered_from_welcome
+      if (isFromWelcome) {
+        chrome.storage.local.set({ sensa_visual_entered_from_welcome: false })
+      }
 
-    return () => window.clearTimeout(timer)
+      announceTimerRef.current = window.setTimeout(() => {
+        hasAnnouncedVisualOnOpenRef.current = true
+        const message = getModeInterfaceAnnouncement("visual", isFromWelcome)
+        playClickAudio(message)
+      }, 500)
+    })
+
+    return () => {
+      if (announceTimerRef.current !== null) {
+        window.clearTimeout(announceTimerRef.current)
+      }
+    }
   }, [hasHydratedInitialMode, currentViewMode, websiteLabel, extensionStatusSpeech, playClickAudio])
 
   const handleViewSwap = (newMode: "visual" | "auditory") => {

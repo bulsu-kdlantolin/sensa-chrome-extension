@@ -8,6 +8,10 @@ interface WelcomeProps {
 export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeProps) {
   const isDark = theme === "dark"
 
+  useEffect(() => {
+    window.speechSynthesis.cancel()
+  }, [])
+
   return (
     <div className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] flex flex-col items-center justify-between font-sans relative overflow-hidden select-none transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-white' : 'bg-gray-50 text-gray-900'}`}>
       
@@ -46,11 +50,11 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
       <div className={`absolute -top-16 -left-16 w-64 h-64 rounded-full mix-blend-multiply filter blur-[60px] animate-float-orange-2 pointer-events-none transform-gpu ${isDark ? 'bg-[#FF7A2F]/15' : 'bg-[#FF7A2F]/10'}`} />
 
       {/* 🛡️ CONTENT WRAPPER */}
-      <div className="relative z-10 flex flex-col items-center w-full h-full pt-[60px] pb-8 px-8">
+      <div className="relative z-10 flex flex-col items-center w-full h-full pt-[20px] pb-8 px-8">
         
         {/* Header (No Logo, Perfectly Centered) */}
         <div className="flex flex-col items-center w-full mt-2">
-          <h1 className="text-[40px] font-black tracking-tighter leading-none mb-4 fade-in-1 text-center">
+          <h1 className="text-[40px] font-black tracking-tighter leading-none mb-4 fade-in-1 text-center bg-gradient-to-r from-[#FF7A2F] to-[#FF9E66] bg-clip-text text-transparent pb-1">
             Auditory Mode
           </h1>
           <p className={`text-[16px] font-semibold text-center leading-snug fade-in-2 px-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -62,8 +66,15 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
         <div className="grid grid-cols-1 gap-3 w-full mt-auto mb-auto fade-in-3">
           
           {/* Live Captions Card */}
-          <div className={`flex items-center gap-4 rounded-[20px] px-4 py-4 shadow-md transition-colors pop-in-1 ${isDark ? 'bg-[#2C2C2E] border-2 border-gray-700' : 'bg-white border-2 border-transparent'}`}>
-            <div className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center text-[#FF7A2F] ${isDark ? 'bg-[#FF7A2F]/20' : 'bg-[#FF7A2F]/10'}`}>
+          <div 
+            tabIndex={0}
+            className={`group flex items-center gap-4 rounded-[20px] px-4 py-4 shadow-md cursor-pointer transition-all duration-300 pop-in-1 outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50
+              ${isDark 
+                ? 'bg-[#2C2C2E] border-2 border-gray-700 hover:border-[#FF7A2F] hover:bg-[#2C2C2E]/90 hover:shadow-[0_12px_26px_rgba(255,122,47,0.25)]' 
+                : 'bg-white border-2 border-transparent hover:border-[#FF7A2F] hover:shadow-[0_12px_26px_rgba(255,122,47,0.15)]'
+              }`}
+          >
+            <div className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center text-[#FF7A2F] transition-transform duration-300 group-hover:scale-110 ${isDark ? 'bg-[#FF7A2F]/20' : 'bg-[#FF7A2F]/10'}`}>
               <svg viewBox="0 0 24 24" className="w-7 h-7" aria-hidden="true">
                 <rect x="3" y="6" width="18" height="12" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
                 <text x="7" y="15" fill="currentColor" fontSize="6.5" fontWeight="700" fontFamily="system-ui, sans-serif">C</text>
@@ -71,14 +82,21 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
               </svg>
             </div>
             <div className="flex flex-col">
-              <p className={`text-[15px] font-black uppercase tracking-wide leading-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>Live Captions</p>
+              <p className={`text-[15px] font-black uppercase tracking-wide leading-tight transition-colors duration-200 ${isDark ? 'text-white group-hover:text-[#FFC09B]' : 'text-gray-900 group-hover:text-[#FF7A2F]'}`}>Live Captions</p>
               <p className={`text-[13px] font-medium leading-snug mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Follow spoken content instantly with readable captions.</p>
             </div>
           </div>
 
           {/* Sound Visualization Card */}
-          <div className={`flex items-center gap-4 rounded-[20px] px-4 py-4 shadow-md transition-colors pop-in-2 ${isDark ? 'bg-[#2C2C2E] border-2 border-gray-700' : 'bg-white border-2 border-transparent'}`}>
-            <div className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center text-[#FF7A2F] ${isDark ? 'bg-[#FF7A2F]/20' : 'bg-[#FF7A2F]/10'}`}>
+          <div 
+            tabIndex={0}
+            className={`group flex items-center gap-4 rounded-[20px] px-4 py-4 shadow-md cursor-pointer transition-all duration-300 pop-in-2 outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50
+              ${isDark 
+                ? 'bg-[#2C2C2E] border-2 border-gray-700 hover:border-[#FF7A2F] hover:bg-[#2C2C2E]/90 hover:shadow-[0_12px_26px_rgba(255,122,47,0.25)]' 
+                : 'bg-white border-2 border-transparent hover:border-[#FF7A2F] hover:shadow-[0_12px_26px_rgba(255,122,47,0.15)]'
+              }`}
+          >
+            <div className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center text-[#FF7A2F] transition-transform duration-300 group-hover:scale-110 ${isDark ? 'bg-[#FF7A2F]/20' : 'bg-[#FF7A2F]/10'}`}>
               <svg viewBox="0 0 28 28" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7">
                 <path d="M 7 10 A 5 5 0 0 1 7 18" />
                 <path d="M 12 6 A 9 9 0 0 1 12 22" />
@@ -86,7 +104,7 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
               </svg>
             </div>
             <div className="flex flex-col">
-              <p className={`text-[15px] font-black uppercase tracking-wide leading-tight ${isDark ? 'text-white' : 'text-gray-900'}`}>Sound Alerts</p>
+              <p className={`text-[15px] font-black uppercase tracking-wide leading-tight transition-colors duration-200 ${isDark ? 'text-white group-hover:text-[#FFC09B]' : 'text-gray-900 group-hover:text-[#FF7A2F]'}`}>Sound Alerts</p>
               <p className={`text-[13px] font-medium leading-snug mt-0.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Visualize audio activity with clear visual cues.</p>
             </div>
           </div>

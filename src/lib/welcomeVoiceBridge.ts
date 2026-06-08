@@ -1,7 +1,5 @@
 import { DEFAULT_PROFILE, type SensaUserProfile } from "./storage"
 
-type ModeSelectionVoiceMode = "visual" | "auditory"
-
 let recognition: SpeechRecognition | null = null
 let isActive = false
 let restartTimer: number | null = null
@@ -14,7 +12,7 @@ let globalBuffer = ""
 const getSpeechRecognitionCtor = () =>
   (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
-export function isModeSelectionVoiceActive() {
+export function isWelcomeVoiceActive() {
   return isActive
 }
 
@@ -26,7 +24,6 @@ const tabLog = (message: string, level: "log" | "warn" | "error" = "log") => {
       message,
       level
     }, () => {
-      // Ignore error if receiver doesn't exist (e.g. popup is closed)
       const err = chrome.runtime.lastError
     })
   } catch {
@@ -46,7 +43,7 @@ const tryStart = () => {
   try {
     recognition.start()
   } catch {
-    // "already started" — onend will restart if needed
+    // Already started
   }
 }
 
@@ -100,12 +97,12 @@ const normalizeInput = (rawText: string): string => {
   let text = rawText.toLowerCase()
   text = text.replace(/[^a-z0-9\s]/gi, " ")
   text = text.replace(/\s+/g, " ").trim()
-  const fillerWords = new Set(["the", "a", "please", "hey", "can", "you", "change", "set", "to", "my", "select", "sincere", "sansa", "sensor", "sensia"])
+  const fillerWords = new Set(["the", "a", "please", "hey", "can", "you", "change", "set", "to", "my", "sincere", "sansa", "sensor", "sensia"])
   const tokens = text.split(" ").filter(t => !fillerWords.has(t))
   return tokens.join(" ")
 }
 
-const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
+const applyWelcomeProceed = () => {
   if (commandApplied || Date.now() < ignoreSpeechUntil) return
 
   commandApplied = true
@@ -113,35 +110,12 @@ const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
   isActive = false
   teardownRecognition()
 
-  tabLog(`[Sensa Tab Voice Bridge] Applying chosen mode selection: ${mode}`)
+  tabLog("[Sensa Tab Voice Bridge] Applying welcome proceed voice command")
 
-  chrome.storage.local.get(["sensa_user_profile", "sensa_mode_selection_listening"], (res) => {
-    if (!res.sensa_mode_selection_listening) {
-      tabLog("[Sensa Tab Voice Bridge] sensa_mode_selection_listening is false, selection ignored.", "warn")
-      commandApplied = false
-      return
-    }
-
-    const profile = (res.sensa_user_profile as SensaUserProfile | undefined) ?? DEFAULT_PROFILE
-    if (profile.globalSettings?.activeMode) {
-      tabLog("[Sensa Tab Voice Bridge] Profile already has an active mode, selection ignored.", "warn")
-      commandApplied = false
-      return
-    }
-
-    chrome.storage.local.set({
-      sensa_mode_selection_listening: false,
-      sensa_user_profile: {
-        ...profile,
-        globalSettings: {
-          ...profile.globalSettings,
-          activeMode: mode
-        }
-      },
-      sensa_last_tab: mode
-    }, () => {
-      tabLog(`[Sensa Tab Voice Bridge] Storage updated. activeMode is now: ${mode}`)
-    })
+  chrome.storage.local.set({
+    sensa_welcome_proceed_trigger: true
+  }, () => {
+    tabLog("[Sensa Tab Voice Bridge] Welcome proceed storage trigger updated.")
   })
 }
 
@@ -176,23 +150,23 @@ const primeMicrophone = async () => {
   stream.getTracks().forEach((track) => track.stop())
 }
 
-export async function startModeSelectionVoiceListener(): Promise<boolean> {
+export async function startWelcomeVoiceListener(): Promise<boolean> {
   if (isActive && recognition) {
     return true
   }
 
   const SpeechRecognitionCtor = getSpeechRecognitionCtor()
   if (!SpeechRecognitionCtor) {
-    tabLog("[Sensa Tab Voice Bridge] SpeechRecognition is NOT supported in this browser.", "warn")
+    tabLog("[Sensa Tab Voice Bridge] SpeechRecognition is NOT supported in this browser for welcome.", "warn")
     return false
   }
 
-  stopModeSelectionVoiceListener()
+  stopWelcomeVoiceListener()
 
   try {
     await primeMicrophone()
   } catch (e) {
-    tabLog(`[Sensa Tab Voice Bridge] Failed to acquire microphone permissions in tab, trying to proceed anyway: ${e}`, "warn")
+    tabLog(`[Sensa Tab Voice Bridge] Welcome failed to acquire microphone permissions in tab, trying to proceed anyway: ${e}`, "warn")
   }
 
   isActive = true
@@ -201,10 +175,6 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
   currentResultIndex = 0
   ignoreSpeechUntil = 0
   globalBuffer = ""
-
-  await new Promise<void>((resolve) => {
-    chrome.storage.local.set({ sensa_mode_selection_listening: true }, () => resolve())
-  })
 
   const instance = new SpeechRecognitionCtor()
   recognition = instance
@@ -245,65 +215,82 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
     const normalizedTranscript = normalizeInput(rawTranscript)
     if (!normalizedTranscript) return
 
-    tabLog(`[Sensa Mode Selection Tab Voice Bridge] Heard transcript: "${normalizedTranscript}" (Raw: "${rawTranscript}")`)
+    tabLog(`[Sensa Welcome Tab Voice Bridge] Heard transcript: "${normalizedTranscript}" (Raw: "${rawTranscript}")`)
 
-    let visualScore = 0
-    let auditoryScore = 0
+    // Score "Enter / Proceed / Start / Go / Get Started"
+    let proceedScore = 0
 
-    // Visual Score Cues
-    if (normalizedTranscript.includes("visual mode") || normalizedTranscript.includes("vision mode")) {
-      visualScore += 5
-    } else if (fuzzyMatch(normalizedTranscript, "visual mode", 2) || fuzzyMatch(normalizedTranscript, "vision mode", 2)) {
-      visualScore += 4
-    } else if (normalizedTranscript.includes("visual") || normalizedTranscript.includes("vision")) {
-      visualScore += 3
-    } else if (fuzzyMatch(normalizedTranscript, "visual", 1) || fuzzyMatch(normalizedTranscript, "vision", 1)) {
-      visualScore += 2
-    }
-
-    // Auditory Score Cues
-    if (normalizedTranscript.includes("auditory mode") || normalizedTranscript.includes("audio mode") || normalizedTranscript.includes("sound mode")) {
-      auditoryScore += 5
-    } else if (
-      fuzzyMatch(normalizedTranscript, "auditory mode", 2) || 
-      fuzzyMatch(normalizedTranscript, "audio mode", 2) ||
-      fuzzyMatch(normalizedTranscript, "sound mode", 2)
+    // Phrases that direct proceed
+    if (
+      normalizedTranscript.includes("enter") ||
+      normalizedTranscript.includes("proceed") ||
+      normalizedTranscript.includes("get started") ||
+      normalizedTranscript.includes("start") ||
+      normalizedTranscript.includes("go") ||
+      normalizedTranscript.includes("inter") ||
+      normalizedTranscript.includes("center") ||
+      normalizedTranscript.includes("okay") ||
+      normalizedTranscript.includes("yes") ||
+      normalizedTranscript.includes("confirm") ||
+      normalizedTranscript.includes("next") ||
+      normalizedTranscript.includes("select") ||
+      normalizedTranscript.includes("click") ||
+      normalizedTranscript.includes("press") ||
+      normalizedTranscript.includes("activate") ||
+      normalizedTranscript.includes("open") ||
+      normalizedTranscript.includes("begin") ||
+      normalizedTranscript.includes("entry") ||
+      normalizedTranscript.includes("entire") ||
+      normalizedTranscript.includes("into") ||
+      normalizedTranscript.includes("go ahead") ||
+      normalizedTranscript.includes("turn on") ||
+      normalizedTranscript.includes("visual mode") ||
+      normalizedTranscript.includes("auditory mode") ||
+      normalizedTranscript.includes("audio mode")
     ) {
-      auditoryScore += 4
-    } else if (normalizedTranscript.includes("auditory") || normalizedTranscript.includes("audio") || normalizedTranscript.includes("auditor")) {
-      auditoryScore += 3
+      proceedScore += 5
     } else if (
-      fuzzyMatch(normalizedTranscript, "auditory", 1) || 
-      fuzzyMatch(normalizedTranscript, "audio", 1) ||
-      fuzzyMatch(normalizedTranscript, "auditor", 1)
+      fuzzyMatch(normalizedTranscript, "enter", 1) ||
+      fuzzyMatch(normalizedTranscript, "proceed", 2) ||
+      fuzzyMatch(normalizedTranscript, "get started", 2) ||
+      fuzzyMatch(normalizedTranscript, "start", 1) ||
+      fuzzyMatch(normalizedTranscript, "go", 0) ||
+      fuzzyMatch(normalizedTranscript, "inter", 1) ||
+      fuzzyMatch(normalizedTranscript, "center", 1) ||
+      fuzzyMatch(normalizedTranscript, "okay", 1) ||
+      fuzzyMatch(normalizedTranscript, "yes", 1) ||
+      fuzzyMatch(normalizedTranscript, "confirm", 1) ||
+      fuzzyMatch(normalizedTranscript, "next", 1) ||
+      fuzzyMatch(normalizedTranscript, "select", 1) ||
+      fuzzyMatch(normalizedTranscript, "click", 1) ||
+      fuzzyMatch(normalizedTranscript, "press", 1) ||
+      fuzzyMatch(normalizedTranscript, "activate", 1) ||
+      fuzzyMatch(normalizedTranscript, "open", 1) ||
+      fuzzyMatch(normalizedTranscript, "begin", 1) ||
+      fuzzyMatch(normalizedTranscript, "entry", 1) ||
+      fuzzyMatch(normalizedTranscript, "entire", 1) ||
+      fuzzyMatch(normalizedTranscript, "into", 1) ||
+      fuzzyMatch(normalizedTranscript, "go ahead", 1) ||
+      fuzzyMatch(normalizedTranscript, "turn on", 1)
     ) {
-      auditoryScore += 2
+      proceedScore += 3
     }
 
-    let chosenCommand: "visual" | "auditory" | null = null
-    const threshold = 3
 
-    if (visualScore >= threshold && visualScore > auditoryScore) {
-      chosenCommand = "visual"
-    } else if (auditoryScore >= threshold && auditoryScore > visualScore) {
-      chosenCommand = "auditory"
-    }
+    tabLog(`[Sensa Welcome Tab Voice Bridge] proceedScore: ${proceedScore}`)
 
-    tabLog(`[Sensa Mode Selection Tab Voice Bridge] Score results -> Visual: ${visualScore}, Auditory: ${auditoryScore}, chosenCommand: ${chosenCommand}`)
-
-    if (chosenCommand) {
-      globalBuffer = "" 
-      applyModeSelection(chosenCommand)
+    if (proceedScore >= 3) {
+      globalBuffer = ""
+      applyWelcomeProceed()
     }
   }
 
   instance.onerror = (event: SpeechRecognitionErrorEvent) => {
-    tabLog(`[Sensa Tab Voice Bridge] SpeechRecognition error in tab: ${event.error}`, "error")
+    tabLog(`[Sensa Tab Voice Bridge] Welcome SpeechRecognition error in tab: ${event.error}`, "error")
     if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-      tabLog("[Sensa Tab Voice Bridge] Microphone access denied, stopping tab listener.", "warn")
+      tabLog("[Sensa Tab Voice Bridge] Welcome microphone access denied, stopping tab listener.", "warn")
       isActive = false
       teardownRecognition()
-      chrome.storage.local.set({ sensa_mode_selection_listening: false })
       return
     }
     scheduleRestart()
@@ -317,7 +304,7 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
   return true
 }
 
-export function stopModeSelectionVoiceListener() {
+export function stopWelcomeVoiceListener() {
   if (!isActive && !recognition) {
     return
   }
@@ -326,5 +313,4 @@ export function stopModeSelectionVoiceListener() {
   consumedString = ""
   currentResultIndex = 0
   teardownRecognition()
-  chrome.storage.local.set({ sensa_mode_selection_listening: false })
 }

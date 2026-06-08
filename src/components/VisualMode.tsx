@@ -248,15 +248,6 @@ export default function VisualMode() {
     }
   }, [])
 
-  useEffect(() => {
-    chrome.storage.local.get(["sensa_visual_entered_from_welcome"], (res) => {
-      if (!res.sensa_visual_entered_from_welcome) return
-      chrome.storage.local.set({ sensa_visual_entered_from_welcome: false })
-      void buildVisualModeAnnouncement().then((message) => {
-        void speakFeedback(message)
-      })
-    })
-  }, [])
 
   useEffect(() => {
     chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
@@ -326,124 +317,26 @@ export default function VisualMode() {
   }, [isListening, handleToggle, playActivateSfx, playDeactivateSfx, speakFeedback])
 
   useEffect(() => {
-    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SpeechRecognitionCtor) return
+    const sendVoiceBridgeMessage = (action: "start" | "stop") => {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const activeTab = tabs?.find(t => t.url && (t.url.startsWith("http://") || t.url.startsWith("https://"))) || tabs?.[0]
+        const tabId = activeTab?.id
+        if (!tabId) return
 
-    const recognition = new SpeechRecognitionCtor()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = "en-US"
-
-    let isComponentMounted = true
-    let restartTimer: number | null = null
-    let isPermanentlyDead = false
-    let ignoreSpeechUntil = 0
-    let globalBuffer = ""
-
-    const scheduleRestart = () => {
-      if (!isComponentMounted || isPermanentlyDead) return
-      if (restartTimer) window.clearTimeout(restartTimer)
-      restartTimer = window.setTimeout(() => {
-        try { recognition.start() } catch {}
-      }, 300)
-    }
-
-    recognition.onresult = (event: any) => {
-      if (window.speechSynthesis.speaking) {
-        globalBuffer = ""
-        return
-      }
-
-      if (Date.now() < ignoreSpeechUntil) return
-
-      let interimChunk = ""
-      let newFinals = ""
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const text = event.results[i][0].transcript
-        if (event.results[i].isFinal) {
-          newFinals += text + " "
-        } else {
-          interimChunk += text + " "
+        if (activeTab.url && (activeTab.url.startsWith("chrome://") || activeTab.url.startsWith("edge://") || activeTab.url.startsWith("about:"))) {
+          return
         }
-      }
 
-      globalBuffer += newFinals
-      if (globalBuffer.length > 150) {
-        globalBuffer = globalBuffer.slice(-150)
-      }
-
-      const activeString = (globalBuffer + " " + interimChunk).toLowerCase()
-      const transcript = ` ${activeString.replace(/[^a-z0-9\s]/gi, " ").trim()} `
-
-      if (!transcript.trim()) return
-
-      const check = (...words: string[]) => words.some(w => transcript.includes(` ${w} `))
-      let commandFired = false
-
-      const currentIsListening = callbacksRef.current.isListening
-
-      if (check("visual mode", "visual", "vision mode", "activate", "start")) {
-        if (!currentIsListening) {
-          commandFired = true
-          callbacksRef.current.handleToggle()
-        }
-      }
-      else if (check("deactivate", "stop", "deactivate visual mode", "stop visual mode", "turn off")) {
-        if (currentIsListening) {
-          commandFired = true
-          callbacksRef.current.handleToggle()
-        }
-      }
-      else if (check("auditory mode", "auditory", "audio mode")) {
-        commandFired = true
-        if (currentIsListening) {
-          callbacksRef.current.playDeactivateSfx()
-        }
-        chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: "auditory" })
-        chrome.storage.local.set({
-          sensa_auditory_active: true,
-          sensa_visual_active: false,
-          sensa_last_tab: "auditory"
+        chrome.tabs.sendMessage(tabId, { type: "sensa-visual-mode-voice", action }, () => {
+          const err = chrome.runtime.lastError?.message
         })
-        callbacksRef.current.speakFeedback("Auditory mode activated")
-      }
-
-      if (commandFired) {
-        globalBuffer = ""
-        ignoreSpeechUntil = Date.now() + 1500
-      }
+      })
     }
 
-    recognition.onerror = (event: any) => {
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-        isPermanentlyDead = true
-        return
-      }
-      scheduleRestart()
-    }
-
-    recognition.onend = () => scheduleRestart()
-
-    const reviveEngineOnClick = () => {
-      if (isPermanentlyDead) {
-        isPermanentlyDead = false
-        try { recognition.start() } catch {}
-      }
-    }
-
-    window.addEventListener("click", reviveEngineOnClick)
-
-    try { recognition.start() } catch {}
+    sendVoiceBridgeMessage("start")
 
     return () => {
-      isComponentMounted = false
-      window.removeEventListener("click", reviveEngineOnClick)
-      if (restartTimer) window.clearTimeout(restartTimer)
-      try { recognition.stop() } catch {}
-      recognition.onresult = null
-      recognition.onerror = null
-      recognition.onend = null
+      sendVoiceBridgeMessage("stop")
     }
   }, [])
 

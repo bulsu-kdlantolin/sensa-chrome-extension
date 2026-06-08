@@ -24,10 +24,10 @@ const getLevenshteinDistance = (a: string, b: string): number => {
 
 const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
   if (text.includes(target)) return true;
-  
+
   const tokens = text.split(/\s+/).filter(Boolean);
   const targetTokens = target.split(/\s+/).filter(Boolean);
-  
+
   if (targetTokens.length === 1) {
     for (const t of tokens) {
       if (getLevenshteinDistance(t, target) <= maxDistance) return true;
@@ -87,8 +87,8 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const typedDescription = descriptionWords.slice(0, typedDescriptionCount).join(" ")
   const typedSubtitle = subtitleWords.slice(0, typedWordCount).join(" ")
 
-  const visualCardText = "Visual Mode. Support low vision with guided reading and spoken cues."
-  const auditoryCardText = "Auditory Mode. Support hearing loss with live captions and sound visualizer."
+  const visualCardText = "Visual Mode. Support low vision with guided reading and speech."
+  const auditoryCardText = "Auditory Mode. Support hearing loss with captions and visualizer."
 
   const getAudioContext = () => {
     if (!audioCtxRef.current) {
@@ -236,6 +236,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     chrome.runtime.onMessage.addListener(handleTabLogMessage)
 
     return () => {
+      window.speechSynthesis.cancel()
       chrome.storage.onChanged.removeListener(handleProfileVoiceSelect)
       chrome.runtime.onMessage.removeListener(handleTabLogMessage)
       chrome.storage.local.set({ sensa_mode_selection_listening: false })
@@ -551,11 +552,12 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
 
   return (
     <div
-      className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] px-6 pt-5 pb-4 flex flex-col items-center justify-start font-sans select-none relative overflow-hidden transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-gray-200' : 'bg-gray-50 text-black'}`}
+      className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] px-6 pt-3 pb-3 flex flex-col items-center justify-start font-sans select-none relative overflow-hidden transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-gray-200' : 'bg-gray-50 text-black'}`}
       onClick={handleSkipStep}
     >
-      
-      <style dangerouslySetInnerHTML={{ __html: `
+
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @keyframes pop-in {
           0% { opacity: 0; transform: translateY(10px) scale(0.98); }
           100% { opacity: 1; transform: translateY(0) scale(1); }
@@ -563,7 +565,8 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
         .animate-pop { animation: pop-in 0.7s cubic-bezier(0.23,1,0.32,1) forwards; opacity: 0; }
       `}} />
 
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @keyframes float-blue {
           0%, 100% { transform: translate(0, 0) scale(1); }
           50% { transform: translate(20px, 30px) scale(1.1); }
@@ -602,91 +605,91 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
       `}} />
 
       <div className={`absolute -top-16 -left-16 w-64 h-64 rounded-full mix-blend-multiply filter blur-[60px] animate-float-blue pointer-events-none transform-gpu ${isDark ? 'bg-[#0A44FF]/25' : 'bg-[#0A44FF]/15'}`} />
-      
+
       <div className={`absolute -bottom-16 -right-16 w-64 h-64 rounded-full mix-blend-multiply filter blur-[60px] animate-float-orange pointer-events-none transform-gpu ${isDark ? 'bg-[#FF7A2F]/25' : 'bg-[#FF7A2F]/15'}`} />
 
       <div className="relative z-10 w-full flex flex-col items-center">
-        
-        <div className="flex flex-col items-center gap-1 mb-2 transform-gpu">
-          <img 
-            src={sensaLogo} 
-            alt="Sensa Logo" 
-            className="w-[92px] h-[92px] object-contain drop-shadow-md animate-logo-light" 
+
+        <div className="flex flex-col items-center gap-1 mb-1 transform-gpu">
+          <img
+            src={sensaLogo}
+            alt="Sensa Logo"
+            className="w-[98px] h-[98px] object-contain drop-shadow-md animate-logo-light"
           />
-          <h1 className={`text-[26px] font-black tracking-tight leading-tight animate-pop ${isDark ? 'text-white' : 'text-gray-900'}`} style={{ animationDelay: "0.05s" }}>
+          <h1 className="text-[30px] font-black tracking-tight leading-tight animate-pop bg-gradient-to-r from-[#0A44FF] to-[#FF7A2F] bg-clip-text text-transparent pb-0.5" style={{ animationDelay: "0.05s" }}>
             Welcome to Sensa
           </h1>
-          <p className={`text-[12.5px] font-medium text-center leading-relaxed mb-2 animate-pop ${isDark ? 'text-gray-300' : 'text-gray-600'}`} style={{ animationDelay: "0.1s" }}>
+          <p className={`text-[13px] font-medium text-center leading-relaxed tracking-wide mb-1 animate-pop ${isDark ? 'text-gray-300/95' : 'text-gray-600/95'}`} style={{ animationDelay: "0.1s" }}>
             {typedDescription}
           </p>
-          <p className={`text-[13px] font-semibold text-center leading-snug mb-6 animate-pop ${isDark ? 'text-gray-400' : 'text-gray-500'}`} style={{ animationDelay: "0.16s" }}>
+          <p className={`font-bold text-center leading-snug mb-3.5 animate-pop text-[14.5px] tracking-tight ${isDark ? 'text-gray-400/90' : 'text-gray-500/90'}`} style={{ animationDelay: "0.16s" }}>
             {typedSubtitle}
           </p>
         </div>
-
-        <div className="w-full flex flex-col gap-4">
-
+ 
+        <div className="w-full flex flex-col gap-3 px-2 py-2">
+ 
           {visibleCards >= 1 && (
             <button
               onClick={() => onSelectMode("visual")}
-              onMouseEnter={() => { playHoverSfx(); playHoverAudio("Visual Mode. Support low vision with guided reading and spoken cues.") }}
-              onFocus={() => { playHoverSfx(); playHoverAudio("Visual Mode. Support low vision with guided reading and spoken cues.") }}
+              onMouseEnter={() => { playHoverSfx(); playHoverAudio("Visual Mode. Support low vision with guided reading and speech.") }}
+              onFocus={() => { playHoverSfx(); playHoverAudio("Visual Mode. Support low vision with guided reading and speech.") }}
               onMouseLeave={cancelHoverAudio}
               onBlur={cancelHoverAudio}
-              className={`w-full group relative flex items-center p-5 rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 active:scale-95 animate-pop ${springTransition}
-                ${isDark 
-                  ? 'bg-[#24262B] border-[#3A3F4A] hover:border-[#0A44FF] hover:bg-[#262A31] shadow-[0_10px_26px_rgba(0,0,0,0.35)] hover:shadow-[0_14px_32px_rgba(10,68,255,0.28)]' 
-                  : 'bg-white border-[#E2E6F0] hover:border-[#0A44FF] shadow-[0_8px_22px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_28px_rgba(10,68,255,0.2)]'
+              className={`w-full h-[104px] group relative flex items-center px-[20px] pt-[12px] pb-[18px] rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 active:scale-95 animate-pop ${springTransition}
+                ${isDark
+                  ? 'backdrop-blur-md bg-[#24262B]/85 border-[#3A3F4A] hover:border-[#0A44FF] hover:bg-[#262A31]/90 shadow-[0_10px_26px_rgba(0,0,0,0.35)] hover:shadow-[0_14px_32px_rgba(10,68,255,0.28)]'
+                  : 'backdrop-blur-md bg-white/80 border-[#E2E6F0] hover:border-[#0A44FF] hover:bg-white/95 shadow-[0_8px_22px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_28px_rgba(10,68,255,0.2)]'
                 }`}
               style={{ animationDelay: "0.2s" }}
             >
-            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 mr-4 ${springTransition} group-hover:scale-110 ${isDark ? 'bg-[#0A44FF]/22 text-[#6AA2FF]' : 'bg-[#0A44FF]/12 text-[#0A44FF]'}`}>
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-                <circle cx="12" cy="12" r="3" />
-              </svg>
-            </div>
-            
-            <div className="flex flex-col">
-              <h2 className={`text-[18px] font-extrabold tracking-tight mb-0.5 ${springTransition} ${isDark ? 'text-white group-hover:text-[#6AA2FF]' : 'text-gray-900 group-hover:text-[#0A44FF]'}`}>
-                Visual Mode
-              </h2>
-              <p className={`text-[12.5px] font-medium leading-snug ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                Support low vision with guided reading and spoken cues.
-              </p>
-            </div>
+              <div className={`w-[50px] h-[50px] rounded-2xl flex items-center justify-center shrink-0 mr-4 ${springTransition} group-hover:scale-110 ${isDark ? 'bg-[#0A44FF]/22 text-[#6AA2FF]' : 'bg-[#0A44FF]/12 text-[#0A44FF]'}`}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </div>
+  
+              <div className="flex flex-col">
+                <h2 className={`text-[19px] font-extrabold tracking-tight mb-0.5 ${springTransition} ${isDark ? 'text-white group-hover:text-[#6AA2FF]' : 'text-gray-900 group-hover:text-[#0A44FF]'}`}>
+                  Visual Mode
+                </h2>
+                <p className={`text-[12px] font-medium leading-[16px] ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Support low vision with guided reading and speech.
+                </p>
+              </div>
             </button>
           )}
-
+ 
           {visibleCards >= 2 && (
             <button
               onClick={() => onSelectMode("auditory")}
-              onMouseEnter={() => { playHoverSfx(); playHoverAudio("Auditory Mode. Support hearing loss with live captions and sound visualizer.") }}
-              onFocus={() => { playHoverSfx(); playHoverAudio("Auditory Mode. Support hearing loss with live captions and sound visualizer.") }}
+              onMouseEnter={() => { playHoverSfx(); playHoverAudio("Auditory Mode. Support hearing loss with captions and visualizer.") }}
+              onFocus={() => { playHoverSfx(); playHoverAudio("Auditory Mode. Support hearing loss with captions and visualizer.") }}
               onMouseLeave={cancelHoverAudio}
               onBlur={cancelHoverAudio}
-              className={`w-full group relative flex items-center p-5 rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 active:scale-95 animate-pop ${springTransition}
-                ${isDark 
-                  ? 'bg-[#24262B] border-[#3A3F4A] hover:border-[#FF7A2F] hover:bg-[#262A31] shadow-[0_10px_26px_rgba(0,0,0,0.35)] hover:shadow-[0_14px_32px_rgba(255,122,47,0.28)]' 
-                  : 'bg-white border-[#E2E6F0] hover:border-[#FF7A2F] shadow-[0_8px_22px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_28px_rgba(255,122,47,0.2)]'
+              className={`w-full h-[104px] group relative flex items-center px-[20px] pt-[12px] pb-[18px] rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 active:scale-95 animate-pop ${springTransition}
+                ${isDark
+                  ? 'backdrop-blur-md bg-[#24262B]/85 border-[#3A3F4A] hover:border-[#FF7A2F] hover:bg-[#262A31]/90 shadow-[0_10px_26px_rgba(0,0,0,0.35)] hover:shadow-[0_14px_32px_rgba(255,122,47,0.28)]'
+                  : 'backdrop-blur-md bg-white/80 border-[#E2E6F0] hover:border-[#FF7A2F] hover:bg-white/95 shadow-[0_8px_22px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_28px_rgba(255,122,47,0.2)]'
                 }`}
               style={{ animationDelay: "0.28s" }}
             >
-            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 mr-4 ${springTransition} group-hover:scale-110 ${isDark ? 'bg-[#FF7A2F]/22 text-[#FFC09B]' : 'bg-[#FF7A2F]/12 text-[#FF7A2F]'}`}>
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0"/>
-                <path d="M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4"/>
-              </svg>
-            </div>
-            
-            <div className="flex flex-col">
-              <h2 className={`text-[18px] font-extrabold tracking-tight mb-0.5 ${springTransition} ${isDark ? 'text-white group-hover:text-[#FFC09B]' : 'text-gray-900 group-hover:text-[#FF7A2F]'}`}>
-                Auditory Mode
-              </h2>
-              <p className={`text-[12.5px] font-medium leading-snug ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                Support hearing loss with live captions and sound visualizer.
-              </p>
-            </div>
+              <div className={`w-[50px] h-[50px] rounded-2xl flex items-center justify-center shrink-0 mr-4 ${springTransition} group-hover:scale-110 ${isDark ? 'bg-[#FF7A2F]/22 text-[#FFC09B]' : 'bg-[#FF7A2F]/12 text-[#FF7A2F]'}`}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0" />
+                  <path d="M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4" />
+                </svg>
+              </div>
+  
+              <div className="flex flex-col">
+                <h2 className={`text-[19px] font-extrabold tracking-tight mb-0.5 ${springTransition} ${isDark ? 'text-white group-hover:text-[#FFC09B]' : 'text-gray-900 group-hover:text-[#FF7A2F]'}`}>
+                  Auditory Mode
+                </h2>
+                <p className={`text-[12px] font-medium leading-[16px] ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+                  Support hearing loss with captions and visualizer.
+                </p>
+              </div>
             </button>
           )}
 

@@ -25,6 +25,8 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
   const voiceReadyRetryRef = useRef<number | null>(null)
   const descriptionFallbackRef = useRef<number | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
+  const onGetStartedRef = useRef(onGetStarted)
+  onGetStartedRef.current = onGetStarted
   const BUTTON_TIMER_MS = 30000
 
   const titleText = "Welcome to Visual Mode"
@@ -361,22 +363,6 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
       if (!isSkipping) setStartDescription(true)
     }, 1200)
 
-    const revealAndSpeak = (index: number) => {
-      if (index >= features.length) {
-        setShowButton(true)
-        return
-      }
-
-      setVisibleFeatureCount(index + 1)
-      window.setTimeout(() => {
-        if (!narrationCanceledRef.current) playPopSfx()
-      }, 120)
-      const feature = features[index]
-      speakWithResolvedVoice(`${feature.title}. ${feature.description}`, () => {
-        revealAndSpeak(index + 1)
-      })
-    }
-
     speakWithResolvedVoice(titleText, () => {
       setStartDescription(true)
     })
@@ -404,6 +390,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
             return
           }
 
+          playPopSfx()
           setVisibleFeatureCount(index + 1)
           const feature = features[index]
           speakWithResolvedVoice(`${feature.title}. ${feature.description}`, () => {
@@ -420,8 +407,9 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     if (!showButton || isSkipping) return
 
     const timer = window.setTimeout(() => {
-      chrome.storage.local.set({ sensa_visual_entered_from_welcome: true })
-      onGetStarted()
+      chrome.storage.local.set({ sensa_visual_entered_from_welcome: true }, () => {
+        onGetStarted()
+      })
     }, BUTTON_TIMER_MS)
 
     return () => window.clearTimeout(timer)
@@ -486,37 +474,58 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     narrationCanceledRef.current = true
     window.speechSynthesis.cancel()
     playPopSfx()
-    chrome.storage.local.set({ sensa_visual_entered_from_welcome: true })
-    onGetStarted()
+    chrome.storage.local.set({ sensa_visual_entered_from_welcome: true }, () => {
+      onGetStartedRef.current()
+    })
   }
 
+  useEffect(() => {
+    const sendVoiceBridgeMessage = (action: "start" | "stop") => {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const activeTab = tabs?.find(t => t.url && (t.url.startsWith("http://") || t.url.startsWith("https://"))) || tabs?.[0]
+        const tabId = activeTab?.id
+        if (!tabId) return
+
+        if (activeTab.url && (activeTab.url.startsWith("chrome://") || activeTab.url.startsWith("edge://") || activeTab.url.startsWith("about:"))) {
+          return
+        }
+
+        chrome.tabs.sendMessage(tabId, { type: "sensa-welcome-voice", action }, () => {
+          const err = chrome.runtime.lastError?.message
+        })
+      })
+    }
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.sensa_welcome_proceed_trigger && changes.sensa_welcome_proceed_trigger.newValue === true) {
+        chrome.storage.local.set({ sensa_welcome_proceed_trigger: false }, () => {
+          handleManualProceed()
+        })
+      }
+    }
+
+    chrome.storage.local.set({ sensa_welcome_proceed_trigger: false }, () => {
+      sendVoiceBridgeMessage("start")
+    })
+
+    chrome.storage.onChanged.addListener(handleStorageChange)
+
+    return () => {
+      chrome.storage.onChanged.removeListener(handleStorageChange)
+      sendVoiceBridgeMessage("stop")
+      chrome.storage.local.remove("sensa_welcome_proceed_trigger")
+    }
+  }, [])
+
   const handleSkipStep = () => {
+    setIsSkipping(true)
+    narrationCanceledRef.current = true
     window.speechSynthesis.cancel()
-
-    if (!startDescription) {
-      setStartDescription(true)
-      setTypedWordCount(descriptionWords.length)
-      return
-    }
-
-    if (typedWordCount < descriptionWords.length) {
-      setTypedWordCount(descriptionWords.length)
-      return
-    }
-
-    if (visibleFeatureCount < 1) {
-      setVisibleFeatureCount(1)
-      return
-    }
-
-    if (visibleFeatureCount < 2) {
-      setVisibleFeatureCount(2)
-      return
-    }
-
-    if (!showButton) {
-      setShowButton(true)
-    }
+    playPopSfx()
+    setStartDescription(true)
+    setTypedWordCount(descriptionWords.length)
+    setVisibleFeatureCount(features.length)
+    setShowButton(true)
   }
 
   return (
@@ -550,6 +559,12 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
         /* The 6-second timer fill */
         .animate-button-progress { animation: progress-fill 30s linear forwards; }
         
+        @keyframes pop-in {
+          0% { opacity: 0; transform: translateY(10px) scale(0.98); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .animate-pop { animation: pop-in 0.7s cubic-bezier(0.23,1,0.32,1) forwards; opacity: 0; }
+        
         .fade-in-1 { animation: fade-in-up 0.8s cubic-bezier(0.23,1,0.32,1) 0.1s forwards; opacity: 0; }
         .fade-in-2 { animation: fade-in-up 0.8s cubic-bezier(0.23,1,0.32,1) 0.2s forwards; opacity: 0; }
         .fade-in-3 { animation: fade-in-up 0.8s cubic-bezier(0.23,1,0.32,1) 0.3s forwards; opacity: 0; }
@@ -561,11 +576,11 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
       <div className={`absolute -bottom-16 -right-16 w-64 h-64 rounded-full mix-blend-multiply filter blur-[60px] animate-float-blue-2 pointer-events-none transform-gpu ${isDark ? 'bg-[#0A44FF]/15' : 'bg-[#0A44FF]/10'}`} />
 
       {/* 🛡️ CONTENT WRAPPER */}
-      <div className="relative z-10 flex flex-col items-center w-full h-full pt-[54px] pb-10 px-8">
+      <div className="relative z-10 flex flex-col items-center w-full h-full pt-[20px] pb-10 px-8">
         
         {/* Header (No Logo, Perfectly Centered) */}
         <div className="flex flex-col items-center w-full mt-2 mb-2">
-          <h1 className="text-[40px] font-black tracking-tighter leading-none mb-3 fade-in-1 text-center">
+          <h1 className="text-[40px] font-black tracking-tighter leading-none mb-3 fade-in-1 text-center bg-gradient-to-r from-[#0A44FF] to-[#0099FF] bg-clip-text text-transparent pb-1">
             Visual Mode
           </h1>
           <p className={`text-[16px] font-semibold text-center leading-snug fade-in-2 px-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -574,12 +589,12 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
         </div>
 
         {/* 👁️ FEATURE HIGHLIGHT CARDS */}
-        <div className="w-full mt-4 mb-6 fade-in-3">
-          <div className="grid grid-cols-1 gap-3 w-full max-h-[220px] overflow-y-auto pr-1">
+        <div className="w-full mt-auto mb-auto fade-in-3">
+          <div className="grid grid-cols-1 gap-3 w-full max-h-[220px] overflow-y-auto px-2 py-2">
             {features.slice(0, visibleFeatureCount).map((feature) => (
               <div
                 key={feature.title}
-                className={`group flex items-center gap-4 rounded-[20px] px-4 py-4 shadow-md transition-all cursor-pointer ${isDark ? 'bg-[#2C2C2E] border-2 border-gray-700 hover:border-[#0A44FF] hover:bg-[#2C2C2E]/90 hover:shadow-[0_12px_26px_rgba(10,68,255,0.25)]' : 'bg-white border-2 border-transparent hover:border-[#0A44FF] hover:shadow-[0_12px_26px_rgba(10,68,255,0.2)]'}`}
+                className={`group flex items-center gap-4 rounded-[20px] px-4 py-4 shadow-md transition-all cursor-pointer animate-pop ${isDark ? 'bg-[#2C2C2E] border-2 border-gray-700 hover:border-[#0A44FF] hover:bg-[#2C2C2E]/90 hover:shadow-[0_12px_26px_rgba(10,68,255,0.25)]' : 'bg-white border-2 border-transparent hover:border-[#0A44FF] hover:shadow-[0_12px_26px_rgba(10,68,255,0.2)]'}`}
                 onMouseEnter={() => { playHoverSfx(); playHoverAudio(`${feature.title}. ${feature.description}`) }}
                 onFocus={() => { playHoverSfx(); playHoverAudio(`${feature.title}. ${feature.description}`) }}
                 onMouseLeave={cancelHoverAudio}

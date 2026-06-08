@@ -453,6 +453,7 @@ export default function VisualDock({
         liveText += event.results[i][0].transcript
       }
       liveText = liveText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
+      liveText = liveText.replace(/\b(?:de|dee|the)\s+activate\b/g, "deactivate")
 
       let newSpeech = liveText
       if (liveText.startsWith(consumedString) && consumedString.length > 0) {
@@ -479,9 +480,13 @@ export default function VisualDock({
           lockVoiceToggle()
           cbs.playClickAudio?.("Voice commands activated")
           try { cbs.onToggleVoiceCommand() } catch {}
+        } else if (check("deactivate", "deactivate visual mode", "activate", "activate visual mode", "turn off", "turn off visual mode", "close", "exit", "quit")) {
+          commandFired = true
+          cbs.playClickAudio?.('Close')
+          cbs.onClose()
         }
       } else {
-        if (canToggleVoiceMode && check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate")) {
+        if (canToggleVoiceMode && check("stop listening", "stop voice", "sleep", "mute", "quiet")) {
           commandFired = true
           lockVoiceToggle()
           cbs.playClickAudio?.('Voice commands deactivated')
@@ -523,7 +528,7 @@ export default function VisualDock({
           commandFired = true
           if (cbs.isMinimized) { cbs.playClickAudio?.('Expand'); cbs.onMinimizeToggle(); }
         } 
-        else if (check("close", "exit", "quit", "dismiss", "duck", "dark")) {
+        else if (check("close", "exit", "quit", "dismiss", "duck", "dark", "deactivate", "deactivate visual mode", "activate", "activate visual mode", "turn off", "turn off visual mode")) {
           commandFired = true
           cbs.playClickAudio?.('Close'); cbs.onClose();
         } 
@@ -568,12 +573,15 @@ export default function VisualDock({
     }
     window.addEventListener("click", reviveEngineOnClick)
 
-    try { recognition.start() } catch (e) {}
+    const startTimeout = window.setTimeout(() => {
+      try { recognition.start() } catch (e) {}
+    }, 150)
 
     return () => {
       isComponentMounted = false
       window.removeEventListener("click", reviveEngineOnClick)
       if (restartTimer) window.clearTimeout(restartTimer)
+      window.clearTimeout(startTimeout)
       try { recognition.stop() } catch (e) {}
       recognition.onresult = null
       recognition.onerror = null
