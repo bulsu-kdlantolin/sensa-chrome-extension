@@ -111,9 +111,9 @@ export default function FloatingDockManager() {
   const [activeMode, setActiveMode] = useState<"visual" | "auditory" | null>(null)
   const [userThemePref, setUserThemePref] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
-  
+
   // NEW STATE: Tracks if the settings popup is open
-  const [isVisualSettingsOpen, setIsVisualSettingsOpen] = useState(false) 
+  const [isVisualSettingsOpen, setIsVisualSettingsOpen] = useState(false)
   const [isAuditorySettingsOpen, setIsAuditorySettingsOpen] = useState(false)
   const [isPopupOpen, setIsPopupOpen] = useState(false)
 
@@ -123,6 +123,10 @@ export default function FloatingDockManager() {
         setIsPopupOpen(true)
         port.onDisconnect.addListener(() => {
           setIsPopupOpen(false)
+          stopVisualModeVoiceListener()
+          stopWelcomeVoiceListener()
+          stopModeSelectionVoiceListener()
+          setIsModeSelectionVoiceActive(false)
         })
       }
     }
@@ -147,10 +151,10 @@ export default function FloatingDockManager() {
   const [visualInputDeviceId, setVisualInputDeviceId] = useState("default")
   const [isVisualAutoscrollEnabled, setIsVisualAutoscrollEnabled] = useState(true)
   const [isHighlightMouseScreenReaderEnabled, setIsHighlightMouseScreenReaderEnabled] = useState(false)
-  
+
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
-  
+
   const dragRef = useRef<HTMLDivElement>(null)
   const dragStartPos = useRef({ x: 0, y: 0 })
   const activeModeRef = useRef<"visual" | "auditory" | null>(null)
@@ -180,6 +184,7 @@ export default function FloatingDockManager() {
         selectedVoiceNameRef.current = res.sensa_visual_voice_name
       }
 
+      window.speechSynthesis.resume()
       window.speechSynthesis.cancel()
 
       const utterance = new SpeechSynthesisUtterance(message)
@@ -342,6 +347,7 @@ export default function FloatingDockManager() {
 
       if (message.type !== "sensa-activate-mode") return
 
+      const prevMode = activeModeRef.current
       syncActiveMode(message.mode ?? null)
       if (message.mode === "visual") {
         setIsAuditorySettingsOpen(false)
@@ -369,19 +375,27 @@ export default function FloatingDockManager() {
 
     const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
       if (changes.sensa_visual_active !== undefined) {
-        if (changes.sensa_visual_active.newValue) {
+        const nextVisual = !!changes.sensa_visual_active.newValue
+        const prevVisual = activeModeRef.current === "visual"
+        const nextAuditory = changes.sensa_auditory_active !== undefined
+          ? !!changes.sensa_auditory_active.newValue
+          : (activeModeRef.current === "auditory")
+
+        if (nextVisual && !prevVisual) {
           setActiveMode("visual")
           setIsAuditorySettingsOpen(false)
           setIsCaptionLanguageOpen(false)
           setIsTextSizeOpen(false)
           setIsCaptionTransparencyOpen(false)
-        } else {
-          if (activeModeRef.current === "visual") {
-            setActiveMode(null)
-            setIsVisualSettingsOpen(false)
-            setIsReadingSpeedOpen(false)
-          }
+          speakOverlayFeedback("Visual mode activated")
+        } else if (!nextVisual && prevVisual) {
+          setActiveMode(null)
+          setIsVisualSettingsOpen(false)
+          setIsReadingSpeedOpen(false)
           setIsVoiceCommandActive(false)
+          if (!nextAuditory) {
+            speakOverlayFeedback("Visual mode deactivated")
+          }
         }
       }
       if (changes.sensa_visual_highlight_color !== undefined && typeof changes.sensa_visual_highlight_color.newValue === "string") {
@@ -588,138 +602,141 @@ export default function FloatingDockManager() {
       )}
 
       <div className="sensa-ui-root">
-      {/* 1. THE SETTINGS MODAL (Floats dead center, outside the drag logic) */}
-      {isVisualSettingsOpen && (
-        <VisualSettingsModal
-          onClose={() => setIsVisualSettingsOpen(false)}
-        />
-      )}
-
-      {isReadingSpeedOpen && (
-        <ReadingSpeedOverlay
-          initialSpeed={readingSpeed}
-          onSpeedChange={(newSpeed) => {
-            setReadingSpeed(newSpeed)
-            chrome.storage.local.set({ sensa_visual_reading_speed: newSpeed })
-          }}
-          onClose={() => {
-            setIsReadingSpeedOpen(false)
-            speakOverlayFeedback("Reading speed overlay closed")
-          }}
-        />
-      )}
-
-      {isAuditorySettingsOpen && (
-        <AuditorySettingsModal
-          isDark={isDark}
-          onClose={() => setIsAuditorySettingsOpen(false)}
-        />
-      )}
-
-      {isCaptionLanguageOpen && (
-        <CaptionLanguageOverlay
-          isDark={isDark}
-          initialLanguage={captionLanguage}
-          onLanguageChange={(language) => {
-            setCaptionLanguage(language)
-            chrome.storage.local.set({ sensa_auditory_caption_language: language })
-          }}
-          onClose={() => setIsCaptionLanguageOpen(false)}
-        />
-      )}
-
-      {isTextSizeOpen && (
-        <TextSizeOverlay
-          isDark={isDark}
-          initialSize={textSize}
-          onSizeChange={(size) => {
-            setTextSize(size)
-            chrome.storage.local.set({ sensa_auditory_text_size: size })
-          }}
-          onClose={() => setIsTextSizeOpen(false)}
-        />
-      )}
-
-      {isCaptionTransparencyOpen && (
-        <CaptionTransparencyOverlay
-          isDark={isDark}
-          initialTransparency={captionTransparency}
-          onTransparencyChange={(value) => {
-            setCaptionTransparency(value)
-            chrome.storage.local.set({ sensa_auditory_caption_transparency: value })
-          }}
-          onClose={() => setIsCaptionTransparencyOpen(false)}
-        />
-      )}
-
-      {/* 2. THE DRAGGABLE DOCK */}
-      <div
-        ref={dragRef}
-        onMouseDown={handleMouseDown}
-        style={{
-          transform: `translate(calc(0px + ${position.x}px), calc(-50% + ${position.y}px))`,
-          cursor: isDragging ? 'grabbing' : 'grab'
-        }}
-        className="fixed right-4 top-1/2 z-[99999] font-sans"
-      >
-        {isVisualActive && (
-          <VisualDock 
-            isDark={isDark} 
-            isMinimized={isMinimized} 
-            readingSpeed={readingSpeed}
-            isPlaying={isPlaying}            // <-- NEW PROP
-            isPaused={isPaused}              // <-- NEW PROP
-            isVoiceCommandActive={isVoiceCommandActive}
-            canRestart={isPlaying || isPaused}
-            isVoiceCommandsSuspended={isSettingsOverlayOpen || isReadingSpeedOpen || isModeSelectionVoiceActive || isPopupOpen}
-            onTogglePlay={togglePlayPause}   // <-- NEW PROP
-            onToggleVoiceCommand={() => setIsVoiceCommandActive(prev => !prev)}
-            onNext={next}                    // <-- NEW PROP
-            onPrev={prev}                    // <-- NEW PROP
-            onRestart={restart}
-            onMinimizeToggle={() => setIsMinimized(!isMinimized)} 
-            onOpenReadingSpeed={() => {
-              setIsReadingSpeedOpen(true)
-              speakOverlayFeedback("Reading speed overlay opened")
-            }}
-            onOpenSettings={() => setIsVisualSettingsOpen(true)} 
+        {/* 1. THE SETTINGS MODAL (Floats dead center, outside the drag logic) */}
+        {isVisualSettingsOpen && (
+          <VisualSettingsModal
             onClose={() => {
-              deactivateDock()
-              chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null })
-            }} 
+              setIsVisualSettingsOpen(false)
+              speakOverlayFeedback("Settings overlay closed")
+            }}
           />
         )}
 
-        {isAuditoryActive && (
-            <AuditoryDock 
-            isDark={isDark} 
-            isMinimized={isMinimized} 
-            isCaptionsActive={isCaptionsActive}
-            onToggleCaptions={() => setIsCaptionsActive((prev) => !prev)}
-            onMinimizeToggle={() => setIsMinimized(!isMinimized)} 
-            onOpenCaptionLanguage={() => {
-              // Defer opening so the original click event doesn't immediately hit the modal backdrop
-              setTimeout(() => setIsCaptionLanguageOpen(true), 0)
+        {isReadingSpeedOpen && (
+          <ReadingSpeedOverlay
+            initialSpeed={readingSpeed}
+            onSpeedChange={(newSpeed) => {
+              setReadingSpeed(newSpeed)
+              chrome.storage.local.set({ sensa_visual_reading_speed: newSpeed })
             }}
-            onOpenTextSize={() => setIsTextSizeOpen(true)}
-            onOpenCaptionTransparency={() => setIsCaptionTransparencyOpen(true)}
-            isFocusMode={isFocusMode}
-            onToggleFocusMode={() => {
-              const next = !isFocusMode
-              setIsFocusMode(next)
-              chrome.storage.local.set({ sensa_auditory_focus_mode: next })
-            }}
-            onOpenSettings={() => setIsAuditorySettingsOpen(true)}
             onClose={() => {
-              deactivateDock()
-              setIsCaptionLanguageOpen(false)
-              setIsTextSizeOpen(false)
-              setIsCaptionTransparencyOpen(false)
-              setIsCaptionsActive(false)
-            }} 
+              setIsReadingSpeedOpen(false)
+              speakOverlayFeedback("Reading speed overlay closed")
+            }}
           />
         )}
-      </div>
+
+        {isAuditorySettingsOpen && (
+          <AuditorySettingsModal
+            isDark={isDark}
+            onClose={() => setIsAuditorySettingsOpen(false)}
+          />
+        )}
+
+        {isCaptionLanguageOpen && (
+          <CaptionLanguageOverlay
+            isDark={isDark}
+            initialLanguage={captionLanguage}
+            onLanguageChange={(language) => {
+              setCaptionLanguage(language)
+              chrome.storage.local.set({ sensa_auditory_caption_language: language })
+            }}
+            onClose={() => setIsCaptionLanguageOpen(false)}
+          />
+        )}
+
+        {isTextSizeOpen && (
+          <TextSizeOverlay
+            isDark={isDark}
+            initialSize={textSize}
+            onSizeChange={(size) => {
+              setTextSize(size)
+              chrome.storage.local.set({ sensa_auditory_text_size: size })
+            }}
+            onClose={() => setIsTextSizeOpen(false)}
+          />
+        )}
+
+        {isCaptionTransparencyOpen && (
+          <CaptionTransparencyOverlay
+            isDark={isDark}
+            initialTransparency={captionTransparency}
+            onTransparencyChange={(value) => {
+              setCaptionTransparency(value)
+              chrome.storage.local.set({ sensa_auditory_caption_transparency: value })
+            }}
+            onClose={() => setIsCaptionTransparencyOpen(false)}
+          />
+        )}
+
+        {/* 2. THE DRAGGABLE DOCK */}
+        <div
+          ref={dragRef}
+          onMouseDown={handleMouseDown}
+          style={{
+            transform: `translate(calc(0px + ${position.x}px), calc(-50% + ${position.y}px))`,
+            cursor: isDragging ? 'grabbing' : 'grab'
+          }}
+          className="fixed right-4 top-1/2 z-[99999] font-sans"
+        >
+          {isVisualActive && (
+            <VisualDock
+              isDark={isDark}
+              isMinimized={isMinimized}
+              readingSpeed={readingSpeed}
+              isPlaying={isPlaying}            // <-- NEW PROP
+              isPaused={isPaused}              // <-- NEW PROP
+              isVoiceCommandActive={isVoiceCommandActive}
+              canRestart={isPlaying || isPaused}
+              isVoiceCommandsSuspended={isSettingsOverlayOpen || isReadingSpeedOpen || isModeSelectionVoiceActive || isPopupOpen}
+              onTogglePlay={togglePlayPause}   // <-- NEW PROP
+              onToggleVoiceCommand={() => setIsVoiceCommandActive(prev => !prev)}
+              onNext={next}                    // <-- NEW PROP
+              onPrev={prev}                    // <-- NEW PROP
+              onRestart={restart}
+              onMinimizeToggle={() => setIsMinimized(!isMinimized)}
+              onOpenReadingSpeed={() => {
+                setIsReadingSpeedOpen(true)
+                speakOverlayFeedback("Reading speed overlay opened")
+              }}
+              onOpenSettings={() => setIsVisualSettingsOpen(true)}
+              onClose={() => {
+                deactivateDock()
+                chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null })
+              }}
+            />
+          )}
+
+          {isAuditoryActive && (
+            <AuditoryDock
+              isDark={isDark}
+              isMinimized={isMinimized}
+              isCaptionsActive={isCaptionsActive}
+              onToggleCaptions={() => setIsCaptionsActive((prev) => !prev)}
+              onMinimizeToggle={() => setIsMinimized(!isMinimized)}
+              onOpenCaptionLanguage={() => {
+                // Defer opening so the original click event doesn't immediately hit the modal backdrop
+                setTimeout(() => setIsCaptionLanguageOpen(true), 0)
+              }}
+              onOpenTextSize={() => setIsTextSizeOpen(true)}
+              onOpenCaptionTransparency={() => setIsCaptionTransparencyOpen(true)}
+              isFocusMode={isFocusMode}
+              onToggleFocusMode={() => {
+                const next = !isFocusMode
+                setIsFocusMode(next)
+                chrome.storage.local.set({ sensa_auditory_focus_mode: next })
+              }}
+              onOpenSettings={() => setIsAuditorySettingsOpen(true)}
+              onClose={() => {
+                deactivateDock()
+                setIsCaptionLanguageOpen(false)
+                setIsTextSizeOpen(false)
+                setIsCaptionTransparencyOpen(false)
+                setIsCaptionsActive(false)
+              }}
+            />
+          )}
+        </div>
       </div>
     </>
   )

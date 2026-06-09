@@ -288,7 +288,10 @@ export default function VisualMode() {
       ...(newState ? { sensa_auditory_active: false } : {})
     })
 
-    void speakFeedback(newState ? "Visual mode activated" : "Visual mode deactivated")
+    if (newState) {
+      // Close popup immediately so the user is refocused on the tab/dock
+      window.close()
+    }
   }
 
   const speakWithHoverLock = (message: string) => {

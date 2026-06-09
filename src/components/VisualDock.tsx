@@ -4,16 +4,72 @@ import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
 const DEFAULT_WAKE_WORD = "Sensa"
 
-const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {  
+const getLevenshteinDistance = (a: string, b: string): number => {
+  const tmp: number[][] = []
+  for (let i = 0; i <= a.length; i++) {
+    tmp.push([i])
+  }
+  for (let j = 0; j <= b.length; j++) {
+    tmp[0][j] = j
+  }
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      tmp[i][j] = Math.min(
+        tmp[i - 1][j] + 1,
+        tmp[i][j - 1] + 1,
+        tmp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      )
+    }
+  }
+  return tmp[a.length][b.length]
+}
+
+const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
+  if (target === "activate" && text.includes("deactivate")) return false
+  if (target === "deactivate" && text === "activate") return false
+
+  if (text.includes(target)) return true
+
+  const tokens = text.split(/\s+/).filter(Boolean)
+  const targetTokens = target.split(/\s+/).filter(Boolean)
+
+  if (targetTokens.length === 1) {
+    for (const t of tokens) {
+      if ((t === "activate" && target === "deactivate") || (t === "deactivate" && target === "activate")) {
+        continue
+      }
+      if (getLevenshteinDistance(t, target) <= maxDistance) return true
+    }
+  } else {
+    const n = targetTokens.length
+    for (let i = 0; i <= tokens.length - n; i++) {
+      const ngram = tokens.slice(i, i + n).join(" ")
+      if (getLevenshteinDistance(ngram, target) <= maxDistance) return true
+    }
+  }
+  return false
+}
+
+const normalizeInput = (rawText: string): string => {
+  let text = rawText.toLowerCase()
+  text = text.replace(/[^a-z0-9\s]/gi, " ")
+  text = text.replace(/\b(?:de|dee|the)\s+activate\b/g, "deactivate")
+  text = text.replace(/\s+/g, " ").trim()
+  const fillerWords = new Set(["the", "a", "please", "hey", "can", "you", "change", "set", "to", "my"])
+  const tokens = text.split(" ").filter(t => !fillerWords.has(t))
+  return tokens.join(" ")
+}
+
+const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
   const barsRef = useRef<(HTMLDivElement | null)[]>([])
   const currentHeights = useRef([4, 6, 8, 6, 4])
   const tickRef = useRef(0)
-  
+
   const isActiveRef = useRef(isActive)
   useEffect(() => {
     isActiveRef.current = isActive
   }, [isActive])
-  
+
   useEffect(() => {
     let animationId: number
     let audioCtx: AudioContext | null = null
@@ -22,15 +78,15 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
     let dataArray: Uint8Array | null = null
     let smoothedEnergy = 0
     let lastTime = performance.now()
-    
+
     const ENERGY_GATE = 0.06
 
     const colors = [
-      "rgba(147, 197, 253, 1)", 
-      "rgba(59, 130, 246, 1)",  
-      "rgba(10, 68, 255, 1)",   
-      "rgba(59, 130, 246, 1)",  
-      "rgba(147, 197, 253, 1)", 
+      "rgba(147, 197, 253, 1)",
+      "rgba(59, 130, 246, 1)",
+      "rgba(10, 68, 255, 1)",
+      "rgba(59, 130, 246, 1)",
+      "rgba(147, 197, 253, 1)",
     ]
 
     const maxHeights = [12, 18, 26, 18, 12]
@@ -69,7 +125,7 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
         const source = audioCtx.createMediaStreamSource(stream)
         source.connect(analyser)
         dataArray = new Uint8Array(analyser.fftSize)
-      } catch (err) {}
+      } catch (err) { }
     }
 
     const getLiveEnergy = () => {
@@ -109,7 +165,7 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
 
       barsRef.current.forEach((bar, i) => {
         if (!bar) return
-        
+
         let targetHeight = idleHeights[i]
 
         if (hasAudio) {
@@ -148,7 +204,7 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
       cancelAnimationFrame(animationId)
       stopMic()
     }
-  }, [isActive]) 
+  }, [isActive])
 
   return (
     <div className="flex items-center justify-center gap-[3px] !w-[24px] !h-[24px] shrink-0" aria-hidden="true">
@@ -157,8 +213,8 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
           key={index}
           ref={(el) => (barsRef.current[index] = el)}
           className="!w-[4px] rounded-full"
-          style={{ 
-            height: "4px", 
+          style={{
+            height: "4px",
             backgroundColor: "currentColor",
             willChange: "height, box-shadow, opacity"
           }}
@@ -212,6 +268,7 @@ export default function VisualDock({
   const audioCtxRef = useRef<AudioContext | null>(null)
   const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState(true)
   const isSoundEffectsEnabledRef = useRef(true)
+  const resetSilenceTimerRef = useRef<() => void>()
 
   const getAudioContext = () => {
     if (!isSoundEffectsEnabledRef.current) return null
@@ -287,25 +344,25 @@ export default function VisualDock({
     makeClick(900, 0)
     makeClick(1200, 0.07)
   }
-  
+
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
   const iconMotionClass = `transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform`
   const glassPanelClass = `rounded-full backdrop-blur-3xl border transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isDark
     ? "bg-[#1C1C1E]/85 border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.6)]"
     : "bg-white/90 border-black/10 shadow-[0_8px_32px_rgba(0,0,0,0.15)]"
-  } ${isVoiceCommandActive ? "contrast-105 saturate-110 drop-shadow-[0_0_22px_rgba(10,68,255,0.14)]" : "contrast-100 saturate-100 drop-shadow-none"}`
+    } ${isVoiceCommandActive ? "contrast-105 saturate-110 drop-shadow-[0_0_22px_rgba(10,68,255,0.14)]" : "contrast-100 saturate-100 drop-shadow-none"}`
 
   const middleGlassPanelClass = `rounded-full backdrop-blur-3xl bg-white dark:bg-[#1C1C1E] shadow-[0_8px_32px_rgba(0,0,0,0.15)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6)] ${isVoiceCommandActive ? "contrast-105 saturate-110" : "contrast-100 saturate-100"}`
   const btnBaseClass = `relative group !w-[44px] !h-[44px] !min-w-[44px] !min-h-[44px] !p-0 !m-0 flex items-center justify-center rounded-full shrink-0 transform-gpu will-change-transform focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent box-border transition-all duration-200 hover:-translate-y-[1.5px] active:translate-y-0 active:scale-[0.97]`
-  
-  const btnHoverClass = isDark 
+
+  const btnHoverClass = isDark
     ? "hover:bg-white/15 text-gray-200 hover:text-white hover:shadow-[0_14px_28px_rgba(0,0,0,0.28)]"
     : "hover:bg-black/10 text-gray-700 hover:text-black hover:shadow-[0_14px_28px_rgba(0,0,0,0.12)]"
 
   const settingsBtnHoverClass = isDark
     ? "hover:bg-white/15 text-gray-200 hover:text-white hover:shadow-none"
     : "hover:bg-black/10 text-gray-700 hover:text-black hover:shadow-none"
-    
+
   const closeBtnClass = `${btnBaseClass} text-gray-500 dark:text-gray-400 transition-all duration-200 active:scale-90 hover:scale-105 ${isDark ? 'hover:bg-red-500/80 hover:text-white' : 'hover:bg-red-500/90 hover:text-white'}`
   const btnAccentClass = `transition-all duration-200 bg-[#0A44FF] text-white shadow-md shadow-[#0A44FF]/30 hover:bg-[#0836CC] hover:shadow-lg hover:shadow-[#0A44FF]/50`
 
@@ -333,7 +390,7 @@ export default function VisualDock({
       }
     }
   }, [])
-  
+
   const tabVisibleAtRef = useRef(performance.now())
 
   useEffect(() => {
@@ -381,7 +438,7 @@ export default function VisualDock({
     isVoiceCommandActive, isMinimized, isPlaying, isPaused, onToggleVoiceCommand, onTogglePlay, onNext, onPrev, onRestart,
     onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio
   })
-  
+
   const wakeWordRef = useRef(DEFAULT_WAKE_WORD)
 
   useEffect(() => {
@@ -410,152 +467,301 @@ export default function VisualDock({
   }, [])
 
   useEffect(() => {
+    resetSilenceTimerRef.current?.()
+  }, [isVoiceCommandActive])
+
+  useEffect(() => {
     if (isVoiceCommandsSuspended) return
 
     const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognitionCtor) return
 
     const recognition = new SpeechRecognitionCtor()
-    recognition.continuous = true 
-    recognition.interimResults = true 
+    recognition.continuous = true
+    recognition.interimResults = true
     recognition.lang = 'en-US'
 
     let isComponentMounted = true
     let restartTimer: number | null = null
     let voiceToggleLockUntil = 0
     let isPermanentlyDead = false
-    
-    let consumedString = ""
+    let silenceTimer: number | null = null
+    let commandTimeout: number | null = null
     let currentResultIndex = 0
+    let globalBuffer = ""
+    let ignoreSpeechUntil = 0
+
+    const resetSilenceTimer = () => {
+      if (silenceTimer) {
+        window.clearTimeout(silenceTimer)
+        silenceTimer = null
+      }
+
+      if (callbacksRef.current.isVoiceCommandActive) {
+        silenceTimer = window.setTimeout(() => {
+          const cbs = callbacksRef.current
+          if (cbs.isVoiceCommandActive) {
+            cbs.playClickAudio?.('Voice commands deactivated')
+            try { cbs.onToggleVoiceCommand() } catch { }
+          }
+        }, 15000)
+      }
+    }
+
+    resetSilenceTimerRef.current = resetSilenceTimer
 
     const scheduleRestart = () => {
       if (!isComponentMounted || isPermanentlyDead) return
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
-        try { recognition.start() } catch (e) {}
-      }, 300) 
+        try { recognition.start() } catch (e) { }
+      }, 300)
     }
 
     const lockVoiceToggle = () => {
       voiceToggleLockUntil = Date.now() + 1800
     }
 
+    recognition.onsoundstart = () => {
+      resetSilenceTimer()
+    }
+
     recognition.onresult = (event: any) => {
-      const cbs = callbacksRef.current
+      resetSilenceTimer()
 
       if (event.resultIndex !== currentResultIndex) {
-        consumedString = ""
         currentResultIndex = event.resultIndex
       }
 
-      let liveText = ""
+      let interimChunk = ""
+      let newFinals = ""
+
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        liveText += event.results[i][0].transcript
-      }
-      liveText = liveText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
-      liveText = liveText.replace(/\b(?:de|dee|the)\s+activate\b/g, "deactivate")
-
-      let newSpeech = liveText
-      if (liveText.startsWith(consumedString) && consumedString.length > 0) {
-        newSpeech = liveText.slice(consumedString.length).trim()
-      }
-
-      if (!newSpeech) return
-
-      const paddedSpeech = ` ${newSpeech} `
-      const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
-      
-      const canToggleVoiceMode = Date.now() >= voiceToggleLockUntil
-      const currentWakeWord = (wakeWordRef.current || DEFAULT_WAKE_WORD).toLowerCase().trim()
-      let commandFired = false
-
-      if (!cbs.isVoiceCommandActive) {
-        const isCustom = currentWakeWord !== "sensa"
-        const wakeMatched = isCustom 
-          ? paddedSpeech.includes(` ${currentWakeWord} `)
-          : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "wake", "listen", "start")
-
-        if (canToggleVoiceMode && wakeMatched) {
-          commandFired = true
-          lockVoiceToggle()
-          cbs.playClickAudio?.("Voice commands activated")
-          try { cbs.onToggleVoiceCommand() } catch {}
-        } else if (check("deactivate", "deactivate visual mode", "activate", "activate visual mode", "turn off", "turn off visual mode", "close", "exit", "quit")) {
-          commandFired = true
-          cbs.playClickAudio?.('Close')
-          cbs.onClose()
-        }
-      } else {
-        if (canToggleVoiceMode && check("stop listening", "stop voice", "sleep", "mute", "quiet")) {
-          commandFired = true
-          lockVoiceToggle()
-          cbs.playClickAudio?.('Voice commands deactivated')
-          try { cbs.onToggleVoiceCommand() } catch {}
-        } 
-        else if (check("play", "resume", "continue", "start reading", "read")) {
-          commandFired = true
-          if (!cbs.isPlaying || cbs.isPaused) { cbs.playClickAudio?.('Play'); cbs.onTogglePlay(); }
-        } 
-        else if (check("pause", "halt", "stop reading", "stop playing", "stop")) {
-          commandFired = true
-          if (cbs.isPlaying && !cbs.isPaused) { cbs.playClickAudio?.('Pause'); cbs.onTogglePlay(); }
-        } 
-        else if (check("next", "skip", "forward", "necks")) {
-          commandFired = true
-          cbs.playClickAudio?.('Next'); cbs.onNext();
-        } 
-        else if (check("previous", "prev", "back", "go back")) {
-          commandFired = true
-          cbs.playClickAudio?.('Previous'); cbs.onPrev();
-        } 
-        else if (check("restart", "start over", "reset", "refresh")) {
-          commandFired = true
-          cbs.playClickAudio?.('Restart'); cbs.onRestart();
-        } 
-        else if (check("speed", "rate", "reading speed", "voice speed")) {
-          commandFired = true
-          cbs.playClickAudio?.('Reading speed'); cbs.onOpenReadingSpeed();
-        } 
-        else if (check("setting", "settings", "options", "open settings")) {
-          commandFired = true
-          cbs.playClickAudio?.('Settings'); cbs.onOpenSettings();
-        } 
-        else if (check("minimize", "collapse", "hide", "mini")) {
-          commandFired = true
-          if (!cbs.isMinimized) { cbs.playClickAudio?.('Minimize'); cbs.onMinimizeToggle(); }
-        } 
-        else if (check("expand", "maximize", "show", "open")) {
-          commandFired = true
-          if (cbs.isMinimized) { cbs.playClickAudio?.('Expand'); cbs.onMinimizeToggle(); }
-        } 
-        else if (check("close", "exit", "quit", "dismiss", "duck", "dark", "deactivate", "deactivate visual mode", "activate", "activate visual mode", "turn off", "turn off visual mode")) {
-          commandFired = true
-          cbs.playClickAudio?.('Close'); cbs.onClose();
-        } 
-        else if (check("top", "go up")) {
-          commandFired = true
-          window.scrollTo({ top: 0, behavior: "smooth" })
-        } 
-        else if (check("bottom", "down below")) {
-          commandFired = true
-          window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })
-        } 
-        else if (check("scroll up", "up") && !check("go up", "top")) {
-          commandFired = true
-          window.scrollBy({ top: -600, behavior: "smooth" })
-        } 
-        else if (check("scroll down", "down") && !check("down below", "bottom")) {
-          commandFired = true
-          window.scrollBy({ top: 600, behavior: "smooth" })
+        const text = event.results[i][0].transcript
+        if (event.results[i].isFinal) {
+          newFinals += text + " "
+        } else {
+          interimChunk += text + " "
         }
       }
 
-      if (commandFired) {
-        consumedString = liveText
+      globalBuffer += newFinals
+      if (globalBuffer.length > 150) {
+        globalBuffer = globalBuffer.slice(-150)
       }
+
+      const rawTranscript = (globalBuffer + " " + interimChunk).trim()
+      if (!rawTranscript) return
+
+      if (commandTimeout) {
+        window.clearTimeout(commandTimeout)
+        commandTimeout = null
+      }
+
+      const runMatching = (text: string) => {
+        const cleanText = normalizeInput(text)
+        if (!cleanText) return false
+
+        const paddedSpeech = ` ${cleanText} `
+        const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
+        const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(cleanText, target, maxDistance)
+
+        const canToggleVoiceMode = Date.now() >= voiceToggleLockUntil
+        const currentWakeWord = (wakeWordRef.current || DEFAULT_WAKE_WORD).toLowerCase().trim()
+
+        let shouldProcessCommands = callbacksRef.current.isVoiceCommandActive
+
+        const applyCommand = (commandName: string, action: () => void) => {
+          if (Date.now() < ignoreSpeechUntil) return
+          if (commandName !== "activate-voice") {
+            ignoreSpeechUntil = Date.now() + 1500
+          }
+          globalBuffer = ""
+          action()
+        }
+
+        if (!callbacksRef.current.isVoiceCommandActive) {
+          const isCustom = currentWakeWord !== "sensa"
+          const wakeMatched = isCustom
+            ? paddedSpeech.includes(` ${currentWakeWord} `) || fuzzyCheck(currentWakeWord, 1)
+            : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start") || fuzzyCheck("sensa", 1)
+
+          if (canToggleVoiceMode && wakeMatched) {
+            applyCommand("activate-voice", () => {
+              lockVoiceToggle()
+              callbacksRef.current.playClickAudio?.("Voice commands activated")
+              try { callbacksRef.current.onToggleVoiceCommand() } catch { }
+            })
+            shouldProcessCommands = true
+            return true
+          }
+        }
+
+        if (shouldProcessCommands) {
+          if (callbacksRef.current.isVoiceCommandActive && canToggleVoiceMode && (check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening") || fuzzyCheck("sleep", 1) || fuzzyCheck("mute", 1))) {
+            applyCommand("deactivate-voice", () => {
+              lockVoiceToggle()
+              callbacksRef.current.playClickAudio?.('Voice commands deactivated')
+              try { callbacksRef.current.onToggleVoiceCommand() } catch { }
+            })
+            return true
+          }
+          else if (check("play", "resume", "continue", "start reading", "read") || fuzzyCheck("play", 1) || fuzzyCheck("resume", 1)) {
+            if (!check("speed", "rate") && !fuzzyCheck("speed", 1) && !fuzzyCheck("rate", 1)) {
+              const isReadPrefix = check("read") && !check("reading speed", "read speed", "read rate")
+              if (isReadPrefix) {
+                if (commandTimeout) window.clearTimeout(commandTimeout)
+                commandTimeout = window.setTimeout(() => {
+                  if (!isComponentMounted) return
+                  if (!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) {
+                    applyCommand("play", () => {
+                      callbacksRef.current.playClickAudio?.('Read')
+                      callbacksRef.current.onTogglePlay()
+                    })
+                  }
+                }, 350)
+                return true
+              } else {
+                if (!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) {
+                  applyCommand("play", () => {
+                    callbacksRef.current.playClickAudio?.('Read')
+                    callbacksRef.current.onTogglePlay()
+                  })
+                }
+                return true
+              }
+            }
+          }
+          else if (check("pause", "halt", "stop reading", "stop playing", "stop", "pass", "post", "pose", "boss", "paused") || fuzzyCheck("pause", 1) || fuzzyCheck("halt", 1)) {
+            const isStopPrefix = check("stop") && !check("stop reading", "stop playing", "stop listening", "stop voice")
+            if (isStopPrefix) {
+              if (commandTimeout) window.clearTimeout(commandTimeout)
+              commandTimeout = window.setTimeout(() => {
+                if (!isComponentMounted) return
+                if (callbacksRef.current.isPlaying && !callbacksRef.current.isPaused) {
+                  applyCommand("pause", () => {
+                    callbacksRef.current.playClickAudio?.('Pause')
+                    callbacksRef.current.onTogglePlay()
+                  })
+                }
+              }, 350)
+              return true
+            } else {
+              if (callbacksRef.current.isPlaying && !callbacksRef.current.isPaused) {
+                applyCommand("pause", () => {
+                  callbacksRef.current.playClickAudio?.('Pause')
+                  callbacksRef.current.onTogglePlay()
+                })
+              }
+              return true
+            }
+          }
+          else if (check("next", "skip", "forward", "necks", "neck", "nex", "nix") || fuzzyCheck("next", 1) || fuzzyCheck("skip", 1)) {
+            applyCommand("next", () => {
+              callbacksRef.current.playClickAudio?.('Next')
+              callbacksRef.current.onNext()
+            })
+            return true
+          }
+          else if (check("previous", "prev", "back", "go back", "preveous", "previus", "privious", "preview") || fuzzyCheck("previous", 1) || fuzzyCheck("prev", 1) || fuzzyCheck("back", 1)) {
+            applyCommand("previous", () => {
+              callbacksRef.current.playClickAudio?.('Previous')
+              callbacksRef.current.onPrev()
+            })
+            return true
+          }
+          else if (check("restart", "start over", "reset", "refresh", "re start", "re-start") || fuzzyCheck("restart", 1) || fuzzyCheck("reset", 1)) {
+            applyCommand("restart", () => {
+              callbacksRef.current.playClickAudio?.('Restart')
+              callbacksRef.current.onRestart()
+            })
+            return true
+          }
+          else if (check("speed", "rate", "reading speed", "voice speed") || fuzzyCheck("speed", 1) || fuzzyCheck("rate", 1)) {
+            applyCommand("speed", () => {
+              callbacksRef.current.playClickAudio?.('Reading speed')
+              callbacksRef.current.onOpenReadingSpeed()
+            })
+            return true
+          }
+          else if (check("setting", "settings", "options", "open settings") || fuzzyCheck("settings", 1) || fuzzyCheck("options", 1)) {
+            applyCommand("settings", () => {
+              callbacksRef.current.playClickAudio?.('Settings')
+              callbacksRef.current.onOpenSettings()
+            })
+            return true
+          }
+          else if (check("minimize", "collapse", "hide", "mini") || fuzzyCheck("minimize", 1) || fuzzyCheck("collapse", 1)) {
+            if (!callbacksRef.current.isMinimized) {
+              applyCommand("minimize", () => {
+                callbacksRef.current.playClickAudio?.('Minimize')
+                callbacksRef.current.onMinimizeToggle()
+              })
+            }
+            return true
+          }
+          else if (check("expand", "maximize", "show", "open", "expend", "span") || fuzzyCheck("expand", 1) || fuzzyCheck("maximize", 1)) {
+            if (callbacksRef.current.isMinimized) {
+              applyCommand("expand", () => {
+                callbacksRef.current.playClickAudio?.('Expand')
+                callbacksRef.current.onMinimizeToggle()
+              })
+            }
+            return true
+          }
+          else if ((check("close", "exit", "quit", "dismiss", "duck", "dark", "deactivate", "turn off") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1) || fuzzyCheck("quit", 1)) && !check("deactivate voice", "deactivate voice command", "deactivate listening")) {
+            const isDeactivatePrefix = check("deactivate") && !check("deactivate voice", "deactivate voice command", "deactivate listening")
+            if (isDeactivatePrefix) {
+              if (commandTimeout) window.clearTimeout(commandTimeout)
+              commandTimeout = window.setTimeout(() => {
+                if (!isComponentMounted) return
+                applyCommand("close", () => {
+                  callbacksRef.current.playClickAudio?.('Close')
+                  callbacksRef.current.onClose()
+                })
+              }, 350)
+              return true
+            } else {
+              applyCommand("close", () => {
+                callbacksRef.current.playClickAudio?.('Close')
+                callbacksRef.current.onClose()
+              })
+              return true
+            }
+          }
+          else if (check("top", "go up") || fuzzyCheck("top", 1)) {
+            applyCommand("top", () => {
+              window.scrollTo({ top: 0, behavior: "smooth" })
+            })
+            return true
+          }
+          else if (check("bottom", "down below") || fuzzyCheck("bottom", 1)) {
+            applyCommand("bottom", () => {
+              window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })
+            })
+            return true
+          }
+          else if (check("scroll up", "up") && !check("go up", "top")) {
+            applyCommand("scroll-up", () => {
+              window.scrollBy({ top: -600, behavior: "smooth" })
+            })
+            return true
+          }
+          else if (check("scroll down", "down") && !check("down below", "bottom")) {
+            applyCommand("scroll-down", () => {
+              window.scrollBy({ top: 600, behavior: "smooth" })
+            })
+            return true
+          }
+        }
+        return false
+      }
+
+      runMatching(rawTranscript)
     }
 
     recognition.onerror = (event: any) => {
+      console.error("[Sensa VisualDock SpeechRecognition Error]", event.error)
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         isPermanentlyDead = true
         return
@@ -568,13 +774,13 @@ export default function VisualDock({
     const reviveEngineOnClick = () => {
       if (isPermanentlyDead && !isVoiceCommandsSuspended) {
         isPermanentlyDead = false
-        try { recognition.start() } catch (e) {}
+        try { recognition.start() } catch (e) { }
       }
     }
     window.addEventListener("click", reviveEngineOnClick)
 
     const startTimeout = window.setTimeout(() => {
-      try { recognition.start() } catch (e) {}
+      try { recognition.start() } catch (e) { }
     }, 150)
 
     return () => {
@@ -582,24 +788,27 @@ export default function VisualDock({
       window.removeEventListener("click", reviveEngineOnClick)
       if (restartTimer) window.clearTimeout(restartTimer)
       window.clearTimeout(startTimeout)
-      try { recognition.stop() } catch (e) {}
+      if (silenceTimer) window.clearTimeout(silenceTimer)
+      if (commandTimeout) window.clearTimeout(commandTimeout)
+      try { recognition.stop() } catch (e) { }
       recognition.onresult = null
       recognition.onerror = null
       recognition.onend = null
+      recognition.onsoundstart = null
     }
-  }, [isVoiceCommandsSuspended]) 
+  }, [isVoiceCommandsSuspended])
 
   return (
-    <div 
+    <div
       className="flex flex-col w-fit shrink-0 box-border relative z-50"
-      role="toolbar" 
+      role="toolbar"
       aria-label="Reading and Voice Controls"
       data-sensa-visual-dock
     >
       <div className={`flex flex-col items-center p-2 gap-2 shrink-0 relative z-30 ${glassPanelClass}`}>
-        <button 
-          type="button" 
-          className={`${btnBaseClass} ${btnHoverClass} bg-transparent`} 
+        <button
+          type="button"
+          className={`${btnBaseClass} ${btnHoverClass} bg-transparent`}
           tabIndex={-1}
           aria-label="Voice Command Visualizer"
           {...getHoverHandlers("Audio Visualizer")}
@@ -614,29 +823,29 @@ export default function VisualDock({
             handleToggleVoiceCommand()
           }}
           aria-pressed={isVoiceCommandActive}
-          className={`${btnBaseClass} text-white transition-all duration-300 ${isVoiceCommandActive 
+          className={`${btnBaseClass} text-white transition-all duration-300 ${isVoiceCommandActive
             ? "shadow-[0_0_0_1px_rgba(10,68,255,0.18),0_0_24px_rgba(10,68,255,0.42)] ring-4 ring-[#0A44FF]/30 bg-[#0A44FF]"
             : "bg-[#0A44FF] shadow-md shadow-[#0A44FF]/30 hover:bg-[#0836CC] hover:shadow-lg hover:shadow-[#0A44FF]/50"
-          }`}
+            }`}
           aria-label={isVoiceCommandActive ? "Stop Listening" : "Start Voice Command"}
           {...getHoverHandlers(isVoiceCommandActive ? "Stop Listening" : "Speak")}
         >
           <Tooltip label={isVoiceCommandActive ? "Stop Listening" : "Speak"} isDark={isDark} />
           <div className="relative flex items-center justify-center !w-full !h-full shrink-0" aria-hidden="true">
-            <svg 
-              viewBox="0 0 24 24" 
-              fill="currentColor" 
+            <svg
+              viewBox="0 0 24 24"
+              fill="currentColor"
               className={`absolute !w-5 !h-5 shrink-0 ${iconMotionClass} ${isVoiceCommandActive ? "opacity-100 scale-100" : "opacity-0 scale-[0.92]"}`}
             >
               <rect x="6" y="6" width="12" height="12" rx="2" />
             </svg>
-            <svg 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="currentColor" 
-              strokeWidth="2.5" 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
               className={`absolute !w-[22px] !h-[22px] shrink-0 ${iconMotionClass} ${isVoiceCommandActive ? "opacity-0 scale-[1.08]" : "opacity-100 scale-100"}`}
             >
               <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
@@ -647,28 +856,26 @@ export default function VisualDock({
         </button>
       </div>
 
-      <div 
-        className={`grid w-full relative z-10 transform-gpu backface-hidden will-change-[grid-template-rows] ${springTransition} ${
-          isMinimized ? "grid-rows-[0fr] mt-0" : "grid-rows-[1fr] mt-3"
-        }`}
+      <div
+        className={`grid w-full relative z-10 transform-gpu backface-hidden will-change-[grid-template-rows] ${springTransition} ${isMinimized ? "grid-rows-[0fr] mt-0" : "grid-rows-[1fr] mt-3"
+          }`}
       >
         <div className="min-h-0 flex justify-center w-full">
-          <div 
-            className={`flex flex-col items-center p-2 gap-1.5 w-fit origin-top transform-gpu backface-hidden will-change-[opacity,transform] ${springTransition} ${middleGlassPanelClass} ${
-              isMinimized 
-                ? "opacity-0 scale-75 -translate-y-4 pointer-events-none" 
-                : "opacity-100 scale-100 translate-y-0 pointer-events-auto"
-            }`}
+          <div
+            className={`flex flex-col items-center p-2 gap-1.5 w-fit origin-top transform-gpu backface-hidden will-change-[opacity,transform] ${springTransition} ${middleGlassPanelClass} ${isMinimized
+              ? "opacity-0 scale-75 -translate-y-4 pointer-events-none"
+              : "opacity-100 scale-100 translate-y-0 pointer-events-auto"
+              }`}
           >
             <button
               type="button"
               onClick={handleTogglePlay}
               aria-pressed={isPlayOptimistic}
               className={`${btnBaseClass} ${isMinimized ? "shadow-none hover:shadow-none" : btnAccentClass}`}
-              aria-label={isPlayOptimistic ? "Pause Reading" : "Play Reading"}
-              {...getHoverHandlers(isPlayOptimistic ? "Pause" : "Play")}
+              aria-label={isPlayOptimistic ? "Pause Reading" : "Read"}
+              {...getHoverHandlers(isPlayOptimistic ? "Pause" : "Read")}
             >
-              <Tooltip label={isPlayOptimistic ? "Pause" : "Play"} isDark={isDark} />
+              <Tooltip label={isPlayOptimistic ? "Pause" : "Read"} isDark={isDark} />
               {isPlayOptimistic ? (
                 <svg viewBox="0 0 24 24" fill="currentColor" className={`transition-transform duration-200 will-change-transform !w-[22px] !h-[22px] shrink-0`} aria-hidden="true">
                   <rect x="6" y="5" width="4" height="14" rx="1" />
@@ -761,8 +968,8 @@ export default function VisualDock({
             >
               <Tooltip label="Settings" isDark={isDark} />
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`${iconMotionClass} !w-[24px] !h-[24px] shrink-0`} aria-hidden="true">
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
-                <circle cx="12" cy="12" r="3"/>
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                <circle cx="12" cy="12" r="3" />
               </svg>
             </button>
           </div>
@@ -782,14 +989,14 @@ export default function VisualDock({
           {...getHoverHandlers(isMinimized ? "Expand" : "Minimize")}
         >
           <Tooltip label={isMinimized ? "Expand" : "Minimize"} isDark={isDark} />
-          
-          <svg 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
-            strokeWidth="2.5" 
-            strokeLinecap="round" 
-            strokeLinejoin="round" 
+
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
             className="!w-[22px] !h-[22px] shrink-0 transform-gpu backface-hidden will-change-transform"
             style={{
               transform: `rotate(${isMinimized ? 180 : 0}deg) translateZ(0)`,

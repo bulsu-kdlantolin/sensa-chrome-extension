@@ -626,9 +626,9 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
             {typedSubtitle}
           </p>
         </div>
- 
+
         <div className="w-full flex flex-col gap-3 px-2 py-2">
- 
+
           {visibleCards >= 1 && (
             <button
               onClick={() => onSelectMode("visual")}
@@ -636,7 +636,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
               onFocus={() => { playHoverSfx(); playHoverAudio("Visual Mode. Support low vision with guided reading and speech.") }}
               onMouseLeave={cancelHoverAudio}
               onBlur={cancelHoverAudio}
-              className={`w-full h-[104px] group relative flex items-center px-[20px] pt-[12px] pb-[18px] rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 active:scale-95 animate-pop ${springTransition}
+              className={`w-full h-[96px] group relative flex items-center px-[20px] pt-[12px] pb-[18px] rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 active:scale-95 animate-pop ${springTransition}
                 ${isDark
                   ? 'backdrop-blur-md bg-[#24262B]/85 border-[#3A3F4A] hover:border-[#0A44FF] hover:bg-[#262A31]/90 shadow-[0_10px_26px_rgba(0,0,0,0.35)] hover:shadow-[0_14px_32px_rgba(10,68,255,0.28)]'
                   : 'backdrop-blur-md bg-white/80 border-[#E2E6F0] hover:border-[#0A44FF] hover:bg-white/95 shadow-[0_8px_22px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_28px_rgba(10,68,255,0.2)]'
@@ -649,7 +649,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
                   <circle cx="12" cy="12" r="3" />
                 </svg>
               </div>
-  
+
               <div className="flex flex-col">
                 <h2 className={`text-[19px] font-extrabold tracking-tight mb-0.5 ${springTransition} ${isDark ? 'text-white group-hover:text-[#6AA2FF]' : 'text-gray-900 group-hover:text-[#0A44FF]'}`}>
                   Visual Mode
@@ -660,7 +660,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
               </div>
             </button>
           )}
- 
+
           {visibleCards >= 2 && (
             <button
               onClick={() => onSelectMode("auditory")}
@@ -668,7 +668,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
               onFocus={() => { playHoverSfx(); playHoverAudio("Auditory Mode. Support hearing loss with captions and visualizer.") }}
               onMouseLeave={cancelHoverAudio}
               onBlur={cancelHoverAudio}
-              className={`w-full h-[104px] group relative flex items-center px-[20px] pt-[12px] pb-[18px] rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 active:scale-95 animate-pop ${springTransition}
+              className={`w-full h-[96px] group relative flex items-center px-[20px] pt-[12px] pb-[18px] rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 active:scale-95 animate-pop ${springTransition}
                 ${isDark
                   ? 'backdrop-blur-md bg-[#24262B]/85 border-[#3A3F4A] hover:border-[#FF7A2F] hover:bg-[#262A31]/90 shadow-[0_10px_26px_rgba(0,0,0,0.35)] hover:shadow-[0_14px_32px_rgba(255,122,47,0.28)]'
                   : 'backdrop-blur-md bg-white/80 border-[#E2E6F0] hover:border-[#FF7A2F] hover:bg-white/95 shadow-[0_8px_22px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_28px_rgba(255,122,47,0.2)]'
@@ -681,7 +681,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
                   <path d="M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4" />
                 </svg>
               </div>
-  
+
               <div className="flex flex-col">
                 <h2 className={`text-[19px] font-extrabold tracking-tight mb-0.5 ${springTransition} ${isDark ? 'text-white group-hover:text-[#FFC09B]' : 'text-gray-900 group-hover:text-[#FF7A2F]'}`}>
                   Auditory Mode

@@ -83,6 +83,18 @@ export default function IndexPopup() {
     return () => chrome.storage.onChanged.removeListener(handleVoiceModeApplied)
   }, [])
 
+  // Automatically close the popup when Visual Mode is activated to immediately focus the user on the webpage dock
+  useEffect(() => {
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.sensa_visual_active?.newValue === true) {
+        window.close()
+      }
+    }
+
+    chrome.storage.onChanged.addListener(handleStorageChange)
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange)
+  }, [])
+
   // Establish a connection port with the active tab's content script to track when popup is open
   useEffect(() => {
     let port: chrome.runtime.Port | null = null

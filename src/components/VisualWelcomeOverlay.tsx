@@ -474,13 +474,18 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     narrationCanceledRef.current = true
     window.speechSynthesis.cancel()
     playPopSfx()
-    chrome.storage.local.set({ sensa_visual_entered_from_welcome: true }, () => {
+    chrome.storage.local.set({
+      sensa_visual_entered_from_welcome: true
+    }, () => {
       onGetStartedRef.current()
     })
   }
 
   useEffect(() => {
-    const sendVoiceBridgeMessage = (action: "start" | "stop") => {
+    let retryTimer: number | null = null
+    let isMounted = true
+
+    const sendVoiceBridgeMessage = (action: "start" | "stop", retries = 0) => {
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         const activeTab = tabs?.find(t => t.url && (t.url.startsWith("http://") || t.url.startsWith("https://"))) || tabs?.[0]
         const tabId = activeTab?.id
@@ -490,8 +495,14 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
           return
         }
 
-        chrome.tabs.sendMessage(tabId, { type: "sensa-welcome-voice", action }, () => {
+        chrome.tabs.sendMessage(tabId, { type: "sensa-welcome-voice", action }, (response) => {
           const err = chrome.runtime.lastError?.message
+          // Retry start if content script wasn't ready (message failed)
+          if (action === "start" && err && retries < 3 && isMounted) {
+            retryTimer = window.setTimeout(() => {
+              if (isMounted) sendVoiceBridgeMessage("start", retries + 1)
+            }, 800)
+          }
         })
       })
     }
@@ -511,6 +522,8 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     chrome.storage.onChanged.addListener(handleStorageChange)
 
     return () => {
+      isMounted = false
+      if (retryTimer !== null) window.clearTimeout(retryTimer)
       chrome.storage.onChanged.removeListener(handleStorageChange)
       sendVoiceBridgeMessage("stop")
       chrome.storage.local.remove("sensa_welcome_proceed_trigger")

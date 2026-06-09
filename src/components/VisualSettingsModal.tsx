@@ -14,10 +14,10 @@ const extractFirstWakeWord = (text: string) => {
   const cleaned = text.trim().replace(/[^a-zA-Z0-9\s'-]/gi, "")
   const tokens = cleaned.split(/\s+/).filter(Boolean)
   if (!tokens.length) return ""
-  
+
   const fillers = ["set", "to", "my", "word", "is", "the", "a", "this", "wake", "hello", "hey", "change", "please", "can", "you", "make"]
   const filtered = tokens.filter(t => !fillers.includes(t.toLowerCase()) && t.length >= 2)
-  
+
   const target = filtered.length > 0 ? filtered[filtered.length - 1] : tokens[tokens.length - 1]
   if (!target) return ""
   return target.charAt(0).toUpperCase() + target.slice(1).toLowerCase()
@@ -111,11 +111,10 @@ function WakeWordMicButton({
       disabled={disabled}
       aria-label={isListening ? "Stop recording wake word" : "Record wake word with microphone"}
       aria-pressed={isListening}
-      className={`absolute inset-y-0 right-1.5 my-auto flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/50 disabled:cursor-not-allowed disabled:opacity-40 ${
-        isListening
+      className={`absolute inset-y-0 right-1.5 my-auto flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/50 disabled:cursor-not-allowed disabled:opacity-40 ${isListening
           ? "bg-gradient-to-br from-[#0A44FF] to-[#0099FF] text-white shadow-md shadow-[#0A44FF]/30"
           : "text-[#0A44FF]/70 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF]"
-      }`}
+        }`}
     >
       {isListening ? (
         <div className="flex items-center justify-center gap-[2px] w-[22px] h-[22px]" aria-hidden="true">
@@ -152,7 +151,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const highlightSoundDebounceRef = useRef<number | null>(null)
   const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState<boolean>(true)
   const isSoundEffectsEnabledRef = useRef<boolean>(true)
-  
+
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR)
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([])
@@ -161,7 +160,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const [selectedOutputDeviceId, setSelectedOutputDeviceId] = useState(DEFAULT_OUTPUT_DEVICE_ID)
   const [isAutoscrollEnabled, setIsAutoscrollEnabled] = useState(true)
   const [isHighlightMouseScreenReaderEnabled, setIsHighlightMouseScreenReaderEnabled] = useState(false)
-  
+
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>("")
   const defaultVoiceURIRef = useRef<string>("")
@@ -280,7 +279,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
 
   const selectedVoiceURIRef = useRef(selectedVoiceURI)
   const hasAnnouncedOpenRef = useRef(false)
-  const speakSettingsGuideRef = useRef<(message: string) => void>(() => {})
+  const speakSettingsGuideRef = useRef<(message: string) => void>(() => { })
 
   useEffect(() => {
     selectedVoiceURIRef.current = selectedVoiceURI
@@ -457,9 +456,9 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
 
   React.useEffect(() => {
     chrome.storage.local.get([
-      "sensa_visual_highlight_color", 
-      "sensa_visual_input_device_id", 
-      "sensa_visual_output_device_id", 
+      "sensa_visual_highlight_color",
+      "sensa_visual_input_device_id",
+      "sensa_visual_output_device_id",
       "sensa_visual_autoscroll_enabled",
       "sensa_visual_voice_guide_enabled",
       "sensa_visual_sound_effects_enabled",
@@ -508,7 +507,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       recognition.onresult = null
       recognition.onerror = null
       recognition.onend = null
-      try { recognition.stop() } catch {}
+      try { recognition.stop() } catch { }
     }
     if (options?.resumeSettings !== false) {
       resumeSettingsVoiceRecognition()
@@ -581,7 +580,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
         window.setTimeout(() => {
           if (captured || wakeWordCapturedRef.current || !isWakeWordCapturingRef.current || !hasListenTimeRemaining()) return
           if (wakeWordCaptureRef.current !== recognition) return
-          try { recognition.start() } catch {}
+          try { recognition.start() } catch { }
         }, 300)
       }
     }
@@ -603,12 +602,12 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
 
     recognition.onresult = (event: any) => {
       if (captured || wakeWordCapturedRef.current) return
-      
+
       let newSpeech = ""
-      for(let i = event.resultIndex; i < event.results.length; i++){
+      for (let i = event.resultIndex; i < event.results.length; i++) {
         newSpeech += event.results[i][0].transcript + " "
       }
-      
+
       if (newSpeech.trim()) {
         wakeWordLatestTranscriptRef.current = newSpeech
         if (tryApplyWakeWordFromTranscript(newSpeech)) {
@@ -757,7 +756,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             sampleRate: 48000
           }
         })
-      } catch {}
+      } catch { }
       const devices = await navigator.mediaDevices.enumerateDevices()
       setInputDevices(devices.filter((d) => d.kind === "audioinput"))
       setOutputDevices(devices.filter((d) => d.kind === "audiooutput"))
@@ -787,7 +786,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
         if (isWakeWordCapturingRef.current) return
-        try { recognition.start() } catch {}
+        try { recognition.start() } catch { }
       }, 300)
     }
 
@@ -796,7 +795,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
         window.clearTimeout(restartTimer)
         restartTimer = null
       }
-      try { recognition.stop() } catch {}
+      try { recognition.stop() } catch { }
     }
 
     resumeSettingsRecognitionRef.current = () => {
@@ -976,7 +975,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
 
     const initialStartTimer = window.setTimeout(() => {
       if (!isComponentMounted || isWakeWordCapturingRef.current) return
-      try { recognition.start() } catch {}
+      try { recognition.start() } catch { }
     }, 1500)
 
     return () => {
@@ -986,7 +985,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       pauseSettingsRecognitionRef.current = null
       resumeSettingsRecognitionRef.current = null
       if (restartTimer) window.clearTimeout(restartTimer)
-      try { recognition.stop() } catch {}
+      try { recognition.stop() } catch { }
       recognition.onresult = null
       recognition.onerror = null
       recognition.onend = null
@@ -1094,7 +1093,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.target === event.currentTarget) {
       playClickSfx()
-      announceIfVoiceGuide("Closing settings")
       setIsMounted(false)
       setTimeout(onClose, 300)
     }
@@ -1120,8 +1118,8 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     : "relative inline-block w-12 h-7 rounded-full bg-gray-300 shadow-inner peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] peer-checked:after:translate-x-[20px] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:border-gray-200 after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:after:border-white"
 
   return (
-    <div 
-      onClick={handleBackdropClick} 
+    <div
+      onClick={handleBackdropClick}
       className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/30 backdrop-blur-sm font-sans transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
       role="dialog"
       aria-modal="true"
@@ -1141,10 +1139,9 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
           <h2 className="text-[26px] font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#0A44FF] to-[#0099FF]">
             Visual Settings
           </h2>
-          <button 
+          <button
             onClick={() => {
               playClickSfx()
-              announceIfVoiceGuide("Closing settings")
               setIsMounted(false)
               setTimeout(onClose, 300)
             }}
@@ -1160,14 +1157,14 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
         </div>
 
         <div className="flex flex-col gap-3">
-          
+
           <label
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
             {...getHoverHandlers("Voice Guide")}
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 pointer-events-none">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="22" /></svg>
               <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Voice Guide</span>
             </div>
             <span className="relative inline-flex items-center shrink-0 pointer-events-none">
@@ -1187,7 +1184,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 pointer-events-none">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M19 9a5 5 0 0 1 0 6"/><path d="M21 7a9 9 0 0 1 0 10"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M11 5 6 9H2v6h4l5 4z" /><path d="M19 9a5 5 0 0 1 0 6" /><path d="M21 7a9 9 0 0 1 0 10" /></svg>
               <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Sound Effects</span>
             </div>
             <span className="relative inline-flex items-center shrink-0 pointer-events-none">
@@ -1201,16 +1198,16 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             </span>
           </label>
 
-          <div 
+          <div
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative z-50 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
             {...getHoverHandlers("Voice Selection")}
           >
             <div className="flex items-center gap-3">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><line x1="4" y1="6" x2="4" y2="18"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="12" y1="4" x2="12" y2="20"/><line x1="16" y1="8" x2="16" y2="16"/><line x1="20" y1="11" x2="20" y2="13"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><line x1="4" y1="6" x2="4" y2="18" /><line x1="8" y1="10" x2="8" y2="14" /><line x1="12" y1="4" x2="12" y2="20" /><line x1="16" y1="8" x2="16" y2="16" /><line x1="20" y1="11" x2="20" y2="13" /></svg>
               <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Voice Selection</span>
             </div>
             <div className="relative w-[190px]">
-              <button 
+              <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); playClickSfx(); setIsVoiceDropdownOpen((prev) => !prev); playClickAudio("Voice selection") }}
                 className={`w-full text-left border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
@@ -1226,7 +1223,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
                   })()}
                 </span>
                 <div className={`pointer-events-none absolute inset-y-0 right-3 flex items-center ${secondaryText}`}>
-                  <svg className={`fill-current h-4 w-4 transition-transform duration-300 ${isVoiceDropdownOpen ? "rotate-180" : ""}`} viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                  <svg className={`fill-current h-4 w-4 transition-transform duration-300 ${isVoiceDropdownOpen ? "rotate-180" : ""}`} viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
                 </div>
               </button>
 
@@ -1235,7 +1232,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
                   <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }} />
                   <ul className={`absolute right-0 z-50 mt-2 w-[240px] max-h-56 overflow-y-auto ${modalBg} border ${inputBorder} rounded-xl shadow-2xl py-2 text-[13px] custom-scrollbar`} role="listbox">
                     {voices.map((voice) => (
-                      <li 
+                      <li
                         key={voice.voiceURI}
                         role="option"
                         aria-selected={selectedVoiceURI === voice.voiceURI}
@@ -1253,12 +1250,12 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             </div>
           </div>
 
-          <div 
+          <div
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
             {...getHoverHandlers("Wake Word")}
           >
             <div className="flex items-center gap-3">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2l1.6 3.6L17 7l-3.4 1.4L12 12l-1.6-3.6L7 7l3.4-1.4L12 2z"/><path d="M4 14l.9 2 2 .9-2 .9-.9 2-.9-2-2-.9 2-.9.9-2z"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2l1.6 3.6L17 7l-3.4 1.4L12 12l-1.6-3.6L7 7l3.4-1.4L12 2z" /><path d="M4 14l.9 2 2 .9-2 .9-.9 2-.9-2-2-.9 2-.9.9-2z" /></svg>
               <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Wake Word</span>
             </div>
             <div className="relative w-[190px]">
@@ -1270,9 +1267,8 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
                 placeholder="e.g. Sensa"
                 aria-label="Wake Word"
                 disabled={isCapturingWakeWord}
-                className={`w-full border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-12 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 transition-all hover:shadow-md disabled:opacity-70 ${
-                  isCapturingWakeWord ? "ring-2 ring-[#0A44FF]/50" : ""
-                }`}
+                className={`w-full border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-12 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 transition-all hover:shadow-md disabled:opacity-70 ${isCapturingWakeWord ? "ring-2 ring-[#0A44FF]/50" : ""
+                  }`}
               />
               <WakeWordMicButton
                 isListening={isCapturingWakeWord}
@@ -1289,7 +1285,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 pointer-events-none">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /><path d="M13 13l6 6" /></svg>
               <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Mouse Reader</span>
             </div>
             <span className="relative inline-flex items-center shrink-0 pointer-events-none">
@@ -1309,7 +1305,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             onMouseDown={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 pointer-events-none">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><rect x="5" y="4" width="14" height="16" rx="2"/><path d="M12 7l2 2-2 2"/><path d="M12 17l-2-2 2-2"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><rect x="5" y="4" width="14" height="16" rx="2" /><path d="M12 7l2 2-2 2" /><path d="M12 17l-2-2 2-2" /></svg>
               <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Autoscroll Reading</span>
             </div>
             <span className="relative inline-flex items-center shrink-0 pointer-events-none">
@@ -1323,16 +1319,16 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             </span>
           </label>
 
-          <div 
+          <div
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
             {...getHoverHandlers("Highlight color")}
           >
             <div className="flex items-center gap-3">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M14.5 4.5l5 5"/><path d="M11 8l-7 7-1 4 4-1 7-7"/><path d="M14 7l3 3"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M14.5 4.5l5 5" /><path d="M11 8l-7 7-1 4 4-1 7-7" /><path d="M14 7l3 3" /></svg>
               <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Highlight Color</span>
             </div>
             <div className="relative flex items-center justify-end w-[190px]">
-              <button 
+              <button
                 type="button"
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={(e) => { e.stopPropagation(); playClickSfx(); setShowColorPicker((prev) => !prev); playClickAudio(showColorPicker ? "Highlight color closed" : "Highlight color opened") }}
@@ -1350,12 +1346,12 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             </div>
           </div>
 
-          <div 
+          <div
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
             {...getHoverHandlers("Input Device")}
           >
             <div className="flex items-center gap-3">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="22" /></svg>
               <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Input Device</span>
             </div>
             <div className="relative w-[190px]">
@@ -1367,17 +1363,17 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
                 {inputDevices.map((d, i) => <option key={d.deviceId || `in-${i}`} value={d.deviceId}>{d.label || `Microphone ${i + 1}`}</option>)}
               </select>
               <div className={`pointer-events-none absolute inset-y-0 right-3 flex items-center ${secondaryText}`}>
-                <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
               </div>
             </div>
           </div>
 
-          <div 
+          <div
             className={`flex items-center justify-between py-3 px-3 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
             {...getHoverHandlers("Output Device")}
           >
             <div className="flex items-center gap-3">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" /></svg>
               <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Output Device</span>
             </div>
             <div className="relative w-[190px]">
@@ -1389,7 +1385,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
                 {outputDevices.map((d, i) => <option key={d.deviceId || `out-${i}`} value={d.deviceId}>{d.label || `Speaker ${i + 1}`}</option>)}
               </select>
               <div className={`pointer-events-none absolute inset-y-0 right-3 flex items-center ${secondaryText}`}>
-                <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
               </div>
             </div>
           </div>
@@ -1397,13 +1393,13 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
         </div>
 
         <div className="mt-8 flex justify-center">
-          <button 
+          <button
             type="button"
             onClick={handleResetToDefault}
             className={`flex items-center gap-2 bg-transparent hover:bg-[#0A44FF]/10 hover:text-[#0A44FF] hover:border-[#0A44FF]/30 dark:hover:bg-[#0A44FF]/20 dark:hover:border-[#0A44FF]/40 ${textColor} border ${inputBorder} font-semibold h-11 px-8 rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 text-[14px] tracking-wide hover:shadow-sm`}
             {...getHoverHandlers("Reset to default")}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><polyline points="3 3 3 8 8 8" /></svg>
             Restore Defaults
           </button>
         </div>

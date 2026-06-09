@@ -353,6 +353,7 @@ export function useSpeech(
     if (isVisualModeActive) return;
 
     speechSessionRef.current += 1;
+    window.speechSynthesis.resume();
     window.speechSynthesis.cancel();
     setIsPlaying(false);
     setIsPaused(false);
@@ -429,6 +430,7 @@ export function useSpeech(
       currentSegmentIndexRef.current = safeIndex;
       currentCharOffsetRef.current = safeStartOffset;
 
+      window.speechSynthesis.resume();
       window.speechSynthesis.cancel();
       if (isOverlaySuppressedRef.current) {
         clearSentenceOverlay();
@@ -546,6 +548,7 @@ export function useSpeech(
     return () => {
       window.clearTimeout(timeout);
       speechSessionRef.current += 1;
+      window.speechSynthesis.resume();
       window.speechSynthesis.cancel();
       clearSentenceOverlay();
 
@@ -578,6 +581,7 @@ export function useSpeech(
 
     if (isPlaying && !isPaused) {
       speechSessionRef.current += 1;
+      window.speechSynthesis.resume();
       window.speechSynthesis.cancel();
       setIsPaused(true);
       return;

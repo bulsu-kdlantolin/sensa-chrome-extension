@@ -17,12 +17,12 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   const audioCtxRef = useRef<AudioContext | null>(null)
   const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState(true)
   const isSoundEffectsEnabledRef = useRef(true)
-  
+
   // Dragging State
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
   const [initialOffsetLoaded, setInitialOffsetLoaded] = useState(false)
   const [isMounted, setIsMounted] = useState(false) // For mount animations
-  
+
   const offsetRef = useRef(offset)
   const draggingRef = useRef(false)
   const dragStartRef = useRef({ x: 0, y: 0 })
@@ -291,7 +291,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       if (!isComponentMounted) return
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
-        try { recognition.start() } catch {}
+        try { recognition.start() } catch { }
       }, 300)
     }
 
@@ -371,12 +371,12 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
 
     recognition.onend = () => scheduleRestart()
 
-    try { recognition.start() } catch {}
+    try { recognition.start() } catch { }
 
     return () => {
       isComponentMounted = false
       if (restartTimer) window.clearTimeout(restartTimer)
-      try { recognition.stop() } catch {}
+      try { recognition.stop() } catch { }
       recognition.onresult = null
       recognition.onerror = null
       recognition.onend = null
@@ -395,8 +395,8 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     : "bg-transparent hover:bg-black/5 text-gray-400 hover:text-gray-900 hover:shadow-[0_10px_20px_-12px_rgba(15,23,42,0.28)]"
 
   return (
-    <div 
-      onClick={handleBackdropClick} 
+    <div
+      onClick={handleBackdropClick}
       className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/30 backdrop-blur-sm font-sans transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
       aria-modal="true"
       role="dialog"
@@ -418,7 +418,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
               Reading Speed
             </h2>
 
-            <button 
+            <button
               onClick={() => {
                 setIsMounted(false)
                 playClickSfx()
@@ -445,58 +445,59 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
 
           <div className={`rounded-2xl border ${inputBorder} ${isDark ? 'bg-white/[0.03]' : 'bg-black/[0.02]'} p-5`}>
             <div className="flex items-center gap-4 mb-6">
-          {/* Minus Button */}
-          <button 
-            onClick={handleDecrease}
-            className="w-[52px] h-[52px] flex-shrink-0 flex items-center justify-center bg-gradient-to-r from-[#0A44FF] to-[#0099FF] hover:brightness-105 hover:-translate-y-[1px] hover:shadow-[0_16px_24px_-14px_rgba(10,68,255,0.7)] text-white rounded-full transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg"
-            aria-label="Decrease speed"
-            {...getHoverHandlers("Decrease speed")}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
+              {/* Minus Button */}
+              <button
+                onClick={handleDecrease}
+                className="w-[52px] h-[52px] flex-shrink-0 flex items-center justify-center bg-gradient-to-r from-[#0A44FF] to-[#0099FF] hover:brightness-105 hover:-translate-y-[1px] hover:shadow-[0_16px_24px_-14px_rgba(10,68,255,0.7)] text-white rounded-full transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg"
+                aria-label="Decrease speed"
+                {...getHoverHandlers("Decrease speed")}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </button>
 
-          {/* 🚨 Chunky High-Contrast Slider */}
-          <div className="flex-1 relative flex items-center">
-            <input 
-              type="range" 
-              min="0.5" 
-              max="3" 
-              step="0.05"
-              value={speed}
-              onChange={(e) => {
-                handleSliderChange(e)
-                onSpeedChange?.(parseFloat(e.target.value))
-              }}
-              onMouseUp={() => {
-                onSpeedChange?.(speed)
-                playClickSfx()
-                playClickAudio(`${speed.toFixed(2).replace(/\.00$/, '')}x`)
-              }}
-              onTouchEnd={() => {
-                onSpeedChange?.(speed)
-                playClickSfx()
-                playClickAudio(`${speed.toFixed(2).replace(/\.00$/, '')}x`)
-              }}
-              onKeyUp={(e: React.KeyboardEvent<HTMLInputElement>) => {
-                const k = (e as any).key as string
-                const keysToAnnounce = ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']
-                if (keysToAnnounce.includes(k)) {
-                  onSpeedChange?.(speed)
-                  playClickAudio(`${speed.toFixed(2).replace(/\.00$/, '')}x`)
-                }
-              }}
-              aria-label="Reading Speed"
-              className="reading-speed-slider w-full h-[14px] rounded-full appearance-none cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50"
-              onMouseEnter={() => playHoverAudio("Reading Speed Slider")}
-              onMouseLeave={cancelHoverAudio}
-              onPointerEnter={() => playHoverSfx()}
-              style={{
-                background: `linear-gradient(to right, #0A44FF 0%, #0A44FF ${((speed - 0.5) / (3 - 0.5)) * 100}%, ${sliderUnfilled} ${((speed - 0.5) / (3 - 0.5)) * 100}%, ${sliderUnfilled} 100%)`
-              }}
-            />
-            <style dangerouslySetInnerHTML={{ __html: `
+              {/* 🚨 Chunky High-Contrast Slider */}
+              <div className="flex-1 relative flex items-center">
+                <input
+                  type="range"
+                  min="0.5"
+                  max="3"
+                  step="0.05"
+                  value={speed}
+                  onChange={(e) => {
+                    handleSliderChange(e)
+                    onSpeedChange?.(parseFloat(e.target.value))
+                  }}
+                  onMouseUp={() => {
+                    onSpeedChange?.(speed)
+                    playClickSfx()
+                    playClickAudio(`${speed.toFixed(2).replace(/\.00$/, '')}x`)
+                  }}
+                  onTouchEnd={() => {
+                    onSpeedChange?.(speed)
+                    playClickSfx()
+                    playClickAudio(`${speed.toFixed(2).replace(/\.00$/, '')}x`)
+                  }}
+                  onKeyUp={(e: React.KeyboardEvent<HTMLInputElement>) => {
+                    const k = (e as any).key as string
+                    const keysToAnnounce = ['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']
+                    if (keysToAnnounce.includes(k)) {
+                      onSpeedChange?.(speed)
+                      playClickAudio(`${speed.toFixed(2).replace(/\.00$/, '')}x`)
+                    }
+                  }}
+                  aria-label="Reading Speed"
+                  className="reading-speed-slider w-full h-[14px] rounded-full appearance-none cursor-pointer focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50"
+                  onMouseEnter={() => playHoverAudio("Reading Speed Slider")}
+                  onMouseLeave={cancelHoverAudio}
+                  onPointerEnter={() => playHoverSfx()}
+                  style={{
+                    background: `linear-gradient(to right, #0A44FF 0%, #0A44FF ${((speed - 0.5) / (3 - 0.5)) * 100}%, ${sliderUnfilled} ${((speed - 0.5) / (3 - 0.5)) * 100}%, ${sliderUnfilled} 100%)`
+                  }}
+                />
+                <style dangerouslySetInnerHTML={{
+                  __html: `
               .reading-speed-slider::-webkit-slider-thumb {
                 appearance: none;
                 width: 28px;
@@ -525,72 +526,71 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
                 transform: scale(1.08);
               }
             `}} />
-          </div>
+              </div>
 
-          {/* Plus Button */}
-          <button 
-            onClick={handleIncrease}
-            className="w-[52px] h-[52px] flex-shrink-0 flex items-center justify-center bg-gradient-to-r from-[#0A44FF] to-[#0099FF] hover:brightness-105 hover:-translate-y-[1px] hover:shadow-[0_16px_24px_-14px_rgba(10,68,255,0.7)] text-white rounded-full transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg"
-            aria-label="Increase speed"
-            {...getHoverHandlers("Increase speed")}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
+              {/* Plus Button */}
+              <button
+                onClick={handleIncrease}
+                className="w-[52px] h-[52px] flex-shrink-0 flex items-center justify-center bg-gradient-to-r from-[#0A44FF] to-[#0099FF] hover:brightness-105 hover:-translate-y-[1px] hover:shadow-[0_16px_24px_-14px_rgba(10,68,255,0.7)] text-white rounded-full transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg"
+                aria-label="Increase speed"
+                {...getHoverHandlers("Increase speed")}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+              </button>
             </div>
 
             <div className="flex justify-between gap-2.5">
-          {speedStops.map((stop) => (
-            <button
-              key={stop}
-              onClick={() => {
-                setSpeed(stop)
-                onSpeedChange?.(stop)
-                playClickSfx()
-                playClickAudio(`${stop}x`)
-              }}
-              aria-pressed={speed === stop}
-              {...getHoverHandlers(`${stop}x`) }
-              className={`flex-1 h-[42px] overflow-hidden bg-clip-padding rounded-full text-[14px] font-semibold transition-all duration-200 border border-transparent focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 ${
-                speed === stop 
-                  ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white shadow-lg border-[#4FA5FF]/40" 
-                  : `${quickChipClass} hover:border-[#0A44FF]/20 hover:-translate-y-[1px] hover:shadow-[0_10px_18px_-14px_rgba(10,68,255,0.35)]`
-              }`}
-            >
-              {stop}x
-            </button>
-          ))}
+              {speedStops.map((stop) => (
+                <button
+                  key={stop}
+                  onClick={() => {
+                    setSpeed(stop)
+                    onSpeedChange?.(stop)
+                    playClickSfx()
+                    playClickAudio(`${stop}x`)
+                  }}
+                  aria-pressed={speed === stop}
+                  {...getHoverHandlers(`${stop}x`)}
+                  className={`flex-1 h-[42px] overflow-hidden bg-clip-padding rounded-full text-[14px] font-semibold transition-all duration-200 border border-transparent focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 ${speed === stop
+                      ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white shadow-lg border-[#4FA5FF]/40"
+                      : `${quickChipClass} hover:border-[#0A44FF]/20 hover:-translate-y-[1px] hover:shadow-[0_10px_18px_-14px_rgba(10,68,255,0.35)]`
+                    }`}
+                >
+                  {stop}x
+                </button>
+              ))}
             </div>
           </div>
 
           <div className="mt-8 flex justify-end gap-3">
-          <button
-            onClick={() => {
-              setIsMounted(false)
-              playClickSfx()
-              playClickAudio("Cancel")
-              setTimeout(onClose, 300)
-            }}
-            className={`h-11 px-6 rounded-xl border ${inputBorder} ${inputBg} ${textColor} text-[14px] font-semibold transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_10px_20px_-14px_rgba(15,23,42,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/40`}
-            {...getHoverHandlers("Cancel")}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => {
-              commitSpeed()
-              playClickSfx()
-              playClickAudio(`Speed set to ${formattedSpeed}x`)
-              setIsMounted(false)
-              setTimeout(onClose, 300)
-            }}
-            className="h-11 px-7 rounded-xl bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-[14px] font-semibold text-white hover:brightness-105 hover:-translate-y-[1px] hover:shadow-[0_16px_26px_-14px_rgba(10,68,255,0.7)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 shadow-lg"
-            {...getHoverHandlers("Apply")}
-          >
-            Apply
-          </button>
+            <button
+              onClick={() => {
+                setIsMounted(false)
+                playClickSfx()
+                playClickAudio("Cancel")
+                setTimeout(onClose, 300)
+              }}
+              className={`h-11 px-6 rounded-xl border ${inputBorder} ${inputBg} ${textColor} text-[14px] font-semibold transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_10px_20px_-14px_rgba(15,23,42,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/40`}
+              {...getHoverHandlers("Cancel")}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                commitSpeed()
+                playClickSfx()
+                playClickAudio(`Speed set to ${formattedSpeed}x`)
+                setIsMounted(false)
+                setTimeout(onClose, 300)
+              }}
+              className="h-11 px-7 rounded-xl bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-[14px] font-semibold text-white hover:brightness-105 hover:-translate-y-[1px] hover:shadow-[0_16px_26px_-14px_rgba(10,68,255,0.7)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 shadow-lg"
+              {...getHoverHandlers("Apply")}
+            >
+              Apply
+            </button>
           </div>
         </div>
       </div>

@@ -61,6 +61,7 @@ export function useUIHoverAudio() {
 		if (!text.trim()) return
 
 		const speakNow = () => {
+			window.speechSynthesis.resume()
 			window.speechSynthesis.cancel()
 			speechOwnerRef.current = owner
 			isHoverSpeakingRef.current = true
@@ -138,6 +139,7 @@ export function useUIHoverAudio() {
 
 		// Never cancel click-owned speech (e.g. mode switch announcements).
 		if (speechOwnerRef.current === "hover" && isHoverSpeakingRef.current) {
+			window.speechSynthesis.resume()
 			window.speechSynthesis.cancel()
 			speechOwnerRef.current = "none"
 			isHoverSpeakingRef.current = false
@@ -182,6 +184,7 @@ export function useUIHoverAudio() {
 				tabVisibleAtRef.current = performance.now()
 				clearHoverTimeout()
 				if (speechOwnerRef.current === "hover" && isHoverSpeakingRef.current) {
+					window.speechSynthesis.resume()
 					window.speechSynthesis.cancel()
 					speechOwnerRef.current = "none"
 					isHoverSpeakingRef.current = false
@@ -199,6 +202,7 @@ export function useUIHoverAudio() {
 			clearHoverTimeout()
 			clearVoiceRetry()
 			if (isHoverSpeakingRef.current) {
+				window.speechSynthesis.resume()
 				window.speechSynthesis.cancel()
 				speechOwnerRef.current = "none"
 				isHoverSpeakingRef.current = false
