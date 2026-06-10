@@ -490,6 +490,25 @@ export default function VisualDock({
     let currentResultIndex = 0
     let globalBuffer = ""
     let ignoreSpeechUntil = 0
+    let lastCommandName = ""
+    let consumedKeywords: string[] = []
+
+    const getKeywordsForCommand = (cmd: string) => {
+      switch(cmd) {
+        case "play": return ["play", "resume", "continue", "start reading", "read"]
+        case "pause": return ["pause", "halt", "stop reading", "stop playing", "stop", "pass", "post", "pose", "boss", "paused"]
+        case "next": return ["next", "skip", "forward", "necks", "neck", "nex", "nix"]
+        case "previous": return ["previous", "prev", "previ", "preevi", "back", "go back", "preveous", "previus", "privious", "preview"]
+        case "restart": return ["restart", "start over", "reset", "refresh", "re start", "re-start"]
+        case "speed": return ["speed", "rate", "reading speed", "voice speed"]
+        case "settings": return ["setting", "settings", "options", "open settings"]
+        case "minimize": return ["minimize", "collapse", "hide", "mini"]
+        case "expand": return ["expand", "maximize", "show", "open", "expend", "span"]
+        case "close": return ["close", "exit", "quit", "dismiss", "duck", "dark", "deactivate", "turn off"]
+        case "deactivate-voice": return ["stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening"]
+        default: return []
+      }
+    }
 
     const resetSilenceTimer = () => {
       if (silenceTimer) {
@@ -531,6 +550,8 @@ export default function VisualDock({
 
       if (event.resultIndex !== currentResultIndex) {
         currentResultIndex = event.resultIndex
+        consumedKeywords = []
+        globalBuffer = ""
       }
 
       let interimChunk = ""
@@ -559,7 +580,15 @@ export default function VisualDock({
       }
 
       const runMatching = (text: string) => {
-        const cleanText = normalizeInput(text)
+        let cleanText = normalizeInput(text)
+        
+        if (consumedKeywords.length > 0) {
+          consumedKeywords.forEach(kw => {
+            cleanText = cleanText.replace(new RegExp(`\\b${kw}\\b`), " ")
+          })
+          cleanText = cleanText.replace(/\s+/g, " ").trim()
+        }
+
         if (!cleanText) return false
 
         const paddedSpeech = ` ${cleanText} `
@@ -572,11 +601,12 @@ export default function VisualDock({
         let shouldProcessCommands = callbacksRef.current.isVoiceCommandActive
 
         const applyCommand = (commandName: string, action: () => void) => {
-          if (Date.now() < ignoreSpeechUntil) return
+          if (Date.now() < ignoreSpeechUntil && commandName === lastCommandName) return
           if (commandName !== "activate-voice") {
-            ignoreSpeechUntil = Date.now() + 1500
+            ignoreSpeechUntil = Date.now() + 800
+            lastCommandName = commandName
+            consumedKeywords.push(...getKeywordsForCommand(commandName))
           }
-          globalBuffer = ""
           action()
         }
 
@@ -615,16 +645,14 @@ export default function VisualDock({
                   if (!isComponentMounted) return
                   if (!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) {
                     applyCommand("play", () => {
-                      callbacksRef.current.playClickAudio?.('Read')
                       callbacksRef.current.onTogglePlay()
                     })
                   }
-                }, 350)
+                }, 150)
                 return true
               } else {
                 if (!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) {
                   applyCommand("play", () => {
-                    callbacksRef.current.playClickAudio?.('Read')
                     callbacksRef.current.onTogglePlay()
                   })
                 }
@@ -640,17 +668,17 @@ export default function VisualDock({
                 if (!isComponentMounted) return
                 if (callbacksRef.current.isPlaying && !callbacksRef.current.isPaused) {
                   applyCommand("pause", () => {
-                    callbacksRef.current.playClickAudio?.('Pause')
                     callbacksRef.current.onTogglePlay()
+                    callbacksRef.current.playClickAudio?.('Pause')
                   })
                 }
-              }, 350)
+              }, 150)
               return true
             } else {
               if (callbacksRef.current.isPlaying && !callbacksRef.current.isPaused) {
                 applyCommand("pause", () => {
-                  callbacksRef.current.playClickAudio?.('Pause')
                   callbacksRef.current.onTogglePlay()
+                  callbacksRef.current.playClickAudio?.('Pause')
                 })
               }
               return true
@@ -658,21 +686,18 @@ export default function VisualDock({
           }
           else if (check("next", "skip", "forward", "necks", "neck", "nex", "nix") || fuzzyCheck("next", 1) || fuzzyCheck("skip", 1)) {
             applyCommand("next", () => {
-              callbacksRef.current.playClickAudio?.('Next')
               callbacksRef.current.onNext()
             })
             return true
           }
-          else if (check("previous", "prev", "back", "go back", "preveous", "previus", "privious", "preview") || fuzzyCheck("previous", 1) || fuzzyCheck("prev", 1) || fuzzyCheck("back", 1)) {
+          else if (check("previous", "prev", "previ", "preevi", "back", "go back", "preveous", "previus", "privious", "preview") || fuzzyCheck("previous", 1) || fuzzyCheck("prev", 1) || fuzzyCheck("back", 1)) {
             applyCommand("previous", () => {
-              callbacksRef.current.playClickAudio?.('Previous')
               callbacksRef.current.onPrev()
             })
             return true
           }
           else if (check("restart", "start over", "reset", "refresh", "re start", "re-start") || fuzzyCheck("restart", 1) || fuzzyCheck("reset", 1)) {
             applyCommand("restart", () => {
-              callbacksRef.current.playClickAudio?.('Restart')
               callbacksRef.current.onRestart()
             })
             return true
@@ -719,7 +744,7 @@ export default function VisualDock({
                   callbacksRef.current.playClickAudio?.('Close')
                   callbacksRef.current.onClose()
                 })
-              }, 350)
+              }, 150)
               return true
             } else {
               applyCommand("close", () => {
@@ -754,10 +779,34 @@ export default function VisualDock({
             return true
           }
         }
+
+        // Fallback: expand and close should work even when voice commands are not active
+        // (e.g., after silence timer deactivation). These are dock-level escape hatches.
+        if (!shouldProcessCommands) {
+          if (check("expand", "maximize", "show", "expend", "span") || fuzzyCheck("expand", 1) || fuzzyCheck("maximize", 1)) {
+            if (callbacksRef.current.isMinimized) {
+              applyCommand("expand", () => {
+                callbacksRef.current.playClickAudio?.('Expand')
+                callbacksRef.current.onMinimizeToggle()
+              })
+            }
+            return true
+          }
+          else if ((check("close", "exit", "quit", "dismiss", "deactivate", "turn off") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1) || fuzzyCheck("quit", 1)) && !check("deactivate voice", "deactivate voice command", "deactivate listening")) {
+            applyCommand("close", () => {
+              callbacksRef.current.playClickAudio?.('Close')
+              callbacksRef.current.onClose()
+            })
+            return true
+          }
+        }
+
         return false
       }
 
-      runMatching(rawTranscript)
+      if (runMatching(rawTranscript)) {
+        globalBuffer = ""
+      }
     }
 
     recognition.onerror = (event: any) => {

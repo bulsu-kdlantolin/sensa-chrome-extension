@@ -5,138 +5,6 @@ import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 const DEFAULT_HIGHLIGHT_COLOR = "#FFFE00"
 const DEFAULT_INPUT_DEVICE_ID = "default"
 const DEFAULT_OUTPUT_DEVICE_ID = "default"
-const DEFAULT_WAKE_WORD = "Sensa"
-const WAKE_WORD_LISTEN_MS = 8000
-const WAKE_WORD_BAR_IDLE = [3, 5, 7, 5, 3]
-const WAKE_WORD_BAR_COLOR = "#FFFFFF"
-
-const extractFirstWakeWord = (text: string) => {
-  const cleaned = text.trim().replace(/[^a-zA-Z0-9\s'-]/gi, "")
-  const tokens = cleaned.split(/\s+/).filter(Boolean)
-  if (!tokens.length) return ""
-
-  const fillers = ["set", "to", "my", "word", "is", "the", "a", "this", "wake", "hello", "hey", "change", "please", "can", "you", "make"]
-  const filtered = tokens.filter(t => !fillers.includes(t.toLowerCase()) && t.length >= 2)
-
-  const target = filtered.length > 0 ? filtered[filtered.length - 1] : tokens[tokens.length - 1]
-  if (!target) return ""
-  return target.charAt(0).toUpperCase() + target.slice(1).toLowerCase()
-}
-
-function WakeWordMicButton({
-  isListening,
-  speechActive,
-  onClick,
-  disabled,
-}: {
-  isListening: boolean
-  speechActive: boolean
-  onClick: () => void
-  disabled?: boolean
-}) {
-  const barsRef = useRef<(HTMLDivElement | null)[]>([])
-  const currentHeights = useRef([...WAKE_WORD_BAR_IDLE])
-  const tickRef = useRef(0)
-  const isListeningRef = useRef(isListening)
-  const speechActiveRef = useRef(speechActive)
-
-  useEffect(() => {
-    isListeningRef.current = isListening
-  }, [isListening])
-
-  useEffect(() => {
-    speechActiveRef.current = speechActive
-  }, [speechActive])
-
-  useEffect(() => {
-    if (!isListening) return
-
-    let animationId = 0
-    const idleHeights = [3, 5, 7, 5, 3]
-    const maxHeights = [10, 15, 20, 15, 10]
-
-    const draw = () => {
-      animationId = requestAnimationFrame(draw)
-      if (!isListeningRef.current || document.visibilityState !== "visible") return
-
-      tickRef.current += 1
-      const tick = tickRef.current
-      const active = speechActiveRef.current
-
-      barsRef.current.forEach((bar, i) => {
-        if (!bar) return
-        let targetHeight = idleHeights[i]
-
-        if (active) {
-          const distFromCenter = Math.abs(i - 2)
-          const wave = (Math.sin(tick * 0.22 + i * 0.85) + 1) * 0.5
-          const voiceSpike = (maxHeights[i] - idleHeights[i]) * wave * (1 - distFromCenter * 0.12)
-          targetHeight = idleHeights[i] + voiceSpike
-        }
-
-        currentHeights.current[i] += (targetHeight - currentHeights.current[i]) * 0.28
-        const intensity = (currentHeights.current[i] - idleHeights[i]) / (maxHeights[i] - idleHeights[i])
-        const opacity = active ? Math.max(0.95, intensity + 0.75) : 0.5
-
-        bar.style.height = `${Math.round(currentHeights.current[i])}px`
-        bar.style.backgroundColor = WAKE_WORD_BAR_COLOR
-        bar.style.boxShadow = active
-          ? `0 0 ${5 + intensity * 10}px rgba(255, 255, 255, 0.9)`
-          : "none"
-        bar.style.opacity = `${opacity}`
-      })
-    }
-
-    draw()
-
-    return () => {
-      if (animationId) cancelAnimationFrame(animationId)
-      currentHeights.current = [...idleHeights]
-      barsRef.current.forEach((bar, i) => {
-        if (!bar) return
-        bar.style.height = `${idleHeights[i]}px`
-        bar.style.boxShadow = "none"
-        bar.style.opacity = "0.45"
-      })
-    }
-  }, [isListening, speechActive])
-
-  return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation()
-        onClick()
-      }}
-      disabled={disabled}
-      aria-label={isListening ? "Stop recording wake word" : "Record wake word with microphone"}
-      aria-pressed={isListening}
-      className={`absolute inset-y-0 right-1.5 my-auto flex h-8 w-8 items-center justify-center rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/50 disabled:cursor-not-allowed disabled:opacity-40 ${isListening
-          ? "bg-gradient-to-br from-[#0A44FF] to-[#0099FF] text-white shadow-md shadow-[#0A44FF]/30"
-          : "text-[#0A44FF]/70 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF]"
-        }`}
-    >
-      {isListening ? (
-        <div className="flex items-center justify-center gap-[2px] w-[22px] h-[22px]" aria-hidden="true">
-          {[0, 1, 2, 3, 4].map((index) => (
-            <div
-              key={index}
-              ref={(el) => { barsRef.current[index] = el }}
-              className="w-[3px] rounded-full"
-              style={{ height: WAKE_WORD_BAR_IDLE[index], backgroundColor: WAKE_WORD_BAR_COLOR, opacity: 0.5 }}
-            />
-          ))}
-        </div>
-      ) : (
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
-          <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-          <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-          <line x1="12" y1="19" x2="12" y2="22" />
-        </svg>
-      )}
-    </button>
-  )
-}
 
 interface VisualSettingsModalProps {
   onClose: () => void
@@ -167,16 +35,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const defaultVoiceLabelRef = useRef<string>("")
   const defaultVoiceAppliedRef = useRef(false)
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false)
-  const [wakeWord, setWakeWord] = useState(DEFAULT_WAKE_WORD)
-  const [isCapturingWakeWord, setIsCapturingWakeWord] = useState(false)
-  const [wakeWordSpeechActive, setWakeWordSpeechActive] = useState(false)
-  const wakeWordCaptureRef = useRef<any>(null)
-  const isWakeWordCapturingRef = useRef(false)
-  const wakeWordCapturedRef = useRef(false)
-  const wakeWordLatestTranscriptRef = useRef("")
-  const wakeWordCaptureStartTimerRef = useRef<number | null>(null)
-  const wakeWordListenTimeoutRef = useRef<number | null>(null)
-  const wakeWordCaptureStartedAtRef = useRef(0)
   const pauseSettingsRecognitionRef = useRef<(() => void) | null>(null)
   const resumeSettingsRecognitionRef = useRef<(() => void) | null>(null)
   const settingsRecognitionArmedRef = useRef(false)
@@ -185,6 +43,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const onCloseRef = useRef(onClose)
   const overlayStateRef = useRef({
     isVoiceGuideEnabled,
+    isSoundEffectsEnabled,
     showColorPicker,
     highlightColor,
     inputDevices,
@@ -387,6 +246,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   useEffect(() => {
     overlayStateRef.current = {
       isVoiceGuideEnabled,
+      isSoundEffectsEnabled,
       showColorPicker,
       highlightColor,
       inputDevices,
@@ -477,9 +337,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       if (typeof res.sensa_visual_sound_effects_enabled === "boolean") setIsSoundEffectsEnabled(res.sensa_visual_sound_effects_enabled)
       if (typeof res.sensa_visual_voice_uri === "string") setSelectedVoiceURI(res.sensa_visual_voice_uri)
       if (typeof res.sensa_visual_highlight_mouse_screen_reader === "boolean") setIsHighlightMouseScreenReaderEnabled(res.sensa_visual_highlight_mouse_screen_reader)
-      if (typeof res.sensa_visual_wake_word === "string" && res.sensa_visual_wake_word.trim()) {
-        setWakeWord(res.sensa_visual_wake_word.trim())
-      }
     })
   }, [])
 
@@ -487,234 +344,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     window.setTimeout(() => resumeSettingsRecognitionRef.current?.(), 350)
   }
 
-  const stopWakeWordCapture = (options?: { resumeSettings?: boolean }) => {
-    if (wakeWordCaptureStartTimerRef.current !== null) {
-      window.clearTimeout(wakeWordCaptureStartTimerRef.current)
-      wakeWordCaptureStartTimerRef.current = null
-    }
-    if (wakeWordListenTimeoutRef.current !== null) {
-      window.clearTimeout(wakeWordListenTimeoutRef.current)
-      wakeWordListenTimeoutRef.current = null
-    }
-    isWakeWordCapturingRef.current = false
-    wakeWordCapturedRef.current = false
-    wakeWordLatestTranscriptRef.current = ""
-    setWakeWordSpeechActive(false)
-    setIsCapturingWakeWord(false)
-    const recognition = wakeWordCaptureRef.current
-    if (recognition) {
-      wakeWordCaptureRef.current = null
-      recognition.onresult = null
-      recognition.onerror = null
-      recognition.onend = null
-      try { recognition.stop() } catch { }
-    }
-    if (options?.resumeSettings !== false) {
-      resumeSettingsVoiceRecognition()
-    }
-  }
-
-  const announceWakeWordListenFailed = () => {
-    announceIfVoiceGuide("No wake word heard, try again")
-  }
-
-  const applyCapturedWakeWord = (rawTranscript: string) => {
-    if (wakeWordCapturedRef.current) return false
-    const word = extractFirstWakeWord(rawTranscript)
-    if (!word) return false
-    wakeWordCapturedRef.current = true
-    setWakeWord(word)
-    chrome.storage.local.set({ sensa_visual_wake_word: word })
-    playClickSfx()
-    announceIfVoiceGuide(`Wake word set to ${word}`)
-    stopWakeWordCapture()
-    return true
-  }
-
-  const tryApplyWakeWordFromTranscript = (rawTranscript: string) => {
-    if (wakeWordCapturedRef.current) return true
-    return applyCapturedWakeWord(rawTranscript)
-  }
-
-  const beginWakeWordRecognition = () => {
-    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SpeechRecognitionCtor || !isWakeWordCapturingRef.current) return
-
-    window.speechSynthesis.cancel()
-    wakeWordCapturedRef.current = false
-    wakeWordLatestTranscriptRef.current = ""
-    setWakeWordSpeechActive(false)
-
-    const recognition = new SpeechRecognitionCtor()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = "en-US"
-    wakeWordCaptureRef.current = recognition
-    wakeWordCaptureStartedAtRef.current = Date.now()
-
-    let captured = false
-    const getListenElapsed = () => Date.now() - wakeWordCaptureStartedAtRef.current
-    const hasListenTimeRemaining = () => getListenElapsed() < WAKE_WORD_LISTEN_MS
-
-    const finishListenTimeout = () => {
-      if (captured || wakeWordCapturedRef.current || !isWakeWordCapturingRef.current) return
-      if (wakeWordLatestTranscriptRef.current && tryApplyWakeWordFromTranscript(wakeWordLatestTranscriptRef.current)) {
-        captured = true
-        return
-      }
-      stopWakeWordCapture()
-      announceWakeWordListenFailed()
-    }
-
-    if (wakeWordListenTimeoutRef.current !== null) {
-      window.clearTimeout(wakeWordListenTimeoutRef.current)
-    }
-    wakeWordListenTimeoutRef.current = window.setTimeout(finishListenTimeout, WAKE_WORD_LISTEN_MS)
-
-    const restartListening = () => {
-      if (captured || wakeWordCapturedRef.current || !isWakeWordCapturingRef.current || !hasListenTimeRemaining()) return
-      if (wakeWordCaptureRef.current !== recognition) return
-      try {
-        recognition.start()
-      } catch {
-        window.setTimeout(() => {
-          if (captured || wakeWordCapturedRef.current || !isWakeWordCapturingRef.current || !hasListenTimeRemaining()) return
-          if (wakeWordCaptureRef.current !== recognition) return
-          try { recognition.start() } catch { }
-        }, 300)
-      }
-    }
-
-    const markSpeechActive = () => setWakeWordSpeechActive(true)
-    const markSpeechInactive = () => setWakeWordSpeechActive(false)
-
-    recognition.onsoundstart = markSpeechActive
-    recognition.onspeechstart = markSpeechActive
-    recognition.onsoundend = markSpeechInactive
-    recognition.onspeechend = () => {
-      markSpeechInactive()
-      if (captured || wakeWordCapturedRef.current) return
-      const pending = wakeWordLatestTranscriptRef.current
-      if (pending && tryApplyWakeWordFromTranscript(pending)) {
-        captured = true
-      }
-    }
-
-    recognition.onresult = (event: any) => {
-      if (captured || wakeWordCapturedRef.current) return
-
-      let newSpeech = ""
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        newSpeech += event.results[i][0].transcript + " "
-      }
-
-      if (newSpeech.trim()) {
-        wakeWordLatestTranscriptRef.current = newSpeech
-        if (tryApplyWakeWordFromTranscript(newSpeech)) {
-          captured = true
-        }
-      }
-    }
-
-    recognition.onerror = (event: any) => {
-      if (event.error === "aborted") return
-      if (event.error === "no-speech" || event.error === "audio-capture") {
-        restartListening()
-        return
-      }
-      if (!hasListenTimeRemaining()) {
-        stopWakeWordCapture()
-        announceIfVoiceGuide("Could not hear your wake word, try again")
-        return
-      }
-      restartListening()
-    }
-
-    recognition.onend = () => {
-      if (captured || wakeWordCapturedRef.current || !isWakeWordCapturingRef.current) return
-      if (wakeWordCaptureRef.current !== recognition) return
-      const pending = wakeWordLatestTranscriptRef.current
-      if (pending && tryApplyWakeWordFromTranscript(pending)) {
-        captured = true
-        return
-      }
-      if (!hasListenTimeRemaining()) {
-        wakeWordCaptureRef.current = null
-        stopWakeWordCapture()
-        announceWakeWordListenFailed()
-        return
-      }
-      restartListening()
-    }
-
-    try {
-      recognition.start()
-    } catch {
-      stopWakeWordCapture()
-      announceIfVoiceGuide("Could not start microphone")
-    }
-  }
-
-  const primeMicrophoneForWakeWord = async () => {
-    const audio = {
-      deviceId: selectedInputDeviceId && selectedInputDeviceId !== DEFAULT_INPUT_DEVICE_ID
-        ? { exact: selectedInputDeviceId }
-        : undefined,
-      noiseSuppression: true,
-      echoCancellation: true,
-      autoGainControl: true,
-      channelCount: 1,
-      sampleRate: 48000
-    }
-    const stream = await navigator.mediaDevices.getUserMedia({ audio })
-    stream.getTracks().forEach((track) => track.stop())
-  }
-
-  const startWakeWordCapture = async () => {
-    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SpeechRecognitionCtor) {
-      announceIfVoiceGuide("Speech recognition is not supported in this browser")
-      return
-    }
-    stopWakeWordCapture({ resumeSettings: false })
-    isWakeWordCapturingRef.current = true
-    setIsCapturingWakeWord(true)
-    playClickSfx()
-    window.speechSynthesis.cancel()
-    pauseSettingsRecognitionRef.current?.()
-    try {
-      await primeMicrophoneForWakeWord()
-    } catch {
-      stopWakeWordCapture()
-      announceIfVoiceGuide("Microphone access is required to set a wake word")
-      return
-    }
-    wakeWordCaptureStartTimerRef.current = window.setTimeout(() => {
-      wakeWordCaptureStartTimerRef.current = null
-      if (!isWakeWordCapturingRef.current) return
-      beginWakeWordRecognition()
-    }, 350)
-  }
-
-  const handleWakeWordMicToggle = () => {
-    playClickSfx()
-    if (isCapturingWakeWord) {
-      stopWakeWordCapture()
-      announceIfVoiceGuide("Wake word recording cancelled")
-      return
-    }
-    startWakeWordCapture()
-  }
-
-  const handleWakeWordChange = (value: string) => {
-    const trimmed = value.replace(/\s+/g, " ").trimStart()
-    setWakeWord(trimmed)
-    if (trimmed) {
-      chrome.storage.local.set({ sensa_visual_wake_word: trimmed })
-    }
-  }
-
-  useEffect(() => () => stopWakeWordCapture({ resumeSettings: false }), [])
+  // Wake word logic removed
 
   React.useEffect(() => {
     const loadVoices = () => {
@@ -782,10 +412,9 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     let currentResultIndex = 0
 
     const scheduleRestart = () => {
-      if (!isComponentMounted || isWakeWordCapturingRef.current) return
+      if (!isComponentMounted) return
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
-        if (isWakeWordCapturingRef.current) return
         try { recognition.start() } catch { }
       }, 300)
     }
@@ -799,7 +428,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     }
 
     resumeSettingsRecognitionRef.current = () => {
-      if (!isComponentMounted || isWakeWordCapturingRef.current) return
+      if (!isComponentMounted) return
       scheduleRestart()
     }
 
@@ -878,7 +507,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     }
 
     recognition.onresult = (event: any) => {
-      if (!settingsRecognitionArmedRef.current || isWakeWordCapturingRef.current) return
+      if (!settingsRecognitionArmedRef.current) return
 
       if (event.resultIndex !== currentResultIndex) {
         consumedString = ""
@@ -929,13 +558,16 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
         } else if (check("reset default", "reset defaults", "restore defaults", "reset settings")) {
           commandFired = true
           handleResetToDefault()
-        } else if (check("voice guide", "voice guidance")) {
+        } else if (check("voice guide", "voice guidance", "guide")) {
           commandFired = true
           handleVoiceGuideToggle(wantsOff ? false : wantsOn ? true : !state.isVoiceGuideEnabled)
-        } else if (check("mouse reader", "mouse highlight reader", "mouse highlight")) {
+        } else if (check("sound effects", "sound effect", "sounds", "effects", "sfx")) {
+          commandFired = true
+          handleSoundEffectsToggle(wantsOff ? false : wantsOn ? true : !state.isSoundEffectsEnabled)
+        } else if (check("mouse reader", "mouse highlight reader", "mouse highlight", "highlight reader", "mouse reading")) {
           commandFired = true
           handleHighlightMouseScreenReaderToggle(wantsOff ? false : wantsOn ? true : !state.isHighlightMouseScreenReaderEnabled)
-        } else if (check("autoscroll", "auto scroll", "scroll reading")) {
+        } else if (check("autoscroll", "auto scroll", "scroll reading", "autoscroll reading", "auto scroll reading")) {
           commandFired = true
           handleAutoscrollToggle(wantsOff ? false : wantsOn ? true : !state.isAutoscrollEnabled)
         } else if (check("highlight color", "color picker", "pick color")) {
@@ -974,7 +606,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     recognition.onend = () => scheduleRestart()
 
     const initialStartTimer = window.setTimeout(() => {
-      if (!isComponentMounted || isWakeWordCapturingRef.current) return
+      if (!isComponentMounted) return
       try { recognition.start() } catch { }
     }, 1500)
 
@@ -1075,8 +707,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     setIsAutoscrollEnabled(true)
     setIsHighlightMouseScreenReaderEnabled(false)
     setSelectedVoiceURI(defaultVoiceURI)
-    setWakeWord(DEFAULT_WAKE_WORD)
-    stopWakeWordCapture()
     chrome.storage.local.set({
       sensa_visual_highlight_color: DEFAULT_HIGHLIGHT_COLOR,
       sensa_visual_input_device_id: DEFAULT_INPUT_DEVICE_ID,
@@ -1084,8 +714,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       sensa_visual_autoscroll_enabled: true,
       sensa_visual_highlight_mouse_screen_reader: false,
       sensa_visual_voice_uri: defaultVoiceURI,
-      sensa_visual_voice_name: defaultVoice?.name || "",
-      sensa_visual_wake_word: DEFAULT_WAKE_WORD
+      sensa_visual_voice_name: defaultVoice?.name || ""
     })
     playClickAudio("Settings reset to default")
   }
@@ -1198,6 +827,46 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
             </span>
           </label>
 
+          <label
+            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
+            {...getHoverHandlers("Autoscroll reading")}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 pointer-events-none">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><rect x="5" y="4" width="14" height="16" rx="2" /><path d="M12 7l2 2-2 2" /><path d="M12 17l-2-2 2-2" /></svg>
+              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Autoscroll Reading</span>
+            </div>
+            <span className="relative inline-flex items-center shrink-0 pointer-events-none">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={isAutoscrollEnabled}
+                onChange={(e) => handleAutoscrollToggle(e.target.checked)}
+              />
+              <span className={toggleSwitchClass} aria-hidden="true" />
+            </span>
+          </label>
+
+          <label
+            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
+            {...getHoverHandlers("Mouse Highlight Reader")}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 pointer-events-none">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /><path d="M13 13l6 6" /></svg>
+              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Mouse Reader</span>
+            </div>
+            <span className="relative inline-flex items-center shrink-0 pointer-events-none">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={isHighlightMouseScreenReaderEnabled}
+                onChange={(e) => handleHighlightMouseScreenReaderToggle(e.target.checked)}
+              />
+              <span className={toggleSwitchClass} aria-hidden="true" />
+            </span>
+          </label>
+
           <div
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative z-50 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
             {...getHoverHandlers("Voice Selection")}
@@ -1249,75 +918,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
               )}
             </div>
           </div>
-
-          <div
-            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
-            {...getHoverHandlers("Wake Word")}
-          >
-            <div className="flex items-center gap-3">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2l1.6 3.6L17 7l-3.4 1.4L12 12l-1.6-3.6L7 7l3.4-1.4L12 2z" /><path d="M4 14l.9 2 2 .9-2 .9-.9 2-.9-2-2-.9 2-.9.9-2z" /></svg>
-              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Wake Word</span>
-            </div>
-            <div className="relative w-[190px]">
-              <input
-                type="text"
-                value={wakeWord}
-                onChange={(e) => handleWakeWordChange(e.target.value)}
-                onKeyDown={(e) => e.stopPropagation()}
-                placeholder="e.g. Sensa"
-                aria-label="Wake Word"
-                disabled={isCapturingWakeWord}
-                className={`w-full border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-12 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 transition-all hover:shadow-md disabled:opacity-70 ${isCapturingWakeWord ? "ring-2 ring-[#0A44FF]/50" : ""
-                  }`}
-              />
-              <WakeWordMicButton
-                isListening={isCapturingWakeWord}
-                speechActive={wakeWordSpeechActive}
-                onClick={handleWakeWordMicToggle}
-                disabled={!(window as any).SpeechRecognition && !(window as any).webkitSpeechRecognition}
-              />
-            </div>
-          </div>
-
-          <label
-            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
-            {...getHoverHandlers("Mouse Highlight Reader")}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3 pointer-events-none">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z" /><path d="M13 13l6 6" /></svg>
-              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Mouse Reader</span>
-            </div>
-            <span className="relative inline-flex items-center shrink-0 pointer-events-none">
-              <input
-                type="checkbox"
-                className="sr-only peer"
-                checked={isHighlightMouseScreenReaderEnabled}
-                onChange={(e) => handleHighlightMouseScreenReaderToggle(e.target.checked)}
-              />
-              <span className={toggleSwitchClass} aria-hidden="true" />
-            </span>
-          </label>
-
-          <label
-            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
-            {...getHoverHandlers("Autoscroll reading")}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3 pointer-events-none">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><rect x="5" y="4" width="14" height="16" rx="2" /><path d="M12 7l2 2-2 2" /><path d="M12 17l-2-2 2-2" /></svg>
-              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Autoscroll Reading</span>
-            </div>
-            <span className="relative inline-flex items-center shrink-0 pointer-events-none">
-              <input
-                type="checkbox"
-                className="sr-only peer"
-                checked={isAutoscrollEnabled}
-                onChange={(e) => handleAutoscrollToggle(e.target.checked)}
-              />
-              <span className={toggleSwitchClass} aria-hidden="true" />
-            </span>
-          </label>
 
           <div
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
