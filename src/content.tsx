@@ -176,7 +176,11 @@ export default function FloatingDockManager() {
       return
     }
 
-    chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
+    chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name", "sensa_visual_voice_guide_enabled"], (res) => {
+      if (res.sensa_visual_voice_guide_enabled === false) {
+        return
+      }
+
       if (typeof res.sensa_visual_voice_uri === "string") {
         selectedVoiceURIRef.current = res.sensa_visual_voice_uri
       }

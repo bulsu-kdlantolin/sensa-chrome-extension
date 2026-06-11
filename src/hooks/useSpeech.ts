@@ -438,7 +438,19 @@ export function useSpeech(
         renderSegmentOverlay(segment);
       }
       if (shouldScroll && isAutoscrollEnabled) {
-        element.scrollIntoView({ behavior: "smooth", block: "center" });
+        // Wait for the overlay to render, then calculate the exact vertical center of the highlight
+        requestAnimationFrame(() => {
+          const overlayRoot = sentenceOverlayRootRef.current;
+          if (overlayRoot && overlayRoot.firstElementChild) {
+            const firstRect = (overlayRoot.firstElementChild as HTMLElement).getBoundingClientRect();
+            const absoluteY = firstRect.top + window.scrollY;
+            const centerY = absoluteY - (window.innerHeight / 2) + (firstRect.height / 2);
+            window.scrollTo({ top: centerY, behavior: "smooth" });
+          } else {
+            // Fallback to the parent element if the overlay isn't available
+            element.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        });
       }
 
       const utterance = new SpeechSynthesisUtterance(speechText);

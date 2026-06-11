@@ -19,6 +19,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const highlightSoundDebounceRef = useRef<number | null>(null)
   const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState<boolean>(true)
   const isSoundEffectsEnabledRef = useRef<boolean>(true)
+  const [isStorageLoaded, setIsStorageLoaded] = useState(false)
 
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR)
@@ -204,7 +205,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   }, [])
 
   useEffect(() => {
-    if (!isMounted || hasAnnouncedOpenRef.current) return
+    if (!isMounted || !isStorageLoaded || hasAnnouncedOpenRef.current) return
     playPopSfx()
     if (!isVoiceGuideEnabledRef.current) {
       hasAnnouncedOpenRef.current = true
@@ -214,7 +215,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     if (!voiceUri) return
     hasAnnouncedOpenRef.current = true
     speakSettingsGuide("Settings opened")
-  }, [isMounted, selectedVoiceURI, speakSettingsGuide])
+  }, [isMounted, isStorageLoaded, selectedVoiceURI, speakSettingsGuide])
 
   useEffect(() => {
     const resumeAudio = () => {
@@ -337,6 +338,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       if (typeof res.sensa_visual_sound_effects_enabled === "boolean") setIsSoundEffectsEnabled(res.sensa_visual_sound_effects_enabled)
       if (typeof res.sensa_visual_voice_uri === "string") setSelectedVoiceURI(res.sensa_visual_voice_uri)
       if (typeof res.sensa_visual_highlight_mouse_screen_reader === "boolean") setIsHighlightMouseScreenReaderEnabled(res.sensa_visual_highlight_mouse_screen_reader)
+      setIsStorageLoaded(true)
     })
   }, [])
 
@@ -673,8 +675,14 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const handleVoiceGuideToggle = (enabled: boolean) => {
     playToggleSfx(enabled)
     setIsVoiceGuideEnabled(enabled)
+    isVoiceGuideEnabledRef.current = enabled
     chrome.storage.local.set({ sensa_visual_voice_guide_enabled: enabled })
-    playClickAudio(enabled ? "Voice guide enabled" : "Voice guide disabled")
+    if (enabled) {
+      speakSettingsGuide("Voice guide enabled")
+    } else {
+      // Intentionally don't speak when turning it off to immediately prove it's silent
+      window.speechSynthesis.cancel()
+    }
   }
 
   const handleSoundEffectsToggle = (enabled: boolean) => {

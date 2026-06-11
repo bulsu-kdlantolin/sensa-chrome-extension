@@ -11,15 +11,21 @@ export function useUIHoverAudio() {
 	const voiceRetryTimerRef = useRef<number | null>(null)
 	const voicesChangedHandlerRef = useRef<(() => void) | null>(null)
 	const tabVisibleAtRef = useRef(performance.now())
+	const isVoiceGuideEnabledRef = useRef(true)
+	const isStorageLoadedRef = useRef(false)
 
 	useEffect(() => {
-		chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
+		chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name", "sensa_visual_voice_guide_enabled"], (res) => {
 			if (typeof res.sensa_visual_voice_uri === "string") {
 				selectedVoiceURIRef.current = res.sensa_visual_voice_uri
 			}
 			if (typeof res.sensa_visual_voice_name === "string") {
 				selectedVoiceNameRef.current = res.sensa_visual_voice_name
 			}
+			if (typeof res.sensa_visual_voice_guide_enabled === "boolean") {
+				isVoiceGuideEnabledRef.current = res.sensa_visual_voice_guide_enabled
+			}
+			isStorageLoadedRef.current = true
 		})
 
 		const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
@@ -28,6 +34,9 @@ export function useUIHoverAudio() {
 			}
 			if (changes.sensa_visual_voice_name && typeof changes.sensa_visual_voice_name.newValue === "string") {
 				selectedVoiceNameRef.current = changes.sensa_visual_voice_name.newValue
+			}
+			if (changes.sensa_visual_voice_guide_enabled && typeof changes.sensa_visual_voice_guide_enabled.newValue === "boolean") {
+				isVoiceGuideEnabledRef.current = changes.sensa_visual_voice_guide_enabled.newValue
 			}
 		}
 
@@ -57,7 +66,7 @@ export function useUIHoverAudio() {
 	}, [])
 
 	const speakWithResolvedVoice = useCallback((text: string, owner: "hover" | "click" = "hover") => {
-		if (!isActiveRef.current) return
+		if (!isActiveRef.current || !isVoiceGuideEnabledRef.current || !isStorageLoadedRef.current) return
 		if (!text.trim()) return
 
 		const speakNow = () => {

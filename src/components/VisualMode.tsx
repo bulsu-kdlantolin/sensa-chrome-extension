@@ -140,11 +140,12 @@ export default function VisualMode() {
     })
 
   const getStoredVoicePreference = () =>
-    new Promise<{ voiceURI: string; voiceName: string }>((resolve) => {
-      chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
+    new Promise<{ voiceURI: string; voiceName: string; voiceGuideEnabled: boolean }>((resolve) => {
+      chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name", "sensa_visual_voice_guide_enabled"], (res) => {
         resolve({
           voiceURI: typeof res.sensa_visual_voice_uri === "string" ? res.sensa_visual_voice_uri : "",
-          voiceName: typeof res.sensa_visual_voice_name === "string" ? res.sensa_visual_voice_name : ""
+          voiceName: typeof res.sensa_visual_voice_name === "string" ? res.sensa_visual_voice_name : "",
+          voiceGuideEnabled: typeof res.sensa_visual_voice_guide_enabled === "boolean" ? res.sensa_visual_voice_guide_enabled : true
         })
       })
     })
@@ -155,6 +156,10 @@ export default function VisualMode() {
     }
 
     const storedVoicePreference = await getStoredVoicePreference()
+    if (!storedVoicePreference.voiceGuideEnabled) {
+      return
+    }
+
     if (storedVoicePreference.voiceURI) {
       selectedVoiceURIRef.current = storedVoicePreference.voiceURI
     }
@@ -342,6 +347,17 @@ export default function VisualMode() {
       sendVoiceBridgeMessage("stop")
     }
   }, [])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void callbacksRef.current.speakFeedback(
+        isListening 
+          ? "You can say, deactivate, to disable visual mode." 
+          : "You can say, activate, to enable visual mode."
+      )
+    }, 30000)
+    return () => window.clearInterval(interval)
+  }, [isListening])
 
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 

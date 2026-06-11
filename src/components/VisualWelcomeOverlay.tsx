@@ -24,14 +24,16 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
   const voiceRetryTimerRef = useRef<number | null>(null)
   const voiceReadyRetryRef = useRef<number | null>(null)
   const descriptionFallbackRef = useRef<number | null>(null)
+  const commandReminderIntervalRef = useRef<number | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const onGetStartedRef = useRef(onGetStarted)
   onGetStartedRef.current = onGetStarted
-  const BUTTON_TIMER_MS = 30000
+
 
   const titleText = "Welcome to Visual Mode"
   const descriptionText = "Sensa will intelligently read web pages aloud and simplify navigation for you."
   const featuresIntroText = "Here are the main features you'll use."
+  const commandReminderText = "You can say, Get Started, to proceed to the visual mode interface."
   const descriptionWords = useMemo(() => descriptionText.split(" "), [descriptionText])
   const typedDescription = descriptionWords.slice(0, typedWordCount).join(" ")
 
@@ -387,6 +389,20 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
         const revealAndSpeak = (index: number) => {
           if (index >= features.length) {
             setShowButton(true)
+            // Announce available commands after a short pause
+            window.setTimeout(() => {
+              if (narrationCanceledRef.current) return
+              speakWithResolvedVoice(commandReminderText, () => {
+                // Start the 30-second reminder interval
+                if (commandReminderIntervalRef.current !== null) {
+                  window.clearInterval(commandReminderIntervalRef.current)
+                }
+                commandReminderIntervalRef.current = window.setInterval(() => {
+                  if (narrationCanceledRef.current) return
+                  speakWithResolvedVoice(commandReminderText, () => {})
+                }, 30000)
+              })
+            }, 800)
             return
           }
 
@@ -403,22 +419,16 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     })
   }, [descriptionText, descriptionWords.length, features, isSkipping, startDescription, typedWordCount])
 
-  useEffect(() => {
-    if (!showButton || isSkipping) return
 
-    const timer = window.setTimeout(() => {
-      chrome.storage.local.set({ sensa_visual_entered_from_welcome: true }, () => {
-        onGetStarted()
-      })
-    }, BUTTON_TIMER_MS)
-
-    return () => window.clearTimeout(timer)
-  }, [showButton, isSkipping, onGetStarted, BUTTON_TIMER_MS])
 
   useEffect(() => {
     return () => {
       narrationCanceledRef.current = true
       window.speechSynthesis.cancel()
+      if (commandReminderIntervalRef.current !== null) {
+        window.clearInterval(commandReminderIntervalRef.current)
+        commandReminderIntervalRef.current = null
+      }
       if (voiceReadyRetryRef.current !== null) {
         window.clearInterval(voiceReadyRetryRef.current)
         voiceReadyRetryRef.current = null
@@ -569,9 +579,6 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
         .animate-float-blue-1 { animation: float-blue-1 8s ease-in-out infinite; }
         .animate-float-blue-2 { animation: float-blue-2 8s ease-in-out infinite 0.5s; }
         
-        /* The 6-second timer fill */
-        .animate-button-progress { animation: progress-fill 30s linear forwards; }
-        
         @keyframes pop-in {
           0% { opacity: 0; transform: translateY(10px) scale(0.98); }
           100% { opacity: 1; transform: translateY(0) scale(1); }
@@ -602,7 +609,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
         </div>
 
         {/* 👁️ FEATURE HIGHLIGHT CARDS */}
-        <div className="w-full mt-auto mb-auto fade-in-3">
+        <div className="w-full mt-4 fade-in-3">
           <div className="grid grid-cols-1 gap-3 w-full max-h-[220px] overflow-y-auto px-2 py-2">
             {features.slice(0, visibleFeatureCount).map((feature) => (
               <div
@@ -634,18 +641,17 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
         {showButton && (
           <button
             onClick={handleManualProceed}
-            className="w-full h-[60px] relative overflow-hidden fade-in-4 rounded-full bg-[#0A44FF] shadow-[0_12px_30px_rgba(10,68,255,0.3)] hover:shadow-[0_16px_40px_rgba(10,68,255,0.4)] hover:scale-[1.03] active:scale-95 transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50"
-            onMouseEnter={() => { playHoverSfx(); playHoverAudio("Enter Visual Mode") }}
-            onFocus={() => { playHoverSfx(); playHoverAudio("Enter Visual Mode") }}
+            className="w-full h-[60px] mt-auto relative overflow-hidden fade-in-4 rounded-full bg-[#0A44FF] shadow-[0_12px_30px_rgba(10,68,255,0.3)] hover:shadow-[0_16px_40px_rgba(10,68,255,0.4)] hover:scale-[1.03] active:scale-95 transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50"
+            onMouseEnter={() => { playHoverSfx(); playHoverAudio("Get Started") }}
+            onFocus={() => { playHoverSfx(); playHoverAudio("Get Started") }}
             onMouseLeave={cancelHoverAudio}
             onBlur={cancelHoverAudio}
           >
-            {/* Animated Progress Fill Layer */}
-            <div className="absolute top-0 left-0 h-full bg-white/25 animate-button-progress pointer-events-none" />
+
 
             {/* Button Text & Icon */}
             <div className="relative z-10 flex items-center justify-center w-full h-full gap-3 text-white font-black text-[17px] tracking-wide">
-              Enter Visual Mode
+              Get Started
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-1">
                 <path d="M5 12h14" />
                 <path d="m12 5 7 7-7 7" />

@@ -76,6 +76,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const audioCtxRef = useRef<AudioContext | null>(null)
   const isTTSPlayingRef = useRef(false)
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const commandReminderIntervalRef = useRef<number | null>(null)
 
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 
@@ -89,6 +90,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
 
   const visualCardText = "Visual Mode. Support low vision with guided reading and speech."
   const auditoryCardText = "Auditory Mode. Support hearing loss with captions and visualizer."
+  const commandReminderText = "You can say, Visual Mode, or, Auditory Mode, to choose a primary accessibility mode."
 
   const getAudioContext = () => {
     if (!audioCtxRef.current) {
@@ -363,6 +365,20 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const speakCardSequence = (index: number) => {
     if (index >= 2) {
       narrationStageRef.current = "cardsDone"
+      // Announce available commands after a short pause
+      window.setTimeout(() => {
+        if (narrationCanceledRef.current) return
+        speakWithResolvedVoice(commandReminderText, () => {
+          // Start the 20-second reminder interval
+          if (commandReminderIntervalRef.current !== null) {
+            window.clearInterval(commandReminderIntervalRef.current)
+          }
+          commandReminderIntervalRef.current = window.setInterval(() => {
+            if (narrationCanceledRef.current || isTTSPlayingRef.current) return
+            speakWithResolvedVoice(commandReminderText, () => {})
+          }, 30000)
+        })
+      }, 800)
       return
     }
 
@@ -467,6 +483,10 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
       narrationCanceledRef.current = true
       window.speechSynthesis.cancel()
       pendingUtteranceRef.current = null
+      if (commandReminderIntervalRef.current !== null) {
+        window.clearInterval(commandReminderIntervalRef.current)
+        commandReminderIntervalRef.current = null
+      }
       if (voiceRetryTimerRef.current !== null) {
         window.clearTimeout(voiceRetryTimerRef.current)
         voiceRetryTimerRef.current = null
@@ -636,7 +656,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
               onFocus={() => { playHoverSfx(); playHoverAudio("Visual Mode. Support low vision with guided reading and speech.") }}
               onMouseLeave={cancelHoverAudio}
               onBlur={cancelHoverAudio}
-              className={`w-full h-[96px] group relative flex items-center px-[20px] pt-[12px] pb-[18px] rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 active:scale-95 animate-pop ${springTransition}
+              className={`w-full h-[114px] group relative flex items-center px-[20px] pt-[12px] pb-[18px] rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 active:scale-95 animate-pop ${springTransition}
                 ${isDark
                   ? 'backdrop-blur-md bg-[#24262B]/85 border-[#3A3F4A] hover:border-[#0A44FF] hover:bg-[#262A31]/90 shadow-[0_10px_26px_rgba(0,0,0,0.35)] hover:shadow-[0_14px_32px_rgba(10,68,255,0.28)]'
                   : 'backdrop-blur-md bg-white/80 border-[#E2E6F0] hover:border-[#0A44FF] hover:bg-white/95 shadow-[0_8px_22px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_28px_rgba(10,68,255,0.2)]'
@@ -668,7 +688,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
               onFocus={() => { playHoverSfx(); playHoverAudio("Auditory Mode. Support hearing loss with captions and visualizer.") }}
               onMouseLeave={cancelHoverAudio}
               onBlur={cancelHoverAudio}
-              className={`w-full h-[96px] group relative flex items-center px-[20px] pt-[12px] pb-[18px] rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 active:scale-95 animate-pop ${springTransition}
+              className={`w-full h-[114px] group relative flex items-center px-[20px] pt-[12px] pb-[18px] rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 active:scale-95 animate-pop ${springTransition}
                 ${isDark
                   ? 'backdrop-blur-md bg-[#24262B]/85 border-[#3A3F4A] hover:border-[#FF7A2F] hover:bg-[#262A31]/90 shadow-[0_10px_26px_rgba(0,0,0,0.35)] hover:shadow-[0_14px_32px_rgba(255,122,47,0.28)]'
                   : 'backdrop-blur-md bg-white/80 border-[#E2E6F0] hover:border-[#FF7A2F] hover:bg-white/95 shadow-[0_8px_22px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_28px_rgba(255,122,47,0.2)]'

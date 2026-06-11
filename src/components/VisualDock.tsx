@@ -494,7 +494,7 @@ export default function VisualDock({
     let consumedKeywords: string[] = []
 
     const getKeywordsForCommand = (cmd: string) => {
-      switch(cmd) {
+      switch (cmd) {
         case "play": return ["play", "resume", "continue", "start reading", "read"]
         case "pause": return ["pause", "halt", "stop reading", "stop playing", "stop", "pass", "post", "pose", "boss", "paused"]
         case "next": return ["next", "skip", "forward", "necks", "neck", "nex", "nix"]
@@ -581,7 +581,7 @@ export default function VisualDock({
 
       const runMatching = (text: string) => {
         let cleanText = normalizeInput(text)
-        
+
         if (consumedKeywords.length > 0) {
           consumedKeywords.forEach(kw => {
             cleanText = cleanText.replace(new RegExp(`\\b${kw}\\b`), " ")
