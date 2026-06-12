@@ -110,6 +110,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
   const [websiteStatus, setWebsiteStatus] = useState<"online" | "offline" | "unsupported">("offline")
   const [extensionStatus, setExtensionStatus] = useState<"online" | "offline">("offline")
   const [unavailableApis, setUnavailableApis] = useState<string[]>([])
+  const [isVisualActive, setIsVisualActive] = useState(false)
   
   const [isMounted, setIsMounted] = useState(false)
   const [hasHydratedInitialMode, setHasHydratedInitialMode] = useState(false)
@@ -133,17 +134,25 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
   const extensionHoverText = `Extension Status: ${extensionStatus === "online" ? "Connected" : "Offline"}`
   const extensionStatusSpeech = extensionStatus === "online" ? "Connected" : "Offline"
 
-  const getModeInterfaceAnnouncement = (mode: "visual" | "auditory", isWelcome = false) =>
-    mode === "visual"
-      ? (isWelcome
-          ? `We are now in the Visual Mode interface. Target website: ${websiteLabel}. Extension status: ${extensionStatusSpeech}.`
-          : `Visual Mode Interface. Target website: ${websiteLabel}. Extension status: ${extensionStatusSpeech}.`)
-      : "Auditory Mode Interface"
+  const getModeInterfaceAnnouncement = (mode: "visual" | "auditory", isWelcome = false, isListening = false) => {
+    if (mode === "auditory") return "Auditory Mode Interface"
+    
+    const baseMessage = isWelcome
+      ? `We are now in the Visual Mode interface. Target website: ${websiteLabel}. Extension status: ${extensionStatusSpeech}.`
+      : `Visual Mode Interface. Target website: ${websiteLabel}. Extension status: ${extensionStatusSpeech}.`
+      
+    const commandHint = isListening 
+      ? "You can say, deactivate, to disable visual mode." 
+      : "You can say, activate, to enable visual mode."
+      
+    return `${baseMessage} ${commandHint}`
+  }
 
   useEffect(() => {
-    chrome.storage.local.get(["sensa_last_tab"], (res) => {
+    chrome.storage.local.get(["sensa_last_tab", "sensa_visual_active"], (res) => {
       const nextMode = res.sensa_last_tab ?? selectedMode ?? "visual"
       setCurrentViewMode(nextMode)
+      if (res.sensa_visual_active !== undefined) setIsVisualActive(!!res.sensa_visual_active)
 
       if (!hasHydratedInitialMode) {
         requestAnimationFrame(() => setHasHydratedInitialMode(true))
@@ -153,6 +162,9 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
   useEffect(() => {
     const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.sensa_visual_active !== undefined) {
+        setIsVisualActive(!!changes.sensa_visual_active.newValue)
+      }
       if (changes.sensa_last_tab?.newValue !== undefined) {
         setCurrentViewMode(changes.sensa_last_tab.newValue)
       } else if (changes.sensa_visual_active?.newValue === true) {
@@ -179,7 +191,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
       announceTimerRef.current = window.setTimeout(() => {
         hasAnnouncedVisualOnOpenRef.current = true
-        const message = getModeInterfaceAnnouncement("visual", isFromWelcome)
+        const message = getModeInterfaceAnnouncement("visual", isFromWelcome, isVisualActive)
         playClickAudio(message)
       }, 500)
     })
@@ -195,7 +207,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
     if (newMode === currentViewMode) return
     cancelHoverAudio()
     setCurrentViewMode(newMode)
-    playClickAudio(getModeInterfaceAnnouncement(newMode))
+    playClickAudio(getModeInterfaceAnnouncement(newMode, false, false))
 
     chrome.storage.local.set({
       sensa_last_tab: newMode,

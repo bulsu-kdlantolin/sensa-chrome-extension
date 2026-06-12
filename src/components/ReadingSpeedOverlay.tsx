@@ -1,6 +1,44 @@
 import React, { useEffect, useRef, useState } from "react"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
+const getLevenshteinDistance = (a: string, b: string): number => {
+  const tmp: number[][] = []
+  for (let i = 0; i <= a.length; i++) {
+    tmp.push([i])
+  }
+  for (let j = 0; j <= b.length; j++) {
+    tmp[0][j] = j
+  }
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      tmp[i][j] = Math.min(
+        tmp[i - 1][j] + 1,
+        tmp[i][j - 1] + 1,
+        tmp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      )
+    }
+  }
+  return tmp[a.length][b.length]
+}
+
+const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
+  if (text.includes(target)) return true
+  const tokens = text.split(/\s+/).filter(Boolean)
+  const targetTokens = target.split(/\s+/).filter(Boolean)
+  if (targetTokens.length === 1) {
+    for (const t of tokens) {
+      if (getLevenshteinDistance(t, target) <= maxDistance) return true
+    }
+  } else {
+    const n = targetTokens.length
+    for (let i = 0; i <= tokens.length - n; i++) {
+      const ngram = tokens.slice(i, i + n).join(" ")
+      if (getLevenshteinDistance(ngram, target) <= maxDistance) return true
+    }
+  }
+  return false
+}
+
 interface ReadingSpeedOverlayProps {
   onClose: () => void
   initialSpeed?: number
@@ -31,6 +69,9 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   const lastExecutedRef = useRef<Record<string, number>>({})
   const lastTranscriptRef = useRef<Record<string, string>>({})
 
+  const wakeWordRef = useRef("Sensa")
+  const isVoiceCommandActiveRef = useRef(false)
+
   const getAudioContext = () => {
     if (!isSoundEffectsEnabledRef.current) return null
     if (!audioCtxRef.current) {
@@ -50,9 +91,15 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   }, [isSoundEffectsEnabled])
 
   useEffect(() => {
-    chrome.storage.local.get(["sensa_visual_sound_effects_enabled"], (res) => {
+    chrome.storage.local.get(["sensa_visual_sound_effects_enabled", "sensa_visual_wake_word", "sensa_voice_command_active"], (res) => {
       if (typeof res.sensa_visual_sound_effects_enabled === "boolean") {
         setIsSoundEffectsEnabled(res.sensa_visual_sound_effects_enabled)
+      }
+      if (typeof res.sensa_visual_wake_word === "string" && res.sensa_visual_wake_word.trim()) {
+        wakeWordRef.current = res.sensa_visual_wake_word.trim()
+      }
+      if (typeof res.sensa_voice_command_active === "boolean") {
+        isVoiceCommandActiveRef.current = res.sensa_voice_command_active
       }
     })
 
@@ -64,6 +111,13 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           audioCtxRef.current.close().catch(() => undefined)
           audioCtxRef.current = null
         }
+      }
+      if (changes.sensa_visual_wake_word !== undefined) {
+        const next = changes.sensa_visual_wake_word.newValue
+        wakeWordRef.current = typeof next === "string" && next.trim() ? next.trim() : "Sensa"
+      }
+      if (changes.sensa_voice_command_active !== undefined) {
+        isVoiceCommandActiveRef.current = !!changes.sensa_voice_command_active.newValue
       }
     }
 
@@ -332,6 +386,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       
       const paddedSpeech = ` ${cleanText} `
       const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
+      const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(cleanText, target, maxDistance)
 
       const applyCommand = (commandName: string, keywordsToConsume: string[], action: () => void) => {
         if (Date.now() < ignoreSpeechUntil && commandName === lastCommandName) return
@@ -339,6 +394,31 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         lastCommandName = commandName
         consumedKeywords.push(...keywordsToConsume)
         action()
+      }
+
+      const currentWakeWord = (wakeWordRef.current || "Sensa").toLowerCase().trim()
+      const isCustomWakeWord = currentWakeWord !== "sensa"
+
+      if (!isVoiceCommandActiveRef.current) {
+        const wakeMatched = isCustomWakeWord
+          ? paddedSpeech.includes(` ${currentWakeWord} `) || fuzzyCheck(currentWakeWord, 1)
+          : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start") || fuzzyCheck("sensa", 1)
+
+        if (wakeMatched) {
+          applyCommand("activate-voice", [currentWakeWord, "sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start"], () => {
+            chrome.storage.local.set({ sensa_voice_command_active: true })
+            playClickAudio("Voice commands activated")
+          })
+          return
+        }
+      } else {
+        if (check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening") || fuzzyCheck("sleep", 1) || fuzzyCheck("mute", 1)) {
+          applyCommand("deactivate-voice", ["stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening"], () => {
+            chrome.storage.local.set({ sensa_voice_command_active: false })
+            playClickAudio("Voice commands deactivated")
+          })
+          return
+        }
       }
 
       if (check("close", "cancel", "back", "exit", "dismiss", "hide")) {

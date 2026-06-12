@@ -2,6 +2,44 @@ import React, { useState, useEffect, useRef } from "react"
 import ColorPickerPopup from "./ColorPickerPopup"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
+const getLevenshteinDistance = (a: string, b: string): number => {
+  const tmp: number[][] = []
+  for (let i = 0; i <= a.length; i++) {
+    tmp.push([i])
+  }
+  for (let j = 0; j <= b.length; j++) {
+    tmp[0][j] = j
+  }
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      tmp[i][j] = Math.min(
+        tmp[i - 1][j] + 1,
+        tmp[i][j - 1] + 1,
+        tmp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      )
+    }
+  }
+  return tmp[a.length][b.length]
+}
+
+const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
+  if (text.includes(target)) return true
+  const tokens = text.split(/\s+/).filter(Boolean)
+  const targetTokens = target.split(/\s+/).filter(Boolean)
+  if (targetTokens.length === 1) {
+    for (const t of tokens) {
+      if (getLevenshteinDistance(t, target) <= maxDistance) return true
+    }
+  } else {
+    const n = targetTokens.length
+    for (let i = 0; i <= tokens.length - n; i++) {
+      const ngram = tokens.slice(i, i + n).join(" ")
+      if (getLevenshteinDistance(ngram, target) <= maxDistance) return true
+    }
+  }
+  return false
+}
+
 const DEFAULT_HIGHLIGHT_COLOR = "#FFFE00"
 const DEFAULT_INPUT_DEVICE_ID = "default"
 const DEFAULT_OUTPUT_DEVICE_ID = "default"
@@ -39,6 +77,9 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
   const pauseSettingsRecognitionRef = useRef<(() => void) | null>(null)
   const resumeSettingsRecognitionRef = useRef<(() => void) | null>(null)
   const settingsRecognitionArmedRef = useRef(false)
+
+  const wakeWordRef = useRef("Sensa")
+  const isVoiceCommandActiveRef = useRef(false)
 
   const [isMounted, setIsMounted] = useState(false)
   const onCloseRef = useRef(onClose)
@@ -325,7 +366,8 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       "sensa_visual_sound_effects_enabled",
       "sensa_visual_voice_uri",
       "sensa_visual_highlight_mouse_screen_reader",
-      "sensa_visual_wake_word"
+      "sensa_visual_wake_word",
+      "sensa_voice_command_active"
     ], (res) => {
       if (typeof res.sensa_visual_highlight_color === "string") setHighlightColor(res.sensa_visual_highlight_color)
       if (typeof res.sensa_visual_input_device_id === "string") setSelectedInputDeviceId(res.sensa_visual_input_device_id)
@@ -338,8 +380,24 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       if (typeof res.sensa_visual_sound_effects_enabled === "boolean") setIsSoundEffectsEnabled(res.sensa_visual_sound_effects_enabled)
       if (typeof res.sensa_visual_voice_uri === "string") setSelectedVoiceURI(res.sensa_visual_voice_uri)
       if (typeof res.sensa_visual_highlight_mouse_screen_reader === "boolean") setIsHighlightMouseScreenReaderEnabled(res.sensa_visual_highlight_mouse_screen_reader)
+      if (typeof res.sensa_visual_wake_word === "string" && res.sensa_visual_wake_word.trim()) wakeWordRef.current = res.sensa_visual_wake_word.trim()
+      if (typeof res.sensa_voice_command_active === "boolean") isVoiceCommandActiveRef.current = res.sensa_voice_command_active
       setIsStorageLoaded(true)
     })
+  }, [])
+
+  useEffect(() => {
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.sensa_visual_wake_word !== undefined) {
+        const next = changes.sensa_visual_wake_word.newValue
+        wakeWordRef.current = typeof next === "string" && next.trim() ? next.trim() : "Sensa"
+      }
+      if (changes.sensa_voice_command_active !== undefined) {
+        isVoiceCommandActiveRef.current = !!changes.sensa_voice_command_active.newValue
+      }
+    }
+    chrome.storage.onChanged.addListener(handleStorageChange)
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange)
   }, [])
 
   const resumeSettingsVoiceRecognition = () => {
@@ -530,6 +588,30 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       if (!newSpeech) return
       const paddedSpeech = ` ${newSpeech} `
       const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
+      const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(newSpeech, target, maxDistance)
+
+      const currentWakeWord = (wakeWordRef.current || "Sensa").toLowerCase().trim()
+      const isCustomWakeWord = currentWakeWord !== "sensa"
+
+      if (!isVoiceCommandActiveRef.current) {
+        const wakeMatched = isCustomWakeWord
+          ? paddedSpeech.includes(` ${currentWakeWord} `) || fuzzyCheck(currentWakeWord, 1)
+          : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start") || fuzzyCheck("sensa", 1)
+
+        if (wakeMatched) {
+          chrome.storage.local.set({ sensa_voice_command_active: true })
+          speakFeedback("Voice commands activated")
+          consumedString = liveText
+          return
+        }
+      } else {
+        if (check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening") || fuzzyCheck("sleep", 1) || fuzzyCheck("mute", 1)) {
+          chrome.storage.local.set({ sensa_voice_command_active: false })
+          speakFeedback("Voice commands deactivated")
+          consumedString = liveText
+          return
+        }
+      }
 
       const state = overlayStateRef.current
       let commandFired = false

@@ -271,7 +271,7 @@ export default function FloatingDockManager() {
 
   // --- THE BRIDGE ---
   useEffect(() => {
-    chrome.storage.local.get(["sensa_visual_active", "sensa_auditory_active", "sensa_user_profile", "sensa_visual_reading_speed", "sensa_visual_highlight_color", "sensa_visual_input_device_id", "sensa_visual_autoscroll_enabled", "sensa_visual_highlight_mouse_screen_reader", "sensa_auditory_caption_language", "sensa_auditory_text_size", "sensa_auditory_caption_transparency", "sensa_auditory_focus_mode", "sensa_auditory_settings"], (res) => {
+    chrome.storage.local.get(["sensa_visual_active", "sensa_auditory_active", "sensa_user_profile", "sensa_visual_reading_speed", "sensa_visual_highlight_color", "sensa_visual_input_device_id", "sensa_visual_autoscroll_enabled", "sensa_visual_highlight_mouse_screen_reader", "sensa_auditory_caption_language", "sensa_auditory_text_size", "sensa_auditory_caption_transparency", "sensa_auditory_focus_mode", "sensa_auditory_settings", "sensa_voice_command_active"], (res) => {
       const storedMode = res.sensa_visual_active ? "visual" : res.sensa_auditory_active ? "auditory" : null
       setActiveMode(storedMode)
       if (res.sensa_user_profile?.globalSettings?.theme === "dark") setUserThemePref(true)
@@ -298,6 +298,9 @@ export default function FloatingDockManager() {
       }
       if (typeof res.sensa_visual_highlight_mouse_screen_reader === "boolean") {
         setIsHighlightMouseScreenReaderEnabled(res.sensa_visual_highlight_mouse_screen_reader)
+      }
+      if (typeof res.sensa_voice_command_active === "boolean") {
+        setIsVoiceCommandActive(res.sensa_voice_command_active)
       }
     })
 
@@ -453,6 +456,9 @@ export default function FloatingDockManager() {
       }
       if (changes.sensa_visual_highlight_mouse_screen_reader !== undefined && typeof changes.sensa_visual_highlight_mouse_screen_reader.newValue === "boolean") {
         setIsHighlightMouseScreenReaderEnabled(changes.sensa_visual_highlight_mouse_screen_reader.newValue)
+      }
+      if (changes.sensa_voice_command_active !== undefined && typeof changes.sensa_voice_command_active.newValue === "boolean") {
+        setIsVoiceCommandActive(changes.sensa_voice_command_active.newValue)
       }
     }
 
@@ -694,7 +700,13 @@ export default function FloatingDockManager() {
               canRestart={isPlaying || isPaused}
               isVoiceCommandsSuspended={isSettingsOverlayOpen || isReadingSpeedOpen || isModeSelectionVoiceActive || isPopupOpen}
               onTogglePlay={togglePlayPause}   // <-- NEW PROP
-              onToggleVoiceCommand={() => setIsVoiceCommandActive(prev => !prev)}
+              onToggleVoiceCommand={() => {
+                setIsVoiceCommandActive(prev => {
+                  const next = !prev
+                  chrome.storage.local.set({ sensa_voice_command_active: next })
+                  return next
+                })
+              }}
               onNext={next}                    // <-- NEW PROP
               onPrev={prev}                    // <-- NEW PROP
               onRestart={restart}
