@@ -638,51 +638,22 @@ export default function VisualDock({
           }
           else if (check("play", "resume", "continue", "start reading", "read") || fuzzyCheck("play", 1) || fuzzyCheck("resume", 1)) {
             if (!check("speed", "rate") && !fuzzyCheck("speed", 1) && !fuzzyCheck("rate", 1)) {
-              const isReadPrefix = check("read") && !check("reading speed", "read speed", "read rate")
-              if (isReadPrefix) {
-                if (commandTimeout) window.clearTimeout(commandTimeout)
-                commandTimeout = window.setTimeout(() => {
-                  if (!isComponentMounted) return
-                  if (!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) {
-                    applyCommand("play", () => {
-                      callbacksRef.current.onTogglePlay()
-                    })
-                  }
-                }, 150)
-                return true
-              } else {
-                if (!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) {
-                  applyCommand("play", () => {
-                    callbacksRef.current.onTogglePlay()
-                  })
-                }
-                return true
-              }
-            }
-          }
-          else if (check("pause", "halt", "stop reading", "stop playing", "stop", "pass", "post", "pose", "boss", "paused") || fuzzyCheck("pause", 1) || fuzzyCheck("halt", 1)) {
-            const isStopPrefix = check("stop") && !check("stop reading", "stop playing", "stop listening", "stop voice")
-            if (isStopPrefix) {
-              if (commandTimeout) window.clearTimeout(commandTimeout)
-              commandTimeout = window.setTimeout(() => {
-                if (!isComponentMounted) return
-                if (callbacksRef.current.isPlaying && !callbacksRef.current.isPaused) {
-                  applyCommand("pause", () => {
-                    callbacksRef.current.onTogglePlay()
-                    callbacksRef.current.playClickAudio?.('Pause')
-                  })
-                }
-              }, 150)
-              return true
-            } else {
-              if (callbacksRef.current.isPlaying && !callbacksRef.current.isPaused) {
-                applyCommand("pause", () => {
+              if (!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) {
+                applyCommand("play", () => {
                   callbacksRef.current.onTogglePlay()
-                  callbacksRef.current.playClickAudio?.('Pause')
                 })
               }
               return true
             }
+          }
+          else if (check("pause", "halt", "stop reading", "stop playing", "stop", "pass", "post", "pose", "boss", "paused") || fuzzyCheck("pause", 1) || fuzzyCheck("halt", 1)) {
+            if (callbacksRef.current.isPlaying && !callbacksRef.current.isPaused) {
+              applyCommand("pause", () => {
+                callbacksRef.current.onTogglePlay()
+                callbacksRef.current.playClickAudio?.('Pause')
+              })
+            }
+            return true
           }
           else if (check("next", "skip", "forward", "necks", "neck", "nex", "nix") || fuzzyCheck("next", 1) || fuzzyCheck("skip", 1)) {
             applyCommand("next", () => {
@@ -735,24 +706,11 @@ export default function VisualDock({
             return true
           }
           else if ((check("close", "exit", "quit", "dismiss", "duck", "dark", "deactivate", "turn off") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1) || fuzzyCheck("quit", 1)) && !check("deactivate voice", "deactivate voice command", "deactivate listening")) {
-            const isDeactivatePrefix = check("deactivate") && !check("deactivate voice", "deactivate voice command", "deactivate listening")
-            if (isDeactivatePrefix) {
-              if (commandTimeout) window.clearTimeout(commandTimeout)
-              commandTimeout = window.setTimeout(() => {
-                if (!isComponentMounted) return
-                applyCommand("close", () => {
-                  callbacksRef.current.playClickAudio?.('Close')
-                  callbacksRef.current.onClose()
-                })
-              }, 150)
-              return true
-            } else {
-              applyCommand("close", () => {
-                callbacksRef.current.playClickAudio?.('Close')
-                callbacksRef.current.onClose()
-              })
-              return true
-            }
+            applyCommand("close", () => {
+              callbacksRef.current.playClickAudio?.('Visual mode deactivated')
+              callbacksRef.current.onClose()
+            })
+            return true
           }
           else if (check("top", "go up") || fuzzyCheck("top", 1)) {
             applyCommand("top", () => {
