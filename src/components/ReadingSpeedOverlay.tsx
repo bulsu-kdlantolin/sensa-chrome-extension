@@ -332,7 +332,12 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       if (!isComponentMounted) return
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
-        try { recognition.start() } catch { }
+        try { 
+          recognition.start() 
+        } catch (e: any) { 
+          if (e && e.name === 'InvalidStateError') return
+          restartTimer = window.setTimeout(scheduleRestart, 1000)
+        }
       }, 300)
     }
 
@@ -394,6 +399,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         lastCommandName = commandName
         consumedKeywords.push(...keywordsToConsume)
         action()
+        try { recognition.stop() } catch (e) {}
       }
 
       const currentWakeWord = (wakeWordRef.current || "Sensa").toLowerCase().trim()
@@ -421,7 +427,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         }
       }
 
-      if (check("close", "cancel", "back", "exit", "dismiss", "hide")) {
+      if (check("close", "cancel", "back", "exit", "dismiss", "hide") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1)) {
         applyCommand("close", ["close", "cancel", "back", "exit", "dismiss", "hide"], () => closeOverlay())
         return
       }
@@ -453,12 +459,31 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
 
     recognition.onend = () => scheduleRestart()
 
-    try { recognition.start() } catch { }
+    let isPermanentlyDead = false
+    const reviveEngine = () => {
+      if (isPermanentlyDead) {
+        isPermanentlyDead = false
+        try { recognition.start() } catch (e) {}
+      }
+    }
+    window.addEventListener("click", reviveEngine)
+    window.addEventListener("focus", reviveEngine)
+    window.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") reviveEngine()
+    })
+
+    const startTimeout = window.setTimeout(() => {
+      try { recognition.start() } catch (e) {}
+    }, 150)
 
     return () => {
       isComponentMounted = false
+      window.removeEventListener("click", reviveEngine)
+      window.removeEventListener("focus", reviveEngine)
+      window.removeEventListener("visibilitychange", reviveEngine)
       if (restartTimer) window.clearTimeout(restartTimer)
-      try { recognition.stop() } catch { }
+      window.clearTimeout(startTimeout)
+      try { recognition.stop() } catch (e) {}
       recognition.onresult = null
       recognition.onerror = null
       recognition.onend = null

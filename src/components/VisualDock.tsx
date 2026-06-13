@@ -60,10 +60,11 @@ const normalizeInput = (rawText: string): string => {
   return tokens.join(" ")
 }
 
-const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
+const GodTierMicIcon = ({ isActive, onSoundDetected }: { isActive: boolean, onSoundDetected?: () => void }) => {
   const barsRef = useRef<(HTMLDivElement | null)[]>([])
   const currentHeights = useRef([4, 6, 8, 6, 4])
   const tickRef = useRef(0)
+  const lastSoundReportTime = useRef(0)
 
   const isActiveRef = useRef(isActive)
   useEffect(() => {
@@ -162,6 +163,14 @@ const GodTierMicIcon = ({ isActive }: { isActive: boolean }) => {
       const tick = tickRef.current
       const liveEnergy = getLiveEnergy()
       const hasAudio = isActiveRef.current && liveEnergy > 0
+
+      if (hasAudio && onSoundDetected) {
+        const now = Date.now()
+        if (now - lastSoundReportTime.current > 1000) {
+          lastSoundReportTime.current = now
+          onSoundDetected()
+        }
+      }
 
       barsRef.current.forEach((bar, i) => {
         if (!bar) return
@@ -496,10 +505,10 @@ export default function VisualDock({
     const getKeywordsForCommand = (cmd: string) => {
       switch (cmd) {
         case "play": return ["play", "resume", "continue", "start reading", "read"]
-        case "pause": return ["pause", "halt", "stop reading", "stop playing", "stop", "pass", "post", "pose", "boss", "paused"]
+        case "stop": return ["stop", "pause", "halt", "stop reading", "stop playing", "pass", "post", "pose", "boss", "paused", "wait", "hold on", "shut up", "hush", "shh", "stop it", "pause reading", "polls", "pulse", "paws"]
         case "next": return ["next", "skip", "forward", "necks", "neck", "nex", "nix"]
         case "previous": return ["previous", "prev", "previ", "preevi", "back", "go back", "preveous", "previus", "privious", "preview"]
-        case "restart": return ["restart", "start over", "reset", "refresh", "re start", "re-start"]
+        case "restart": return ["repeat", "restart", "start over", "reset", "refresh", "re start", "re-start", "from the top", "from the beginning", "begin again", "restore", "replay", "rewind", "again"]
         case "speed": return ["speed", "rate", "reading speed", "voice speed"]
         case "settings": return ["setting", "settings", "options", "open settings"]
         case "minimize": return ["minimize", "collapse", "hide", "mini"]
@@ -523,7 +532,7 @@ export default function VisualDock({
             cbs.playClickAudio?.('Voice commands deactivated')
             try { cbs.onToggleVoiceCommand() } catch { }
           }
-        }, 15000)
+        }, 30000)
       }
     }
 
@@ -533,12 +542,25 @@ export default function VisualDock({
       if (!isComponentMounted || isPermanentlyDead) return
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
-        try { recognition.start() } catch (e) { }
+        try { 
+          recognition.start() 
+        } catch (e: any) { 
+          console.error("[Sensa VisualDock] Failed to start recognition:", e)
+          if (e && e.name === 'InvalidStateError') return
+          restartTimer = window.setTimeout(scheduleRestart, 1000)
+        }
       }, 300)
     }
 
     const lockVoiceToggle = () => {
       voiceToggleLockUntil = Date.now() + 1800
+    }
+
+    recognition.onstart = () => {
+      currentResultIndex = 0
+      consumedKeywords = []
+      globalBuffer = ""
+      lastCommandName = ""
     }
 
     recognition.onsoundstart = () => {
@@ -608,6 +630,10 @@ export default function VisualDock({
             consumedKeywords.push(...getKeywordsForCommand(commandName))
           }
           action()
+          
+          if (commandName !== "activate-voice") {
+            try { recognition.stop() } catch (e) {}
+          }
         }
 
         if (!callbacksRef.current.isVoiceCommandActive) {
@@ -636,24 +662,36 @@ export default function VisualDock({
             })
             return true
           }
-          else if (check("play", "resume", "continue", "start reading", "read") || fuzzyCheck("play", 1) || fuzzyCheck("resume", 1)) {
-            if (!check("speed", "rate") && !fuzzyCheck("speed", 1) && !fuzzyCheck("rate", 1)) {
-              if (!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) {
-                applyCommand("play", () => {
-                  callbacksRef.current.onTogglePlay()
-                })
-              }
-              return true
-            }
+          else if (check("speed", "rate", "reading speed", "voice speed") || fuzzyCheck("speed", 1) || fuzzyCheck("rate", 1)) {
+            applyCommand("speed", () => {
+              callbacksRef.current.playClickAudio?.('Reading speed')
+              callbacksRef.current.onOpenReadingSpeed()
+            })
+            return true
           }
-          else if (check("pause", "halt", "stop reading", "stop playing", "stop", "pass", "post", "pose", "boss", "paused") || fuzzyCheck("pause", 1) || fuzzyCheck("halt", 1)) {
-            if (callbacksRef.current.isPlaying && !callbacksRef.current.isPaused) {
-              applyCommand("pause", () => {
+          else if (check("setting", "settings", "options", "open settings") || fuzzyCheck("settings", 1) || fuzzyCheck("options", 1)) {
+            applyCommand("settings", () => {
+              callbacksRef.current.playClickAudio?.('Settings')
+              callbacksRef.current.onOpenSettings()
+            })
+            return true
+          }
+          else if (check("play", "resume", "continue", "start reading", "read") || fuzzyCheck("play", 1) || fuzzyCheck("resume", 1)) {
+            if (!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) {
+              applyCommand("play", () => {
                 callbacksRef.current.onTogglePlay()
-                callbacksRef.current.playClickAudio?.('Pause')
               })
             }
             return true
+          }
+          else if (check("stop", "pause", "halt", "stop reading", "stop playing", "pass", "post", "pose", "boss", "paused", "wait", "hold on", "shut up", "hush", "shh", "stop it", "pause reading", "polls", "pulse", "paws") || fuzzyCheck("stop", 1) || fuzzyCheck("pause", 1) || fuzzyCheck("halt", 1)) {
+            if (callbacksRef.current.isPlaying && !callbacksRef.current.isPaused) {
+              applyCommand("stop", () => {
+                callbacksRef.current.onTogglePlay()
+                callbacksRef.current.playClickAudio?.('Stop')
+              })
+              return true
+            }
           }
           else if (check("next", "skip", "forward", "necks", "neck", "nex", "nix") || fuzzyCheck("next", 1) || fuzzyCheck("skip", 1)) {
             applyCommand("next", () => {
@@ -667,23 +705,10 @@ export default function VisualDock({
             })
             return true
           }
-          else if (check("restart", "start over", "reset", "refresh", "re start", "re-start") || fuzzyCheck("restart", 1) || fuzzyCheck("reset", 1)) {
+          else if (cleanText.includes("repeat") || cleanText.includes("restart") || check("repeat", "restart", "start over", "reset", "refresh", "re start", "re-start", "from the top", "from the beginning", "begin again", "restore", "we start", "replay", "rewind", "again") || fuzzyCheck("repeat", 1) || fuzzyCheck("restart", 1) || fuzzyCheck("reset", 1)) {
             applyCommand("restart", () => {
+              callbacksRef.current.playClickAudio?.('Repeat')
               callbacksRef.current.onRestart()
-            })
-            return true
-          }
-          else if (check("speed", "rate", "reading speed", "voice speed") || fuzzyCheck("speed", 1) || fuzzyCheck("rate", 1)) {
-            applyCommand("speed", () => {
-              callbacksRef.current.playClickAudio?.('Reading speed')
-              callbacksRef.current.onOpenReadingSpeed()
-            })
-            return true
-          }
-          else if (check("setting", "settings", "options", "open settings") || fuzzyCheck("settings", 1) || fuzzyCheck("options", 1)) {
-            applyCommand("settings", () => {
-              callbacksRef.current.playClickAudio?.('Settings')
-              callbacksRef.current.onOpenSettings()
             })
             return true
           }
@@ -778,13 +803,17 @@ export default function VisualDock({
 
     recognition.onend = () => scheduleRestart()
 
-    const reviveEngineOnClick = () => {
+    const reviveEngine = () => {
       if (isPermanentlyDead && !isVoiceCommandsSuspended) {
         isPermanentlyDead = false
         try { recognition.start() } catch (e) { }
       }
     }
-    window.addEventListener("click", reviveEngineOnClick)
+    window.addEventListener("click", reviveEngine)
+    window.addEventListener("focus", reviveEngine)
+    window.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") reviveEngine()
+    })
 
     const startTimeout = window.setTimeout(() => {
       try { recognition.start() } catch (e) { }
@@ -792,7 +821,9 @@ export default function VisualDock({
 
     return () => {
       isComponentMounted = false
-      window.removeEventListener("click", reviveEngineOnClick)
+      window.removeEventListener("click", reviveEngine)
+      window.removeEventListener("focus", reviveEngine)
+      window.removeEventListener("visibilitychange", reviveEngine)
       if (restartTimer) window.clearTimeout(restartTimer)
       window.clearTimeout(startTimeout)
       if (silenceTimer) window.clearTimeout(silenceTimer)
@@ -821,7 +852,12 @@ export default function VisualDock({
           {...getHoverHandlers("Audio Visualizer")}
         >
           <Tooltip label="Audio Visualizer" isDark={isDark} />
-          <GodTierMicIcon isActive={isVoiceCommandActive} />
+          <GodTierMicIcon 
+            isActive={isVoiceCommandActive} 
+            onSoundDetected={() => {
+              if (resetSilenceTimerRef.current) resetSilenceTimerRef.current()
+            }}
+          />
         </button>
 
         <button
@@ -879,10 +915,10 @@ export default function VisualDock({
               onClick={handleTogglePlay}
               aria-pressed={isPlayOptimistic}
               className={`${btnBaseClass} ${isMinimized ? "shadow-none hover:shadow-none" : btnAccentClass}`}
-              aria-label={isPlayOptimistic ? "Pause Reading" : "Read"}
-              {...getHoverHandlers(isPlayOptimistic ? "Pause" : "Read")}
+              aria-label={isPlayOptimistic ? "Stop Reading" : "Read"}
+              {...getHoverHandlers(isPlayOptimistic ? "Stop" : "Read")}
             >
-              <Tooltip label={isPlayOptimistic ? "Pause" : "Read"} isDark={isDark} />
+              <Tooltip label={isPlayOptimistic ? "Stop" : "Read"} isDark={isDark} />
               {isPlayOptimistic ? (
                 <svg viewBox="0 0 24 24" fill="currentColor" className={`transition-transform duration-200 will-change-transform !w-[22px] !h-[22px] shrink-0`} aria-hidden="true">
                   <rect x="6" y="5" width="4" height="14" rx="1" />
@@ -937,10 +973,10 @@ export default function VisualDock({
               }}
               disabled={!canRestart}
               className={`${btnBaseClass} ${btnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""} ${canRestart ? "" : "opacity-30 cursor-not-allowed hover:bg-transparent hover:translate-y-0 hover:shadow-none"}`}
-              aria-label="Restart Reading from Beginning"
-              {...getHoverHandlers("Restart")}
+              aria-label="Repeat Reading from Beginning"
+              {...getHoverHandlers("Repeat")}
             >
-              <Tooltip label="Restart" isDark={isDark} />
+              <Tooltip label="Repeat" isDark={isDark} />
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`${iconMotionClass} !w-[22px] !h-[22px] shrink-0`} aria-hidden="true">
                 <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
                 <polyline points="21 3 21 8 16 8" />

@@ -475,7 +475,12 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       if (!isComponentMounted) return
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
-        try { recognition.start() } catch { }
+        try { 
+          recognition.start() 
+        } catch (e: any) { 
+          if (e && e.name === 'InvalidStateError') return
+          restartTimer = window.setTimeout(scheduleRestart, 1000)
+        }
       }, 300)
     }
 
@@ -635,7 +640,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
         const wantsOn = check("on", "enable", "enabled", "turn on", "activate")
         const wantsOff = check("off", "disable", "disabled", "turn off", "deactivate")
 
-        if (check("close settings", "close", "cancel", "back", "exit")) {
+        if (check("close settings", "close", "cancel", "back", "exit") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1)) {
           commandFired = true
           setIsMounted(false)
           setTimeout(() => onCloseRef.current(), 300)
@@ -679,6 +684,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
 
       if (commandFired) {
         consumedString = liveText
+        try { recognition.stop() } catch (e) {}
       }
     }
 
@@ -689,22 +695,36 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
 
     recognition.onend = () => scheduleRestart()
 
-    const initialStartTimer = window.setTimeout(() => {
-      if (!isComponentMounted) return
-      try { recognition.start() } catch { }
-    }, 1500)
+    let isPermanentlyDead = false
+    const reviveEngine = () => {
+      if (isPermanentlyDead) {
+        isPermanentlyDead = false
+        try { recognition.start() } catch (e) {}
+      }
+    }
+    window.addEventListener("click", reviveEngine)
+    window.addEventListener("focus", reviveEngine)
+    window.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") reviveEngine()
+    })
+
+    const startTimeout = window.setTimeout(() => {
+      try { recognition.start() } catch (e) {}
+    }, 150)
 
     return () => {
       isComponentMounted = false
       settingsRecognitionArmedRef.current = false
-      window.clearTimeout(initialStartTimer)
-      pauseSettingsRecognitionRef.current = null
-      resumeSettingsRecognitionRef.current = null
+      window.removeEventListener("click", reviveEngine)
+      window.removeEventListener("focus", reviveEngine)
+      window.removeEventListener("visibilitychange", reviveEngine)
       if (restartTimer) window.clearTimeout(restartTimer)
-      try { recognition.stop() } catch { }
+      window.clearTimeout(startTimeout)
+      try { recognition.stop() } catch (e) {}
       recognition.onresult = null
       recognition.onerror = null
       recognition.onend = null
+      recognition.onstart = null
     }
   }, [playClickAudio])
 
