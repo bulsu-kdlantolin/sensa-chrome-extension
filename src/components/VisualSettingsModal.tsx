@@ -478,7 +478,10 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
         try { 
           recognition.start() 
         } catch (e: any) { 
-          if (e && e.name === 'InvalidStateError') return
+          if (e && e.name === 'InvalidStateError') {
+            restartTimer = window.setTimeout(scheduleRestart, 400)
+            return
+          }
           restartTimer = window.setTimeout(scheduleRestart, 1000)
         }
       }, 300)
@@ -684,7 +687,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
 
       if (commandFired) {
         consumedString = liveText
-        try { recognition.stop() } catch (e) {}
       }
     }
 
@@ -782,8 +784,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     if (enabled) {
       speakSettingsGuide("Voice guide enabled")
     } else {
-      // Intentionally don't speak when turning it off to immediately prove it's silent
-      window.speechSynthesis.cancel()
+      speakSettingsGuide("Voice guide disabled")
     }
   }
 
@@ -815,14 +816,18 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     setSelectedInputDeviceId(DEFAULT_INPUT_DEVICE_ID)
     setSelectedOutputDeviceId(DEFAULT_OUTPUT_DEVICE_ID)
     setIsAutoscrollEnabled(true)
-    setIsHighlightMouseScreenReaderEnabled(false)
+    setIsHighlightMouseScreenReaderEnabled(true)
+    setIsVoiceGuideEnabled(true)
+    setIsSoundEffectsEnabled(true)
     setSelectedVoiceURI(defaultVoiceURI)
     chrome.storage.local.set({
       sensa_visual_highlight_color: DEFAULT_HIGHLIGHT_COLOR,
       sensa_visual_input_device_id: DEFAULT_INPUT_DEVICE_ID,
       sensa_visual_output_device_id: DEFAULT_OUTPUT_DEVICE_ID,
       sensa_visual_autoscroll_enabled: true,
-      sensa_visual_highlight_mouse_screen_reader: false,
+      sensa_visual_highlight_mouse_screen_reader: true,
+      sensa_visual_voice_guide_enabled: true,
+      sensa_visual_sound_effects_enabled: true,
       sensa_visual_voice_uri: defaultVoiceURI,
       sensa_visual_voice_name: defaultVoice?.name || ""
     })
@@ -978,6 +983,33 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
           </label>
 
           <div
+            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
+            {...getHoverHandlers("Highlight color")}
+          >
+            <div className="flex items-center gap-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M14.5 4.5l5 5" /><path d="M11 8l-7 7-1 4 4-1 7-7" /><path d="M14 7l3 3" /></svg>
+              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Highlight Color</span>
+            </div>
+            <div className="relative flex items-center justify-end w-[190px]">
+              <button
+                type="button"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); playClickSfx(); setShowColorPicker((prev) => !prev); playClickAudio(showColorPicker ? "Highlight color closed" : "Highlight color opened") }}
+                className="w-10 h-10 rounded-full cursor-pointer shadow-[0_4px_12px_rgba(0,0,0,0.15)] border-2 border-white/40 ring-2 ring-black/5 focus:outline-none focus:ring-4 focus:ring-[#0A44FF]/50 transition-all active:scale-90 hover:scale-105"
+                style={{ backgroundColor: highlightColor }}
+                aria-label="Pick highlight color"
+              />
+              {showColorPicker && (
+                <ColorPickerPopup
+                  isDark={isDark} initialColor={highlightColor}
+                  onColorChange={handleHighlightChange} onClose={() => setShowColorPicker(false)}
+                  placement="end"
+                />
+              )}
+            </div>
+          </div>
+
+          <div
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative z-50 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
             {...getHoverHandlers("Voice Selection")}
           >
@@ -1025,33 +1057,6 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
                     ))}
                   </ul>
                 </>
-              )}
-            </div>
-          </div>
-
-          <div
-            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
-            {...getHoverHandlers("Highlight color")}
-          >
-            <div className="flex items-center gap-3">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M14.5 4.5l5 5" /><path d="M11 8l-7 7-1 4 4-1 7-7" /><path d="M14 7l3 3" /></svg>
-              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Highlight Color</span>
-            </div>
-            <div className="relative flex items-center justify-end w-[190px]">
-              <button
-                type="button"
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); playClickSfx(); setShowColorPicker((prev) => !prev); playClickAudio(showColorPicker ? "Highlight color closed" : "Highlight color opened") }}
-                className="w-10 h-10 rounded-full cursor-pointer shadow-[0_4px_12px_rgba(0,0,0,0.15)] border-2 border-white/40 ring-2 ring-black/5 focus:outline-none focus:ring-4 focus:ring-[#0A44FF]/50 transition-all active:scale-90 hover:scale-105"
-                style={{ backgroundColor: highlightColor }}
-                aria-label="Pick highlight color"
-              />
-              {showColorPicker && (
-                <ColorPickerPopup
-                  isDark={isDark} initialColor={highlightColor}
-                  onColorChange={handleHighlightChange} onClose={() => setShowColorPicker(false)}
-                  placement="end"
-                />
               )}
             </div>
           </div>

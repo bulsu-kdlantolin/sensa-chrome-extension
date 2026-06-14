@@ -359,7 +359,7 @@ export default function VisualDock({
   const glassPanelClass = `rounded-full backdrop-blur-3xl border transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${isDark
     ? "bg-[#1C1C1E]/85 border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.6)]"
     : "bg-white/90 border-black/10 shadow-[0_8px_32px_rgba(0,0,0,0.15)]"
-    } ${isVoiceCommandActive ? "contrast-105 saturate-110 drop-shadow-[0_0_22px_rgba(10,68,255,0.14)]" : "contrast-100 saturate-100 drop-shadow-none"}`
+    } ${isVoiceCommandActive ? "contrast-105 saturate-110" : "contrast-100 saturate-100 drop-shadow-none"}`
 
   const middleGlassPanelClass = `rounded-full backdrop-blur-3xl bg-white dark:bg-[#1C1C1E] shadow-[0_8px_32px_rgba(0,0,0,0.15)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.6)] ${isVoiceCommandActive ? "contrast-105 saturate-110" : "contrast-100 saturate-100"}`
   const btnBaseClass = `relative group !w-[44px] !h-[44px] !min-w-[44px] !min-h-[44px] !p-0 !m-0 flex items-center justify-center rounded-full shrink-0 transform-gpu will-change-transform focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent box-border transition-all duration-200 hover:-translate-y-[1.5px] active:translate-y-0 active:scale-[0.97]`
@@ -440,6 +440,7 @@ export default function VisualDock({
 
   const handleToggleVoiceCommand = () => {
     playClickSfx()
+    playClickAudio(isVoiceCommandActive ? "Voice commands deactivated" : "Voice commands activated")
     onToggleVoiceCommand()
   }
 
@@ -546,7 +547,10 @@ export default function VisualDock({
           recognition.start() 
         } catch (e: any) { 
           console.error("[Sensa VisualDock] Failed to start recognition:", e)
-          if (e && e.name === 'InvalidStateError') return
+          if (e && e.name === 'InvalidStateError') {
+            restartTimer = window.setTimeout(scheduleRestart, 400)
+            return
+          }
           restartTimer = window.setTimeout(scheduleRestart, 1000)
         }
       }, 300)
@@ -630,10 +634,6 @@ export default function VisualDock({
             consumedKeywords.push(...getKeywordsForCommand(commandName))
           }
           action()
-          
-          if (commandName !== "activate-voice") {
-            try { recognition.stop() } catch (e) {}
-          }
         }
 
         if (!callbacksRef.current.isVoiceCommandActive) {
@@ -777,7 +777,7 @@ export default function VisualDock({
           }
           else if ((check("close", "exit", "quit", "dismiss", "deactivate", "turn off") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1) || fuzzyCheck("quit", 1)) && !check("deactivate voice", "deactivate voice command", "deactivate listening")) {
             applyCommand("close", () => {
-              callbacksRef.current.playClickAudio?.('Close')
+              callbacksRef.current.playClickAudio?.('Visual mode deactivated')
               callbacksRef.current.onClose()
             })
             return true
@@ -1057,6 +1057,7 @@ export default function VisualDock({
           type="button"
           onClick={() => {
             playClickSfx()
+            playClickAudio('Visual mode deactivated')
             onClose()
           }}
           className={closeBtnClass}

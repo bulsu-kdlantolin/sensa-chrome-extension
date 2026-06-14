@@ -264,6 +264,26 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     onBlur: cancelHoverAudio
   })
 
+  useEffect(() => {
+    let timeout: number
+    let interval: number
+
+    const announce = () => {
+      playClickAudio("Say increase or decrease to adjust reading speed. Or say close to exit the overlay.")
+    }
+
+    // Play once shortly after opening (delayed so it doesn't interrupt "Reading speed")
+    timeout = window.setTimeout(announce, 2500)
+
+    // Repeat every 30 seconds
+    interval = window.setInterval(announce, 30000)
+
+    return () => {
+      window.clearTimeout(timeout)
+      window.clearInterval(interval)
+    }
+  }, [playClickAudio])
+
   const speedStops = [1, 1.25, 1.5, 1.75, 2]
 
   const handleDecrease = () => {
@@ -301,10 +321,6 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     }
   }
 
-  const commitSpeed = () => {
-    onSpeedChange?.(speed)
-  }
-
   useEffect(() => {
     const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognitionCtor) return
@@ -335,7 +351,10 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         try { 
           recognition.start() 
         } catch (e: any) { 
-          if (e && e.name === 'InvalidStateError') return
+          if (e && e.name === 'InvalidStateError') {
+            restartTimer = window.setTimeout(scheduleRestart, 400)
+            return
+          }
           restartTimer = window.setTimeout(scheduleRestart, 1000)
         }
       }, 300)
@@ -352,6 +371,8 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     }
 
     const closeOverlay = () => {
+      playClickSfx()
+      playClickAudio("Closing speed settings")
       setIsMounted(false)
       setTimeout(() => onCloseRef.current(), 300)
     }
@@ -399,7 +420,6 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         lastCommandName = commandName
         consumedKeywords.push(...keywordsToConsume)
         action()
-        try { recognition.stop() } catch (e) {}
       }
 
       const currentWakeWord = (wakeWordRef.current || "Sensa").toLowerCase().trim()
@@ -429,14 +449,6 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
 
       if (check("close", "cancel", "back", "exit", "dismiss", "hide") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1)) {
         applyCommand("close", ["close", "cancel", "back", "exit", "dismiss", "hide"], () => closeOverlay())
-        return
-      }
-
-      if (check("apply", "save", "done", "confirm", "okay", "ok")) {
-        applyCommand("apply", ["apply", "save", "done", "confirm", "okay", "ok"], () => {
-          onSpeedChangeRef.current?.(speedRef.current)
-          closeOverlay()
-        })
         return
       }
 
@@ -670,34 +682,6 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
                 </button>
               ))}
             </div>
-          </div>
-
-          <div className="mt-8 flex justify-end gap-3">
-            <button
-              onClick={() => {
-                setIsMounted(false)
-                playClickSfx()
-                playClickAudio("Cancel")
-                setTimeout(onClose, 300)
-              }}
-              className={`h-11 px-6 rounded-xl border ${inputBorder} ${inputBg} ${textColor} text-[14px] font-semibold transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_10px_20px_-14px_rgba(15,23,42,0.35)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/40`}
-              {...getHoverHandlers("Cancel")}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={() => {
-                commitSpeed()
-                playClickSfx()
-                playClickAudio(`Speed set to ${formattedSpeed}x`)
-                setIsMounted(false)
-                setTimeout(onClose, 300)
-              }}
-              className="h-11 px-7 rounded-xl bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-[14px] font-semibold text-white hover:brightness-105 hover:-translate-y-[1px] hover:shadow-[0_16px_26px_-14px_rgba(10,68,255,0.7)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 shadow-lg"
-              {...getHoverHandlers("Apply")}
-            >
-              Apply
-            </button>
           </div>
         </div>
       </div>
