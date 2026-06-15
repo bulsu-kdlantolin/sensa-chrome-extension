@@ -102,7 +102,8 @@ const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
 const normalizeInput = (rawText: string): string => {
   let text = rawText.toLowerCase()
   text = text.replace(/[^a-z0-9\s]/gi, " ")
-  text = text.replace(/\b(?:de|dee|the)\s+activate\b/g, "deactivate")
+  text = text.replace(/\b(?:de|dee|the|to|do|you)\s+activate[d]?\b/g, "deactivate")
+  text = text.replace(/\bdeactivated\b/g, "deactivate")
   text = text.replace(/\s+/g, " ").trim()
   const fillerWords = new Set(["the", "a", "please", "hey", "can", "you", "change", "set", "to", "my", "sincere", "sansa", "sensor", "sensia"])
   const tokens = text.split(" ").filter(t => !fillerWords.has(t))
@@ -175,7 +176,8 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
     })
   } else if (command === "deactivate") {
     chrome.storage.local.set({
-      sensa_visual_active: false
+      sensa_visual_active: false,
+      sensa_voice_command_active: false
     }, () => {
       chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null })
       speakFeedbackInTab("Visual mode deactivated")
@@ -185,7 +187,8 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
     chrome.storage.local.set({
       sensa_auditory_active: true,
       sensa_visual_active: false,
-      sensa_last_tab: "auditory"
+      sensa_last_tab: "auditory",
+      sensa_voice_command_active: false
     }, () => {
       chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: "auditory" })
       speakFeedbackInTab("Auditory mode activated")
@@ -306,58 +309,47 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
     const words = normalizedTranscript.split(" ")
     const hasWord = (w: string) => words.includes(w)
 
+    const count = (w: string) => {
+      const regex = new RegExp(`\\b${w}\\b`, "g")
+      return (normalizedTranscript.match(regex) || []).length
+    }
+
     let activateScore = 0
     let deactivateScore = 0
     let auditoryScore = 0
 
-    // Match activate cues (check exact words to avoid sub-string 'deactivate' match)
-    if (
-      normalizedTranscript.includes("visual mode") ||
-      normalizedTranscript.includes("vision mode") ||
-      hasWord("visual") ||
-      hasWord("activate") ||
-      hasWord("start")
-    ) {
-      activateScore += 5
-    } else if (
-      fuzzyMatch(normalizedTranscript, "visual mode", 2) ||
-      fuzzyMatch(normalizedTranscript, "visual", 1) ||
-      fuzzyMatch(normalizedTranscript, "activate", 1) ||
-      fuzzyMatch(normalizedTranscript, "start", 1)
-    ) {
-      activateScore += 3
+    // Match activate cues
+    activateScore += count("visual mode") * 5
+    activateScore += count("vision mode") * 5
+    activateScore += count("visual ") * 3
+    activateScore += count("activate") * 3
+    activateScore += count("start") * 3
+
+    if (activateScore === 0) {
+      if (fuzzyMatch(normalizedTranscript, "visual mode", 2) || fuzzyMatch(normalizedTranscript, "vision mode", 2)) activateScore += 3
+      else if (fuzzyMatch(normalizedTranscript, "visual", 1) || fuzzyMatch(normalizedTranscript, "activate", 1) || fuzzyMatch(normalizedTranscript, "start", 1)) activateScore += 3
     }
 
     // Match deactivate cues
-    if (
-      normalizedTranscript.includes("deactivate visual mode") ||
-      normalizedTranscript.includes("stop visual mode") ||
-      normalizedTranscript.includes("turn off") ||
-      hasWord("deactivate") ||
-      hasWord("stop")
-    ) {
-      deactivateScore += 5
-    } else if (
-      fuzzyMatch(normalizedTranscript, "deactivate", 2) ||
-      fuzzyMatch(normalizedTranscript, "stop", 1) ||
-      fuzzyMatch(whitespaced(normalizedTranscript), "turn off", 1)
-    ) {
-      deactivateScore += 3
+    deactivateScore += count("deactivate visual mode") * 5
+    deactivateScore += count("stop visual mode") * 5
+    deactivateScore += count("turn off") * 5
+    deactivateScore += count("deactivate") * 3
+    deactivateScore += count("stop") * 3
+
+    if (deactivateScore === 0) {
+      if (fuzzyMatch(normalizedTranscript, "deactivate visual mode", 2) || fuzzyMatch(normalizedTranscript, "stop visual mode", 2) || fuzzyMatch(normalizedTranscript, "turn off", 1)) deactivateScore += 3
+      else if (fuzzyMatch(normalizedTranscript, "deactivate", 2) || fuzzyMatch(normalizedTranscript, "stop", 1)) deactivateScore += 3
     }
 
     // Match auditory cues
-    if (
-      normalizedTranscript.includes("auditory mode") ||
-      normalizedTranscript.includes("audio mode") ||
-      hasWord("auditory")
-    ) {
-      auditoryScore += 5
-    } else if (
-      fuzzyMatch(normalizedTranscript, "auditory mode", 2) ||
-      fuzzyMatch(normalizedTranscript, "auditory", 1) ||
-      fuzzyMatch(normalizedTranscript, "audio mode", 2)
-    ) {
-      auditoryScore += 3
+    auditoryScore += count("auditory mode") * 5
+    auditoryScore += count("audio mode") * 5
+    auditoryScore += count("auditory") * 3
+
+    if (auditoryScore === 0) {
+      if (fuzzyMatch(normalizedTranscript, "auditory mode", 2) || fuzzyMatch(normalizedTranscript, "audio mode", 2)) auditoryScore += 3
+      else if (fuzzyMatch(normalizedTranscript, "auditory", 1) || fuzzyMatch(normalizedTranscript, "audio", 1)) auditoryScore += 3
     }
 
     let chosenCommand: "activate" | "deactivate" | "auditory" | null = null
@@ -372,6 +364,13 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
       }
     } else if (deactivateScore >= 3 && deactivateScore > activateScore) {
       chosenCommand = "deactivate"
+    } else if (
+      (activateScore >= 3 && deactivateScore >= 3) ||
+      (activateScore >= 3 && auditoryScore >= 3) ||
+      (deactivateScore >= 3 && auditoryScore >= 3)
+    ) {
+      tabLog(`[Sensa Tab Voice Bridge] Conflict detected (act: ${activateScore}, deact: ${deactivateScore}, aud: ${auditoryScore}). Clearing buffer.`)
+      globalBuffer = ""
     }
 
     tabLog(`[Sensa Tab Voice Bridge] Score results -> Activate: ${activateScore}, Deactivate: ${deactivateScore}, Auditory: ${auditoryScore}, isCurrentlyActive: ${isCurrentlyActive}, chosenCommand: ${chosenCommand}`)

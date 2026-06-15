@@ -64,6 +64,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const [startDescription, setStartDescription] = useState(false)
   const [startSubtitle, setStartSubtitle] = useState(false)
   const [visibleCards, setVisibleCards] = useState(0)
+  const [reminderTrigger, setReminderTrigger] = useState<{ skipped: boolean } | null>(null)
   const selectedVoiceURIRef = useRef<string>("")
   const selectedVoiceNameRef = useRef<string>("")
   const voiceSettingsLoadedRef = useRef(false)
@@ -74,7 +75,6 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const voiceReadyRetryRef = useRef<number | null>(null)
   const voicesChangedHandlerRef = useRef<(() => void) | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
-  const isTTSPlayingRef = useRef(false)
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
   const commandReminderIntervalRef = useRef<number | null>(null)
 
@@ -211,7 +211,6 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
 
       narrationCanceledRef.current = true
       window.speechSynthesis.cancel()
-      isTTSPlayingRef.current = false
       playPopSfx()
     }
 
@@ -344,17 +343,14 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     }
 
     utterance.onstart = () => {
-      isTTSPlayingRef.current = true
     }
 
     utterance.onend = () => {
-      isTTSPlayingRef.current = false
       if (narrationCanceledRef.current) return
       onDone()
     }
 
     utterance.onerror = () => {
-      isTTSPlayingRef.current = false
       if (narrationCanceledRef.current) return
       onDone()
     }
@@ -365,20 +361,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const speakCardSequence = (index: number) => {
     if (index >= 2) {
       narrationStageRef.current = "cardsDone"
-      // Announce available commands after a short pause
-      window.setTimeout(() => {
-        if (narrationCanceledRef.current) return
-        speakWithResolvedVoice(commandReminderText, () => {
-          // Start the 20-second reminder interval
-          if (commandReminderIntervalRef.current !== null) {
-            window.clearInterval(commandReminderIntervalRef.current)
-          }
-          commandReminderIntervalRef.current = window.setInterval(() => {
-            if (narrationCanceledRef.current || isTTSPlayingRef.current) return
-            speakWithResolvedVoice(commandReminderText, () => {})
-          }, 30000)
-        })
-      }, 800)
+      setReminderTrigger({ skipped: false })
       return
     }
 
@@ -479,6 +462,40 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   }, [auditoryCardText, startSubtitle, subtitleText, subtitleWords.length, typedWordCount, visualCardText])
 
   useEffect(() => {
+    if (!reminderTrigger) return
+
+    const playReminder = () => {
+      if (document.hidden) return
+      speakWithResolvedVoice(commandReminderText, () => {})
+    }
+
+    if (reminderTrigger.skipped) {
+      const timeout = window.setTimeout(() => {
+        playReminder()
+      }, 800)
+
+      const interval = window.setInterval(() => {
+        playReminder()
+      }, 30000)
+
+      return () => {
+        window.clearTimeout(timeout)
+        window.clearInterval(interval)
+      }
+    } else {
+      playReminder()
+
+      const interval = window.setInterval(() => {
+        playReminder()
+      }, 30000)
+
+      return () => {
+        window.clearInterval(interval)
+      }
+    }
+  }, [reminderTrigger])
+
+  useEffect(() => {
     return () => {
       narrationCanceledRef.current = true
       window.speechSynthesis.cancel()
@@ -527,7 +544,6 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     if (target.closest("button")) return
 
     window.speechSynthesis.cancel()
-    isTTSPlayingRef.current = false
 
     if (narrationStageRef.current === "idle") {
       narrationStageRef.current = "titleDone"
@@ -565,6 +581,8 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
       }
       if (visibleCards < 2) {
         setVisibleCards(2)
+        narrationStageRef.current = "cardsDone"
+        setReminderTrigger({ skipped: true })
         return
       }
     }

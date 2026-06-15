@@ -264,7 +264,8 @@ export default function FloatingDockManager() {
     setActiveMode(null)
     chrome.storage.local.set({
       sensa_visual_active: false,
-      sensa_auditory_active: false
+      sensa_auditory_active: false,
+      sensa_voice_command_active: false
     })
     chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null })
   }

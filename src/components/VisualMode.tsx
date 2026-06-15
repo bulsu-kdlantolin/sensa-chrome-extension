@@ -350,14 +350,16 @@ export default function VisualMode() {
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      void callbacksRef.current.speakFeedback(
-        isListening 
-          ? "You can say, deactivate, to disable visual mode." 
-          : "You can say, activate, to enable visual mode."
-      )
+      chrome.storage.local.get(["sensa_visual_active"], (res) => {
+        void callbacksRef.current.speakFeedback(
+          res.sensa_visual_active 
+            ? "You can say, deactivate, to disable visual mode." 
+            : "You can say, activate, to enable visual mode."
+        )
+      })
     }, 30000)
     return () => window.clearInterval(interval)
-  }, [isListening])
+  }, [])
 
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 

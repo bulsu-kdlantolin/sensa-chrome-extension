@@ -190,9 +190,11 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
       }
 
       announceTimerRef.current = window.setTimeout(() => {
-        hasAnnouncedVisualOnOpenRef.current = true
-        const message = getModeInterfaceAnnouncement("visual", isFromWelcome, isVisualActive)
-        playClickAudio(message)
+        chrome.storage.local.get(["sensa_visual_active"], (r) => {
+          hasAnnouncedVisualOnOpenRef.current = true
+          const message = getModeInterfaceAnnouncement("visual", isFromWelcome, !!r.sensa_visual_active)
+          playClickAudio(message)
+        })
       }, 500)
     })
 

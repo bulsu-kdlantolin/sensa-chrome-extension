@@ -247,37 +247,50 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
 
     tabLog(`[Sensa Mode Selection Tab Voice Bridge] Heard transcript: "${normalizedTranscript}" (Raw: "${rawTranscript}")`)
 
+    const count = (w: string) => {
+      const regex = new RegExp(`\\b${w}\\b`, "g")
+      return (normalizedTranscript.match(regex) || []).length
+    }
+
     let visualScore = 0
     let auditoryScore = 0
 
     // Visual Score Cues
-    if (normalizedTranscript.includes("visual mode") || normalizedTranscript.includes("vision mode")) {
-      visualScore += 5
-    } else if (fuzzyMatch(normalizedTranscript, "visual mode", 2) || fuzzyMatch(normalizedTranscript, "vision mode", 2)) {
-      visualScore += 4
-    } else if (normalizedTranscript.includes("visual") || normalizedTranscript.includes("vision")) {
-      visualScore += 3
-    } else if (fuzzyMatch(normalizedTranscript, "visual", 1) || fuzzyMatch(normalizedTranscript, "vision", 1)) {
-      visualScore += 2
+    visualScore += count("visual mode") * 5
+    visualScore += count("vision mode") * 5
+    visualScore += count("visual") * 3
+    visualScore += count("vision") * 3
+
+    if (visualScore === 0) {
+      if (fuzzyMatch(normalizedTranscript, "visual mode", 2) || fuzzyMatch(normalizedTranscript, "vision mode", 2)) {
+        visualScore += 4
+      } else if (fuzzyMatch(normalizedTranscript, "visual", 1) || fuzzyMatch(normalizedTranscript, "vision", 1)) {
+        visualScore += 2
+      }
     }
 
     // Auditory Score Cues
-    if (normalizedTranscript.includes("auditory mode") || normalizedTranscript.includes("audio mode") || normalizedTranscript.includes("sound mode")) {
-      auditoryScore += 5
-    } else if (
-      fuzzyMatch(normalizedTranscript, "auditory mode", 2) || 
-      fuzzyMatch(normalizedTranscript, "audio mode", 2) ||
-      fuzzyMatch(normalizedTranscript, "sound mode", 2)
-    ) {
-      auditoryScore += 4
-    } else if (normalizedTranscript.includes("auditory") || normalizedTranscript.includes("audio") || normalizedTranscript.includes("auditor")) {
-      auditoryScore += 3
-    } else if (
-      fuzzyMatch(normalizedTranscript, "auditory", 1) || 
-      fuzzyMatch(normalizedTranscript, "audio", 1) ||
-      fuzzyMatch(normalizedTranscript, "auditor", 1)
-    ) {
-      auditoryScore += 2
+    auditoryScore += count("auditory mode") * 5
+    auditoryScore += count("audio mode") * 5
+    auditoryScore += count("sound mode") * 5
+    auditoryScore += count("auditory") * 3
+    auditoryScore += count("audio") * 3
+    auditoryScore += count("auditor") * 3
+
+    if (auditoryScore === 0) {
+      if (
+        fuzzyMatch(normalizedTranscript, "auditory mode", 2) || 
+        fuzzyMatch(normalizedTranscript, "audio mode", 2) ||
+        fuzzyMatch(normalizedTranscript, "sound mode", 2)
+      ) {
+        auditoryScore += 4
+      } else if (
+        fuzzyMatch(normalizedTranscript, "auditory", 1) || 
+        fuzzyMatch(normalizedTranscript, "audio", 1) ||
+        fuzzyMatch(normalizedTranscript, "auditor", 1)
+      ) {
+        auditoryScore += 2
+      }
     }
 
     let chosenCommand: "visual" | "auditory" | null = null
@@ -287,6 +300,9 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
       chosenCommand = "visual"
     } else if (auditoryScore >= threshold && auditoryScore > visualScore) {
       chosenCommand = "auditory"
+    } else if (visualScore >= threshold && auditoryScore >= threshold) {
+      tabLog(`[Sensa Mode Selection Tab Voice Bridge] Conflict detected (visual: ${visualScore}, auditory: ${auditoryScore}). Clearing buffer.`)
+      globalBuffer = ""
     }
 
     tabLog(`[Sensa Mode Selection Tab Voice Bridge] Score results -> Visual: ${visualScore}, Auditory: ${auditoryScore}, chosenCommand: ${chosenCommand}`)

@@ -53,7 +53,8 @@ const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
 const normalizeInput = (rawText: string): string => {
   let text = rawText.toLowerCase()
   text = text.replace(/[^a-z0-9\s]/gi, " ")
-  text = text.replace(/\b(?:de|dee|the)\s+activate\b/g, "deactivate")
+  text = text.replace(/\b(?:de|dee|the|to|do|you)\s+activate[d]?\b/g, "deactivate")
+  text = text.replace(/\bdeactivated\b/g, "deactivate")
   text = text.replace(/\s+/g, " ").trim()
   const fillerWords = new Set(["the", "a", "please", "hey", "can", "you", "change", "set", "to", "my"])
   const tokens = text.split(" ").filter(t => !fillerWords.has(t))
@@ -80,7 +81,7 @@ const GodTierMicIcon = ({ isActive, onSoundDetected }: { isActive: boolean, onSo
     let smoothedEnergy = 0
     let lastTime = performance.now()
 
-    const ENERGY_GATE = 0.06
+    const ENERGY_GATE = 0.015
 
     const colors = [
       "rgba(147, 197, 253, 1)",
@@ -402,6 +403,32 @@ export default function VisualDock({
 
   const tabVisibleAtRef = useRef(performance.now())
 
+  const hasPlayedInitialReminderRef = useRef(false)
+
+  useEffect(() => {
+    if (isVoiceCommandActive || isPlaying || isVoiceCommandsSuspended) return
+
+    const speakReminder = () => {
+      if (document.hidden) return
+      const text = `You can say ${wakeWordRef.current} to activate voice commands.`
+      playClickAudio(text)
+    }
+
+    let initialTimeout: number | null = null
+
+    if (!hasPlayedInitialReminderRef.current) {
+      hasPlayedInitialReminderRef.current = true
+      initialTimeout = window.setTimeout(speakReminder, 3000)
+    }
+
+    const interval = window.setInterval(speakReminder, 60000)
+
+    return () => {
+      if (initialTimeout) window.clearTimeout(initialTimeout)
+      window.clearInterval(interval)
+    }
+  }, [isVoiceCommandActive, isPlaying, isVoiceCommandsSuspended, playClickAudio])
+
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -637,6 +664,11 @@ export default function VisualDock({
         }
 
         if (!callbacksRef.current.isVoiceCommandActive) {
+          if (check("deactivate", "deactivate visual mode", "stop visual mode")) {
+            applyCommand("close", () => callbacksRef.current.onClose())
+            return true
+          }
+
           const isCustom = currentWakeWord !== "sensa"
           const wakeMatched = isCustom
             ? paddedSpeech.includes(` ${currentWakeWord} `) || fuzzyCheck(currentWakeWord, 1)

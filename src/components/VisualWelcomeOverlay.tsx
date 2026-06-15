@@ -14,6 +14,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
   const [startDescription, setStartDescription] = useState(false)
   const [visibleFeatureCount, setVisibleFeatureCount] = useState(0)
   const [showButton, setShowButton] = useState(false)
+  const [reminderTrigger, setReminderTrigger] = useState<{ skipped: boolean } | null>(null)
   const [voiceSettingsLoaded, setVoiceSettingsLoaded] = useState(false)
   const [voiceReady, setVoiceReady] = useState(false)
   const selectedVoiceURIRef = useRef<string>("")
@@ -33,7 +34,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
   const titleText = "Welcome to Visual Mode"
   const descriptionText = "Sensa will intelligently read web pages aloud and simplify navigation for you."
   const featuresIntroText = "Here are the main features you'll use."
-  const commandReminderText = "You can say, Get Started, to proceed to the visual mode interface."
+  const commandReminderText = "When you are ready, you can say, Get Started, to proceed to the Visual Mode interface."
   const descriptionWords = useMemo(() => descriptionText.split(" "), [descriptionText])
   const typedDescription = descriptionWords.slice(0, typedWordCount).join(" ")
 
@@ -389,20 +390,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
         const revealAndSpeak = (index: number) => {
           if (index >= features.length) {
             setShowButton(true)
-            // Announce available commands after a short pause
-            window.setTimeout(() => {
-              if (narrationCanceledRef.current) return
-              speakWithResolvedVoice(commandReminderText, () => {
-                // Start the 30-second reminder interval
-                if (commandReminderIntervalRef.current !== null) {
-                  window.clearInterval(commandReminderIntervalRef.current)
-                }
-                commandReminderIntervalRef.current = window.setInterval(() => {
-                  if (narrationCanceledRef.current) return
-                  speakWithResolvedVoice(commandReminderText, () => {})
-                }, 30000)
-              })
-            }, 800)
+            setReminderTrigger({ skipped: false })
             return
           }
 
@@ -419,7 +407,39 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     })
   }, [descriptionText, descriptionWords.length, features, isSkipping, startDescription, typedWordCount])
 
+  useEffect(() => {
+    if (!reminderTrigger) return
 
+    const playReminder = () => {
+      if (document.hidden) return
+      speakWithResolvedVoice(commandReminderText, () => {})
+    }
+
+    if (reminderTrigger.skipped) {
+      const timeout = window.setTimeout(() => {
+        playReminder()
+      }, 800)
+
+      const interval = window.setInterval(() => {
+        playReminder()
+      }, 30000)
+
+      return () => {
+        window.clearTimeout(timeout)
+        window.clearInterval(interval)
+      }
+    } else {
+      playReminder()
+
+      const interval = window.setInterval(() => {
+        playReminder()
+      }, 30000)
+
+      return () => {
+        window.clearInterval(interval)
+      }
+    }
+  }, [reminderTrigger])
 
   useEffect(() => {
     return () => {
@@ -549,6 +569,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     setTypedWordCount(descriptionWords.length)
     setVisibleFeatureCount(features.length)
     setShowButton(true)
+    setReminderTrigger({ skipped: true })
   }
 
   return (
