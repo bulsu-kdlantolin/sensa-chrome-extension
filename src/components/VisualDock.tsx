@@ -467,7 +467,7 @@ export default function VisualDock({
 
   const handleToggleVoiceCommand = () => {
     playClickSfx()
-    playClickAudio(isVoiceCommandActive ? "Voice commands deactivated" : "Voice commands activated")
+    playClickAudio(isVoiceCommandActive ? "Voice commands deactivated" : "Voice commands activated. You can say 'help' when you want to know the list of commands for the visual dock.")
     onToggleVoiceCommand()
   }
 
@@ -677,7 +677,7 @@ export default function VisualDock({
           if (canToggleVoiceMode && wakeMatched) {
             applyCommand("activate-voice", () => {
               lockVoiceToggle()
-              callbacksRef.current.playClickAudio?.("Voice commands activated")
+              callbacksRef.current.playClickAudio?.("Voice commands activated. You can say 'help' when you want to know the list of commands for the visual dock.")
               try { callbacksRef.current.onToggleVoiceCommand() } catch { }
             })
             shouldProcessCommands = true
@@ -694,9 +694,18 @@ export default function VisualDock({
             })
             return true
           }
+          else if (check("help", "what can i say", "commands", "commands list", "list commands", "help me", "read commands", "show commands") || fuzzyCheck("help", 1)) {
+            applyCommand("help", () => {
+              const available = callbacksRef.current.isMinimized
+                ? "Stop listening. This turns off voice commands. Expand. This shows more options. Stop. This stops reading. Close. This will exit and deactivate visual mode."
+                : "Stop listening. This turns off voice commands. Read. This starts reading. Pause. This pauses reading. Stop. This stops reading. Ree-ding speed. This adjusts speed. Settings. This opens options. Minimize. This shrinks the dock. Close. This will exit and deactivate visual mode."
+              callbacksRef.current.playClickAudio?.("Here are the commands. " + available, 0.8)
+            })
+            return true
+          }
           else if (check("speed", "rate", "reading speed", "voice speed") || fuzzyCheck("speed", 1) || fuzzyCheck("rate", 1)) {
             applyCommand("speed", () => {
-              callbacksRef.current.playClickAudio?.('Reading speed')
+              callbacksRef.current.playClickAudio?.('Reeding speed')
               callbacksRef.current.onOpenReadingSpeed()
             })
             return true

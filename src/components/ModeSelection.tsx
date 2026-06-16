@@ -333,7 +333,9 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
       return
     }
 
-    window.speechSynthesis.cancel()
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      window.speechSynthesis.cancel()
+    }
 
     const utterance = new SpeechSynthesisUtterance(text)
     activeUtteranceRef.current = utterance
@@ -465,7 +467,6 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     if (!reminderTrigger) return
 
     const playReminder = () => {
-      if (document.hidden) return
       speakWithResolvedVoice(commandReminderText, () => {})
     }
 
@@ -483,13 +484,16 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
         window.clearInterval(interval)
       }
     } else {
-      playReminder()
+      const timeout = window.setTimeout(() => {
+        playReminder()
+      }, 800)
 
       const interval = window.setInterval(() => {
         playReminder()
       }, 30000)
 
       return () => {
+        window.clearTimeout(timeout)
         window.clearInterval(interval)
       }
     }

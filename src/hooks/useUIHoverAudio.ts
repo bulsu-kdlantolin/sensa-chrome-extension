@@ -65,13 +65,15 @@ export function useUIHoverAudio() {
 		}
 	}, [])
 
-	const speakWithResolvedVoice = useCallback((text: string, owner: "hover" | "click" = "hover") => {
+	const speakWithResolvedVoice = useCallback((text: string, owner: "hover" | "click" = "hover", rate: number = 1.0) => {
 		if (!isActiveRef.current || !isVoiceGuideEnabledRef.current || !isStorageLoadedRef.current) return
 		if (!text.trim()) return
 
 		const speakNow = () => {
 			window.speechSynthesis.resume()
-			window.speechSynthesis.cancel()
+			if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+				window.speechSynthesis.cancel()
+			}
 			speechOwnerRef.current = owner
 			isHoverSpeakingRef.current = true
 
@@ -87,6 +89,7 @@ export function useUIHoverAudio() {
 				utterance.voice = preferredVoice
 				utterance.lang = preferredVoice.lang
 			}
+			utterance.rate = rate
 
 			const release = () => {
 				if (speechOwnerRef.current === owner) {
@@ -111,7 +114,7 @@ export function useUIHoverAudio() {
 				if (!pending) return
 				pendingUtteranceRef.current = null
 				clearVoiceRetry()
-				speakWithResolvedVoice(pending, owner)
+				speakWithResolvedVoice(pending, owner, rate)
 			}
 
 			voicesChangedHandlerRef.current = handleVoicesChanged
@@ -124,7 +127,7 @@ export function useUIHoverAudio() {
 				if (!pending) return
 				pendingUtteranceRef.current = null
 				clearVoiceRetry()
-				speakWithResolvedVoice(pending, owner)
+				speakWithResolvedVoice(pending, owner, rate)
 			}, 800)
 
 			return
@@ -149,7 +152,9 @@ export function useUIHoverAudio() {
 		// Never cancel click-owned speech (e.g. mode switch announcements).
 		if (speechOwnerRef.current === "hover" && isHoverSpeakingRef.current) {
 			window.speechSynthesis.resume()
-			window.speechSynthesis.cancel()
+			if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+				window.speechSynthesis.cancel()
+			}
 			speechOwnerRef.current = "none"
 			isHoverSpeakingRef.current = false
 		}
@@ -176,11 +181,11 @@ export function useUIHoverAudio() {
 		[clearHoverTimeout, speakWithResolvedVoice]
 	)
 
-	const playClickAudio = useCallback((text: string) => {
+	const playClickAudio = useCallback((text: string, rate: number = 1.0) => {
 		if (!text.trim()) return
 		clearHoverTimeout()
 		clearVoiceRetry()
-		speakWithResolvedVoice(text, "click")
+		speakWithResolvedVoice(text, "click", rate)
 	}, [clearHoverTimeout, clearVoiceRetry, speakWithResolvedVoice])
 
 	useEffect(() => {
