@@ -40,6 +40,15 @@ const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
   return false
 }
 
+const simplifyVoiceName = (name: string): string => {
+  let simplified = name
+  simplified = simplified.replace(/ - English \([^)]+\)/i, "")
+  simplified = simplified.replace(/ English \([^)]+\)/i, "")
+  simplified = simplified.replace(/ \([a-z]{2}-[A-Z]{2}\)/i, "")
+  simplified = simplified.replace(/ Desktop/i, "")
+  return simplified.trim() || name
+}
+
 const DEFAULT_HIGHLIGHT_COLOR = "#FFFE00"
 const DEFAULT_INPUT_DEVICE_ID = "default"
 const DEFAULT_OUTPUT_DEVICE_ID = "default"
@@ -47,9 +56,10 @@ const DEFAULT_OUTPUT_DEVICE_ID = "default"
 interface VisualSettingsModalProps {
   onClose: () => void
   isDark?: boolean
+  openedViaVoice?: boolean
 }
 
-export default function VisualSettingsModal({ onClose, isDark = false }: VisualSettingsModalProps) {
+export default function VisualSettingsModal({ onClose, isDark = false, openedViaVoice = false }: VisualSettingsModalProps) {
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   const audioCtxRef = useRef<AudioContext | null>(null)
   const [isVoiceGuideEnabled, setIsVoiceGuideEnabled] = useState<boolean>(true)
@@ -255,8 +265,12 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     const voiceUri = selectedVoiceURI || defaultVoiceURIRef.current
     if (!voiceUri) return
     hasAnnouncedOpenRef.current = true
-    speakSettingsGuide("Settings opened")
-  }, [isMounted, isStorageLoaded, selectedVoiceURI, speakSettingsGuide])
+    if (openedViaVoice) {
+      speakSettingsGuide("Settings opened. Here are the commands. Voice selection. This opens the voice list. Input device. This changes the microphone. Output device. This changes the speaker. Restore default. This resets all settings to default. Close. This exits settings.")
+    } else {
+      speakSettingsGuide("Settings opened")
+    }
+  }, [isMounted, isStorageLoaded, selectedVoiceURI, speakSettingsGuide, openedViaVoice])
 
   useEffect(() => {
     const resumeAudio = () => {
@@ -461,20 +475,20 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
     const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognitionCtor) return
 
-    const recognition = new SpeechRecognitionCtor()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = "en-US"
-
     let isComponentMounted = true
     let restartTimer: number | null = null
     let consumedString = ""
     let currentResultIndex = 0
+    let lastActivityTimestamp = Date.now()
+    let watchdogTimer: number | null = null
+    let recognition: any = null
+    let isPermanentlyDead = false
 
     const scheduleRestart = () => {
-      if (!isComponentMounted) return
+      if (!isComponentMounted || isPermanentlyDead) return
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
+        if (!recognition || !isComponentMounted) return
         try { 
           recognition.start() 
         } catch (e: any) { 
@@ -487,17 +501,15 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       }, 300)
     }
 
-    pauseSettingsRecognitionRef.current = () => {
-      if (restartTimer) {
-        window.clearTimeout(restartTimer)
-        restartTimer = null
-      }
-      try { recognition.stop() } catch { }
-    }
-
-    resumeSettingsRecognitionRef.current = () => {
-      if (!isComponentMounted) return
-      scheduleRestart()
+    const teardownRecognition = () => {
+      if (!recognition) return
+      try { recognition.stop() } catch {}
+      recognition.onresult = null
+      recognition.onerror = null
+      recognition.onend = null
+      recognition.onstart = null
+      ;(recognition as any).onsoundstart = null
+      recognition = null
     }
 
     const speakFeedback = (message: string) => {
@@ -555,7 +567,8 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       const cleanText = text.toLowerCase()
       const matchedVoice = overlayStateRef.current.voices.find((voice) => {
         const name = (voice.name || "").toLowerCase()
-        return cleanText.includes(name) || name.includes(cleanText)
+        const simpleName = simplifyVoiceName(voice.name || "").toLowerCase()
+        return cleanText.includes(name) || name.includes(cleanText) || cleanText.includes(simpleName) || simpleName.includes(cleanText)
       })
       if (!matchedVoice) return false
       setSelectedVoiceURI(matchedVoice.voiceURI)
@@ -570,149 +583,217 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       return true
     }
 
-    recognition.onstart = () => {
-      settingsRecognitionArmedRef.current = true
-    }
+    const buildRecognition = () => {
+      const instance = new SpeechRecognitionCtor()
+      instance.continuous = true
+      instance.interimResults = true
+      instance.lang = "en-US"
 
-    recognition.onresult = (event: any) => {
-      if (!settingsRecognitionArmedRef.current) return
-
-      if (event.resultIndex !== currentResultIndex) {
-        consumedString = ""
-        currentResultIndex = event.resultIndex
+      instance.onstart = () => {
+        lastActivityTimestamp = Date.now()
+        settingsRecognitionArmedRef.current = true
+      }
+      
+      ;(instance as any).onsoundstart = () => {
+        lastActivityTimestamp = Date.now()
       }
 
-      let liveText = ""
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        liveText += event.results[i][0].transcript + " "
-      }
-      liveText = liveText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
+      instance.onresult = (event: any) => {
+        lastActivityTimestamp = Date.now()
+        if (!settingsRecognitionArmedRef.current) return
 
-      let newSpeech = liveText
-      if (liveText.startsWith(consumedString) && consumedString.length > 0) {
-        newSpeech = liveText.slice(consumedString.length).trim()
-      }
+        if (event.resultIndex !== currentResultIndex) {
+          consumedString = ""
+          currentResultIndex = event.resultIndex
+        }
 
-      if (!newSpeech) return
-      const paddedSpeech = ` ${newSpeech} `
-      const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
-      const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(newSpeech, target, maxDistance)
+        let liveText = ""
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          liveText += event.results[i][0].transcript + " "
+        }
+        liveText = liveText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
 
-      const currentWakeWord = (wakeWordRef.current || "Sensa").toLowerCase().trim()
-      const isCustomWakeWord = currentWakeWord !== "sensa"
+        let newSpeech = liveText
+        if (liveText.startsWith(consumedString) && consumedString.length > 0) {
+          newSpeech = liveText.slice(consumedString.length).trim()
+        }
 
-      if (!isVoiceCommandActiveRef.current) {
-        const wakeMatched = isCustomWakeWord
-          ? paddedSpeech.includes(` ${currentWakeWord} `) || fuzzyCheck(currentWakeWord, 1)
-          : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start") || fuzzyCheck("sensa", 1)
+        if (!newSpeech) return
+        const paddedSpeech = ` ${newSpeech} `
+        const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
+        const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(newSpeech, target, maxDistance)
 
-        if (wakeMatched) {
-          chrome.storage.local.set({ sensa_voice_command_active: true })
-          speakFeedback("Voice commands activated")
+        const currentWakeWord = (wakeWordRef.current || "Sensa").toLowerCase().trim()
+        const isCustomWakeWord = currentWakeWord !== "sensa"
+
+        if (!isVoiceCommandActiveRef.current) {
+          const wakeMatched = isCustomWakeWord
+            ? paddedSpeech.includes(` ${currentWakeWord} `) || fuzzyCheck(currentWakeWord, 1)
+            : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start") || fuzzyCheck("sensa", 1)
+
+          if (wakeMatched) {
+            chrome.storage.local.set({ sensa_voice_command_active: true })
+            speakFeedback("Voice commands activated")
+            consumedString = liveText
+            return
+          }
+        } else {
+          if (check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening") || fuzzyCheck("sleep", 1) || fuzzyCheck("mute", 1)) {
+            chrome.storage.local.set({ sensa_voice_command_active: false })
+            speakFeedback("Voice commands deactivated")
+            consumedString = liveText
+            return
+          }
+        }
+
+        const state = overlayStateRef.current
+        let commandFired = false
+
+        if (state.isVoiceDropdownOpen) {
+          if (check("close voice selection", "close dropdown", "cancel", "hide voices")) {
+            commandFired = true
+            setIsVoiceDropdownOpen(false)
+            setSettingsState((next) => { next.isVoiceDropdownOpen = false })
+            speakFeedback("Voice selection closed")
+          } else if (check("next voice", "voice next", "next selection")) {
+            commandFired = true
+            cycleVoice(1)
+          } else if (check("previous voice", "prev voice", "last voice")) {
+            commandFired = true
+            cycleVoice(-1)
+          } else if (voiceSelectionMatches(newSpeech)) {
+            commandFired = true
+          }
+        } else {
+          if (check("help", "commands", "options", "what can i say")) {
+            commandFired = true
+            speakFeedback("Here are the commands. Voice selection. This opens the voice list. Input device. This changes the microphone. Output device. This changes the speaker. Restore default. This resets all settings to default. Close. This exits settings.")
+          } else if (check("close settings", "close", "cancel", "back", "exit") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1)) {
+            commandFired = true
+            setIsMounted(false)
+            setTimeout(() => onCloseRef.current(), 300)
+          } else if (check("reset default", "reset defaults", "restore defaults", "restore default", "reset settings", "restore", "reset", "default") || fuzzyCheck("restore default", 1) || fuzzyCheck("reset default", 1)) {
+            commandFired = true
+            handleResetToDefault()
+          } else if (check("voice selection", "select voice", "voice voices")) {
+            commandFired = true
+            setIsVoiceDropdownOpen(true)
+            
+            if (isVoiceGuideEnabledRef.current) {
+              window.speechSynthesis.cancel()
+              
+              const allVoices = window.speechSynthesis.getVoices()
+              const defaultUri = selectedVoiceURIRef.current || defaultVoiceURIRef.current
+              const defaultVoiceObj = (defaultUri ? allVoices.find((v) => v.voiceURI === defaultUri) : undefined) || allVoices.find((v) => v.name.includes("Google US English"))
+
+              const intro = new SpeechSynthesisUtterance("Voice selection opened. You can choose from:")
+              if (defaultVoiceObj) {
+                intro.voice = defaultVoiceObj
+                intro.lang = defaultVoiceObj.lang
+              }
+              window.speechSynthesis.speak(intro)
+
+              overlayStateRef.current.voices.forEach((voice) => {
+                const utterance = new SpeechSynthesisUtterance(simplifyVoiceName(voice.name))
+                utterance.voice = voice
+                utterance.lang = voice.lang
+                window.speechSynthesis.speak(utterance)
+              })
+
+              const outro = new SpeechSynthesisUtterance("Just say the name to select it.")
+              if (defaultVoiceObj) {
+                outro.voice = defaultVoiceObj
+                outro.lang = defaultVoiceObj.lang
+              }
+              window.speechSynthesis.speak(outro)
+            }
+          } else if (check("next input", "input device", "next microphone", "input next", "microphone")) {
+            commandFired = true
+            cycleDevice("input", 1)
+          } else if (check("previous input", "prev input", "previous microphone")) {
+            commandFired = true
+            cycleDevice("input", -1)
+          } else if (check("next output", "output device", "next speaker", "output next", "speaker")) {
+            commandFired = true
+            cycleDevice("output", 1)
+          } else if (check("previous output", "prev output", "previous speaker")) {
+            commandFired = true
+            cycleDevice("output", -1)
+          }
+        }
+
+        if (commandFired) {
           consumedString = liveText
+        }
+      }
+
+      instance.onerror = (event: any) => {
+        lastActivityTimestamp = Date.now()
+        if (event.error === "not-allowed" || event.error === "service-not-allowed" || event.error === "aborted") return
+        if (event.error === "network") {
+          rebuildRecognition()
           return
         }
-      } else {
-        if (check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening") || fuzzyCheck("sleep", 1) || fuzzyCheck("mute", 1)) {
-          chrome.storage.local.set({ sensa_voice_command_active: false })
-          speakFeedback("Voice commands deactivated")
-          consumedString = liveText
-          return
-        }
+        scheduleRestart()
       }
 
-      const state = overlayStateRef.current
-      let commandFired = false
-
-      if (state.isVoiceDropdownOpen) {
-        if (check("close voice selection", "close dropdown", "cancel", "hide voices")) {
-          commandFired = true
-          setIsVoiceDropdownOpen(false)
-          setSettingsState((next) => { next.isVoiceDropdownOpen = false })
-          speakFeedback("Voice selection closed")
-        } else if (check("next voice", "voice next", "next selection")) {
-          commandFired = true
-          cycleVoice(1)
-        } else if (check("previous voice", "prev voice", "last voice")) {
-          commandFired = true
-          cycleVoice(-1)
-        } else if (voiceSelectionMatches(newSpeech)) {
-          commandFired = true
-        }
-      } else {
-        const wantsOn = check("on", "enable", "enabled", "turn on", "activate")
-        const wantsOff = check("off", "disable", "disabled", "turn off", "deactivate")
-
-        if (check("close settings", "close", "cancel", "back", "exit") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1)) {
-          commandFired = true
-          setIsMounted(false)
-          setTimeout(() => onCloseRef.current(), 300)
-        } else if (check("reset default", "reset defaults", "restore defaults", "reset settings")) {
-          commandFired = true
-          handleResetToDefault()
-        } else if (check("voice guide", "voice guidance", "guide")) {
-          commandFired = true
-          handleVoiceGuideToggle(wantsOff ? false : wantsOn ? true : !state.isVoiceGuideEnabled)
-        } else if (check("sound effects", "sound effect", "sounds", "effects", "sfx")) {
-          commandFired = true
-          handleSoundEffectsToggle(wantsOff ? false : wantsOn ? true : !state.isSoundEffectsEnabled)
-        } else if (check("mouse reader", "mouse highlight reader", "mouse highlight", "highlight reader", "mouse reading")) {
-          commandFired = true
-          handleHighlightMouseScreenReaderToggle(wantsOff ? false : wantsOn ? true : !state.isHighlightMouseScreenReaderEnabled)
-        } else if (check("autoscroll", "auto scroll", "scroll reading", "autoscroll reading", "auto scroll reading")) {
-          commandFired = true
-          handleAutoscrollToggle(wantsOff ? false : wantsOn ? true : !state.isAutoscrollEnabled)
-        } else if (check("highlight color", "color picker", "pick color")) {
-          commandFired = true
-          setShowColorPicker(true)
-          speakFeedback("Highlight color opened")
-        } else if (check("voice selection", "select voice", "voice voices")) {
-          commandFired = true
-          setIsVoiceDropdownOpen(true)
-          speakFeedback("Voice selection opened")
-        } else if (check("next input", "next microphone", "input next")) {
-          commandFired = true
-          cycleDevice("input", 1)
-        } else if (check("previous input", "prev input", "previous microphone")) {
-          commandFired = true
-          cycleDevice("input", -1)
-        } else if (check("next output", "next speaker", "output next")) {
-          commandFired = true
-          cycleDevice("output", 1)
-        } else if (check("previous output", "prev output", "previous speaker")) {
-          commandFired = true
-          cycleDevice("output", -1)
-        }
+      instance.onend = () => {
+        lastActivityTimestamp = Date.now()
+        scheduleRestart()
       }
 
-      if (commandFired) {
-        consumedString = liveText
-      }
+      recognition = instance
     }
 
-    recognition.onerror = (event: any) => {
-      if (event.error === "not-allowed" || event.error === "service-not-allowed" || event.error === "aborted") return
+    const rebuildRecognition = () => {
+      if (!isComponentMounted || isPermanentlyDead) return
+      teardownRecognition()
+      buildRecognition()
+      if (restartTimer) window.clearTimeout(restartTimer)
+      restartTimer = window.setTimeout(() => {
+        if (!recognition || !isComponentMounted) return
+        try { recognition.start() } catch (e) {}
+      }, 500)
+    }
+
+    pauseSettingsRecognitionRef.current = () => {
+      if (restartTimer) {
+        window.clearTimeout(restartTimer)
+        restartTimer = null
+      }
+      try { recognition?.stop() } catch { }
+    }
+
+    resumeSettingsRecognitionRef.current = () => {
+      if (!isComponentMounted) return
       scheduleRestart()
     }
 
-    recognition.onend = () => scheduleRestart()
-
-    let isPermanentlyDead = false
     const reviveEngine = () => {
       if (isPermanentlyDead) {
         isPermanentlyDead = false
-        try { recognition.start() } catch (e) {}
+        rebuildRecognition()
       }
     }
+    
     window.addEventListener("click", reviveEngine)
     window.addEventListener("focus", reviveEngine)
     window.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") reviveEngine()
     })
 
+    buildRecognition()
     const startTimeout = window.setTimeout(() => {
-      try { recognition.start() } catch (e) {}
+      try { recognition?.start() } catch (e) {}
     }, 150)
+
+    watchdogTimer = window.setInterval(() => {
+      if (!isComponentMounted || isPermanentlyDead || document.visibilityState !== "visible") return
+      const elapsed = Date.now() - lastActivityTimestamp
+      if (elapsed > 15000) {
+        rebuildRecognition()
+      }
+    }, 5000)
 
     return () => {
       isComponentMounted = false
@@ -721,12 +802,9 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
       window.removeEventListener("focus", reviveEngine)
       window.removeEventListener("visibilitychange", reviveEngine)
       if (restartTimer) window.clearTimeout(restartTimer)
+      if (watchdogTimer) window.clearInterval(watchdogTimer)
       window.clearTimeout(startTimeout)
-      try { recognition.stop() } catch (e) {}
-      recognition.onresult = null
-      recognition.onerror = null
-      recognition.onend = null
-      recognition.onstart = null
+      teardownRecognition()
     }
   }, [playClickAudio])
 
@@ -1027,10 +1105,11 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
               >
                 <span className="block truncate">
                   {(() => {
+                    if (voices.length === 0) return "Loading..."
                     const selected = voices.find((v) => v.voiceURI === selectedVoiceURI)
-                    if (!selected) return "Loading..."
+                    if (!selected) return "Select a voice"
                     const isDefault = selected.voiceURI === defaultVoiceURIRef.current
-                    return `${selected.name}${isDefault ? " (Default)" : ""}`
+                    return `${simplifyVoiceName(selected.name)}${isDefault ? " (Default)" : ""}`
                   })()}
                 </span>
                 <div className={`pointer-events-none absolute inset-y-0 right-3 flex items-center ${secondaryText}`}>
@@ -1052,7 +1131,7 @@ export default function VisualSettingsModal({ onClose, isDark = false }: VisualS
                         onClick={() => { handleVoiceChange(voice.voiceURI); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }}
                         style={{ fontFamily: `"${voice.name}", system-ui, sans-serif` }}
                       >
-                        {voice.name}{voice.voiceURI === defaultVoiceURIRef.current ? " (Default)" : ""}
+                        {simplifyVoiceName(voice.name)}{voice.voiceURI === defaultVoiceURIRef.current ? " (Default)" : ""}
                       </li>
                     ))}
                   </ul>

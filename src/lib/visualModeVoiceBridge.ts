@@ -168,7 +168,8 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
   if (command === "activate") {
     chrome.storage.local.set({
       sensa_visual_active: true,
-      sensa_auditory_active: false
+      sensa_auditory_active: false,
+      sensa_voice_command_active: false
     }, () => {
       chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: "visual" })
       speakFeedbackInTab("Visual mode activated")

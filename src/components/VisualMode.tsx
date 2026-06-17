@@ -290,6 +290,7 @@ export default function VisualMode() {
     chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: newState ? "visual" : null })
     chrome.storage.local.set({
       sensa_visual_active: newState,
+      sensa_voice_command_active: false,
       ...(newState ? { sensa_auditory_active: false } : {})
     })
 

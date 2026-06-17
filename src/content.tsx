@@ -114,6 +114,7 @@ export default function FloatingDockManager() {
 
   // NEW STATE: Tracks if the settings popup is open
   const [isVisualSettingsOpen, setIsVisualSettingsOpen] = useState(false)
+  const [isVisualSettingsOpenViaVoice, setIsVisualSettingsOpenViaVoice] = useState(false)
   const [isAuditorySettingsOpen, setIsAuditorySettingsOpen] = useState(false)
   const [isPopupOpen, setIsPopupOpen] = useState(false)
 
@@ -145,6 +146,7 @@ export default function FloatingDockManager() {
   const [isFocusMode, setIsFocusMode] = useState(false)
   const [isCaptionsActive, setIsCaptionsActive] = useState(false)
   const [isReadingSpeedOpen, setIsReadingSpeedOpen] = useState(false)
+  const [isReadingSpeedOpenViaVoice, setIsReadingSpeedOpenViaVoice] = useState(false)
   const [readingSpeed, setReadingSpeed] = useState(1)
   const [isVoiceCommandActive, setIsVoiceCommandActive] = useState(false)
   const [isModeSelectionVoiceActive, setIsModeSelectionVoiceActive] = useState(false)
@@ -616,15 +618,19 @@ export default function FloatingDockManager() {
         {/* 1. THE SETTINGS MODAL (Floats dead center, outside the drag logic) */}
         {isVisualSettingsOpen && (
           <VisualSettingsModal
+            openedViaVoice={isVisualSettingsOpenViaVoice}
             onClose={() => {
               setIsVisualSettingsOpen(false)
+              setIsVisualSettingsOpenViaVoice(false)
               speakOverlayFeedback("Settings overlay closed")
             }}
+            isDark={isDark}
           />
         )}
 
         {isReadingSpeedOpen && (
           <ReadingSpeedOverlay
+            openedViaVoice={isReadingSpeedOpenViaVoice}
             initialSpeed={readingSpeed}
             onSpeedChange={(newSpeed) => {
               setReadingSpeed(newSpeed)
@@ -632,8 +638,10 @@ export default function FloatingDockManager() {
             }}
             onClose={() => {
               setIsReadingSpeedOpen(false)
+              setIsReadingSpeedOpenViaVoice(false)
               speakOverlayFeedback("Reading speed overlay closed")
             }}
+            isDark={isDark}
           />
         )}
 
@@ -712,11 +720,15 @@ export default function FloatingDockManager() {
               onPrev={prev}                    // <-- NEW PROP
               onRestart={restart}
               onMinimizeToggle={() => setIsMinimized(!isMinimized)}
-              onOpenReadingSpeed={() => {
+              onOpenReadingSpeed={(viaVoice) => {
                 setIsReadingSpeedOpen(true)
+                if (viaVoice) setIsReadingSpeedOpenViaVoice(true)
                 speakOverlayFeedback("Reading speed overlay opened")
               }}
-              onOpenSettings={() => setIsVisualSettingsOpen(true)}
+              onOpenSettings={(viaVoice) => {
+                setIsVisualSettingsOpen(true)
+                if (viaVoice) setIsVisualSettingsOpenViaVoice(true)
+              }}
               onClose={() => {
                 deactivateDock()
                 chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null })

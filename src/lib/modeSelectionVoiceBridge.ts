@@ -10,6 +10,9 @@ let consumedString = ""
 let currentResultIndex = 0
 let commandApplied = false
 let globalBuffer = ""
+let watchdogTimer: number | null = null
+let lastAudioTimestamp = 0
+let recognitionRunning = false
 
 const getSpeechRecognitionCtor = () =>
   (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -41,19 +44,86 @@ const clearRestartTimer = () => {
   }
 }
 
+const clearWatchdog = () => {
+  if (watchdogTimer !== null) {
+    window.clearInterval(watchdogTimer)
+    watchdogTimer = null
+  }
+}
+
 const tryStart = () => {
   if (!isActive || !recognition || commandApplied) return
   try {
     recognition.start()
-  } catch {
-    // "already started" — onend will restart if needed
+  } catch (e) {
+    // start() threw — recognition may be in a bad state.
+    // Don't rely on onend (it won't fire if it never started).
+    // Schedule a retry with a fresh attempt.
+    tabLog(`[Sensa Tab Voice Bridge] recognition.start() threw: ${e}`, "warn")
+    recognitionRunning = false
+    clearRestartTimer()
+    restartTimer = window.setTimeout(() => {
+      // If it's still stuck, tear down and rebuild the instance
+      if (!isActive || commandApplied) return
+      rebuildRecognition()
+    }, 200)
   }
 }
 
 const scheduleRestart = () => {
   if (!isActive || commandApplied) return
   clearRestartTimer()
-  restartTimer = window.setTimeout(tryStart, 300)
+  recognitionRunning = false
+  restartTimer = window.setTimeout(tryStart, 80)
+}
+
+// Completely rebuilds the SpeechRecognition instance when it gets into a bad state
+const rebuildRecognition = () => {
+  if (!isActive || commandApplied) return
+  tabLog("[Sensa Tab Voice Bridge] Rebuilding recognition instance...")
+  teardownRecognition()
+  
+  const SpeechRecognitionCtor = getSpeechRecognitionCtor()
+  if (!SpeechRecognitionCtor) return
+  
+  const instance = new SpeechRecognitionCtor()
+  recognition = instance
+  instance.continuous = true
+  instance.interimResults = true
+  instance.lang = "en-US"
+  attachRecognitionHandlers(instance)
+  
+  window.setTimeout(tryStart, 50)
+}
+
+// Watchdog: periodically checks that recognition is alive and receiving audio.
+// If recognition hasn't received audio events for too long, it forces a restart.
+const startWatchdog = () => {
+  clearWatchdog()
+  lastAudioTimestamp = Date.now()
+  
+  watchdogTimer = window.setInterval(() => {
+    if (!isActive || commandApplied) {
+      clearWatchdog()
+      return
+    }
+    
+    const silenceDuration = Date.now() - lastAudioTimestamp
+    
+    // If recognition isn't flagged as running, or we haven't heard anything
+    // for 8 seconds, force a restart. Chrome's SpeechRecognition can silently
+    // stop after silence or tab backgrounding without firing onend.
+    if (!recognitionRunning && silenceDuration > 3000) {
+      tabLog(`[Sensa Tab Voice Bridge] Watchdog: recognition not running, restarting (silent ${silenceDuration}ms)`, "warn")
+      rebuildRecognition()
+      lastAudioTimestamp = Date.now() // prevent rapid-fire rebuilds
+    } else if (recognitionRunning && silenceDuration > 12000) {
+      // Recognition thinks it's running but no audio events in 12s — likely dead
+      tabLog(`[Sensa Tab Voice Bridge] Watchdog: no audio events for ${silenceDuration}ms, forcing restart`, "warn")
+      rebuildRecognition()
+      lastAudioTimestamp = Date.now()
+    }
+  }, 4000)
 }
 
 const getLevenshteinDistance = (a: string, b: string): number => {
@@ -105,114 +175,21 @@ const normalizeInput = (rawText: string): string => {
   return tokens.join(" ")
 }
 
-const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
-  if (commandApplied || Date.now() < ignoreSpeechUntil) return
-
-  commandApplied = true
-  ignoreSpeechUntil = Date.now() + 2000
-  isActive = false
-  teardownRecognition()
-
-  tabLog(`[Sensa Tab Voice Bridge] Applying chosen mode selection: ${mode}`)
-
-  chrome.storage.local.get(["sensa_user_profile", "sensa_mode_selection_listening"], (res) => {
-    if (!res.sensa_mode_selection_listening) {
-      tabLog("[Sensa Tab Voice Bridge] sensa_mode_selection_listening is false, selection ignored.", "warn")
-      commandApplied = false
-      return
-    }
-
-    const profile = (res.sensa_user_profile as SensaUserProfile | undefined) ?? DEFAULT_PROFILE
-    if (profile.globalSettings?.activeMode) {
-      tabLog("[Sensa Tab Voice Bridge] Profile already has an active mode, selection ignored.", "warn")
-      commandApplied = false
-      return
-    }
-
-    chrome.storage.local.set({
-      sensa_mode_selection_listening: false,
-      sensa_user_profile: {
-        ...profile,
-        globalSettings: {
-          ...profile.globalSettings,
-          activeMode: mode
-        }
-      },
-      sensa_last_tab: mode
-    }, () => {
-      tabLog(`[Sensa Tab Voice Bridge] Storage updated. activeMode is now: ${mode}`)
-    })
-  })
-}
-
-const teardownRecognition = () => {
-  clearRestartTimer()
-  if (!recognition) return
-
-  try {
-    recognition.stop()
-  } catch {}
-
-  recognition.onresult = null
-  recognition.onerror = null
-  recognition.onend = null
-  recognition.onstart = null
-  recognition = null
-}
-
-const primeMicrophone = async () => {
-  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
-    throw new Error("navigator.mediaDevices.getUserMedia is not available")
-  }
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      noiseSuppression: true,
-      echoCancellation: true,
-      autoGainControl: true,
-      channelCount: 1,
-      sampleRate: 48000
-    }
-  })
-  stream.getTracks().forEach((track) => track.stop())
-}
-
-export async function startModeSelectionVoiceListener(): Promise<boolean> {
-  if (isActive && recognition) {
-    return true
+const attachRecognitionHandlers = (instance: SpeechRecognition) => {
+  instance.onstart = () => {
+    recognitionRunning = true
+    lastAudioTimestamp = Date.now()
+    tabLog("[Sensa Tab Voice Bridge] Recognition started successfully")
   }
 
-  const SpeechRecognitionCtor = getSpeechRecognitionCtor()
-  if (!SpeechRecognitionCtor) {
-    tabLog("[Sensa Tab Voice Bridge] SpeechRecognition is NOT supported in this browser.", "warn")
-    return false
+  // Track audio activity for the watchdog (use addEventListener since onaudiostart
+  // isn't in the TypeScript SpeechRecognition type definition)
+  ;(instance as any).onaudiostart = () => {
+    lastAudioTimestamp = Date.now()
   }
-
-  stopModeSelectionVoiceListener()
-
-  try {
-    await primeMicrophone()
-  } catch (e) {
-    tabLog(`[Sensa Tab Voice Bridge] Failed to acquire microphone permissions in tab, trying to proceed anyway: ${e}`, "warn")
-  }
-
-  isActive = true
-  commandApplied = false
-  consumedString = ""
-  currentResultIndex = 0
-  ignoreSpeechUntil = 0
-  globalBuffer = ""
-
-  await new Promise<void>((resolve) => {
-    chrome.storage.local.set({ sensa_mode_selection_listening: true }, () => resolve())
-  })
-
-  const instance = new SpeechRecognitionCtor()
-  recognition = instance
-  instance.continuous = true
-  instance.interimResults = true
-  instance.lang = "en-US"
 
   instance.onresult = (event: SpeechRecognitionEvent) => {
+    lastAudioTimestamp = Date.now()
     if (commandApplied) {
       return
     }
@@ -260,11 +237,13 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
     visualScore += count("vision mode") * 5
     visualScore += count("visual") * 3
     visualScore += count("vision") * 3
+    visualScore += count("visual mod") * 4
+    visualScore += count("bisual") * 3
 
     if (visualScore === 0) {
       if (fuzzyMatch(normalizedTranscript, "visual mode", 2) || fuzzyMatch(normalizedTranscript, "vision mode", 2)) {
         visualScore += 4
-      } else if (fuzzyMatch(normalizedTranscript, "visual", 1) || fuzzyMatch(normalizedTranscript, "vision", 1)) {
+      } else if (fuzzyMatch(normalizedTranscript, "visual", 1) || fuzzyMatch(normalizedTranscript, "vision", 1) || fuzzyMatch(normalizedTranscript, "bisual", 1)) {
         visualScore += 2
       }
     }
@@ -277,24 +256,31 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
     auditoryScore += count("audio") * 3
     auditoryScore += count("auditor") * 3
 
+    auditoryScore += count("auditori") * 3
+    auditoryScore += count("hearing mode") * 5
+    auditoryScore += count("hearing") * 3
+
     if (auditoryScore === 0) {
       if (
         fuzzyMatch(normalizedTranscript, "auditory mode", 2) || 
         fuzzyMatch(normalizedTranscript, "audio mode", 2) ||
-        fuzzyMatch(normalizedTranscript, "sound mode", 2)
+        fuzzyMatch(normalizedTranscript, "sound mode", 2) ||
+        fuzzyMatch(normalizedTranscript, "hearing mode", 2)
       ) {
         auditoryScore += 4
       } else if (
         fuzzyMatch(normalizedTranscript, "auditory", 1) || 
         fuzzyMatch(normalizedTranscript, "audio", 1) ||
-        fuzzyMatch(normalizedTranscript, "auditor", 1)
+        fuzzyMatch(normalizedTranscript, "auditor", 1) ||
+        fuzzyMatch(normalizedTranscript, "auditori", 1) ||
+        fuzzyMatch(normalizedTranscript, "hearing", 1)
       ) {
         auditoryScore += 2
       }
     }
 
     let chosenCommand: "visual" | "auditory" | null = null
-    const threshold = 3
+    const threshold = 2
 
     if (visualScore >= threshold && visualScore > auditoryScore) {
       chosenCommand = "visual"
@@ -314,6 +300,7 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
   }
 
   instance.onerror = (event: SpeechRecognitionErrorEvent) => {
+    recognitionRunning = false
     tabLog(`[Sensa Tab Voice Bridge] SpeechRecognition error in tab: ${event.error}`, "error")
     if (event.error === "not-allowed" || event.error === "service-not-allowed") {
       tabLog("[Sensa Tab Voice Bridge] Microphone access denied, stopping tab listener.", "warn")
@@ -322,14 +309,138 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
       chrome.storage.local.set({ sensa_mode_selection_listening: false })
       return
     }
+    // For "no-speech" errors, don't log as scary — this is normal
+    if (event.error === "no-speech") {
+      tabLog("[Sensa Tab Voice Bridge] No speech detected, restarting...", "log")
+    }
     scheduleRestart()
   }
 
   instance.onend = () => {
+    recognitionRunning = false
     scheduleRestart()
   }
+}
 
-  window.setTimeout(tryStart, 150)
+const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
+  if (commandApplied || Date.now() < ignoreSpeechUntil) return
+
+  commandApplied = true
+  ignoreSpeechUntil = Date.now() + 2000
+  isActive = false
+  clearWatchdog()
+  teardownRecognition()
+
+  tabLog(`[Sensa Tab Voice Bridge] Applying chosen mode selection: ${mode}`)
+
+  chrome.storage.local.get(["sensa_user_profile", "sensa_mode_selection_listening"], (res) => {
+    if (!res.sensa_mode_selection_listening) {
+      tabLog("[Sensa Tab Voice Bridge] sensa_mode_selection_listening is false, selection ignored.", "warn")
+      commandApplied = false
+      return
+    }
+
+    const profile = (res.sensa_user_profile as SensaUserProfile | undefined) ?? DEFAULT_PROFILE
+    if (profile.globalSettings?.activeMode) {
+      tabLog("[Sensa Tab Voice Bridge] Profile already has an active mode, selection ignored.", "warn")
+      commandApplied = false
+      return
+    }
+
+    chrome.storage.local.set({
+      sensa_mode_selection_listening: false,
+      sensa_user_profile: {
+        ...profile,
+        globalSettings: {
+          ...profile.globalSettings,
+          activeMode: mode
+        }
+      },
+      sensa_last_tab: mode
+    }, () => {
+      tabLog(`[Sensa Tab Voice Bridge] Storage updated. activeMode is now: ${mode}`)
+    })
+  })
+}
+
+const teardownRecognition = () => {
+  clearRestartTimer()
+  recognitionRunning = false
+  if (!recognition) return
+
+  try {
+    recognition.stop()
+  } catch {}
+
+  recognition.onresult = null
+  recognition.onerror = null
+  recognition.onend = null
+  recognition.onstart = null
+  ;(recognition as any).onaudiostart = null
+  recognition = null
+}
+
+const primeMicrophone = async () => {
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+    throw new Error("navigator.mediaDevices.getUserMedia is not available")
+  }
+  const stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      noiseSuppression: true,
+      // echoCancellation disabled: the TTS narration from the popup plays through
+      // speakers and echoCancellation was causing Chrome to suppress the user's
+      // actual voice during/after TTS playback — this was the main cause of
+      // recognition intermittently "not listening"
+      echoCancellation: false,
+      autoGainControl: true,
+      channelCount: 1,
+      sampleRate: 48000
+    }
+  })
+  stream.getTracks().forEach((track) => track.stop())
+}
+
+export async function startModeSelectionVoiceListener(): Promise<boolean> {
+  if (isActive && recognition) {
+    return true
+  }
+
+  const SpeechRecognitionCtor = getSpeechRecognitionCtor()
+  if (!SpeechRecognitionCtor) {
+    tabLog("[Sensa Tab Voice Bridge] SpeechRecognition is NOT supported in this browser.", "warn")
+    return false
+  }
+
+  stopModeSelectionVoiceListener()
+
+  try {
+    await primeMicrophone()
+  } catch (e) {
+    tabLog(`[Sensa Tab Voice Bridge] Failed to acquire microphone permissions in tab, trying to proceed anyway: ${e}`, "warn")
+  }
+
+  isActive = true
+  commandApplied = false
+  consumedString = ""
+  currentResultIndex = 0
+  ignoreSpeechUntil = 0
+  globalBuffer = ""
+  recognitionRunning = false
+
+  await new Promise<void>((resolve) => {
+    chrome.storage.local.set({ sensa_mode_selection_listening: true }, () => resolve())
+  })
+
+  const instance = new SpeechRecognitionCtor()
+  recognition = instance
+  instance.continuous = true
+  instance.interimResults = true
+  instance.lang = "en-US"
+
+  attachRecognitionHandlers(instance)
+  startWatchdog()
+
+  window.setTimeout(tryStart, 50)
   return true
 }
 
@@ -341,6 +452,8 @@ export function stopModeSelectionVoiceListener() {
   commandApplied = false
   consumedString = ""
   currentResultIndex = 0
+  recognitionRunning = false
+  clearWatchdog()
   teardownRecognition()
   chrome.storage.local.set({ sensa_mode_selection_listening: false })
 }

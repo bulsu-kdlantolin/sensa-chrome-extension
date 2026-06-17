@@ -44,9 +44,10 @@ interface ReadingSpeedOverlayProps {
   initialSpeed?: number
   onSpeedChange?: (speed: number) => void
   isDark?: boolean // 🚨 Added isDark to match the Dock's theme
+  openedViaVoice?: boolean
 }
 
-export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeedChange, isDark = false }: ReadingSpeedOverlayProps) {
+export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeedChange, isDark = false, openedViaVoice = false }: ReadingSpeedOverlayProps) {
   const [speed, setSpeed] = useState(initialSpeed)
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   const onCloseRef = useRef(onClose)
@@ -265,8 +266,9 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   })
 
   useEffect(() => {
+    if (!openedViaVoice) return
+
     let timeout: number
-    let interval: number
 
     const announce = () => {
       playClickAudio("Say increase or decrease to adjust reading speed. Or say close to exit the overlay.")
@@ -275,14 +277,10 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     // Play once shortly after opening (delayed so it doesn't interrupt "Reading speed")
     timeout = window.setTimeout(announce, 2500)
 
-    // Repeat every 30 seconds
-    interval = window.setInterval(announce, 30000)
-
     return () => {
       window.clearTimeout(timeout)
-      window.clearInterval(interval)
     }
-  }, [playClickAudio])
+  }, [playClickAudio, openedViaVoice])
 
   const speedStops = [1, 1.25, 1.5, 1.75, 2]
 
@@ -325,11 +323,6 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognitionCtor) return
 
-    const recognition = new SpeechRecognitionCtor()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = "en-US"
-
     let isComponentMounted = true
     let restartTimer: number | null = null
     let currentResultIndex = 0
@@ -337,6 +330,10 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     let ignoreSpeechUntil = 0
     let lastCommandName = ""
     let consumedKeywords: string[] = []
+    let lastActivityTimestamp = Date.now()
+    let watchdogTimer: number | null = null
+    let recognition: SpeechRecognition | null = null
+    let isPermanentlyDead = false
 
     const normalizeTranscript = (text: string) => {
       let t = text.toLowerCase()
@@ -345,9 +342,10 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     }
 
     const scheduleRestart = () => {
-      if (!isComponentMounted) return
+      if (!isComponentMounted || isPermanentlyDead) return
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
+        if (!recognition || !isComponentMounted) return
         try { 
           recognition.start() 
         } catch (e: any) { 
@@ -358,6 +356,17 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           restartTimer = window.setTimeout(scheduleRestart, 1000)
         }
       }, 300)
+    }
+
+    const teardownRecognition = () => {
+      if (!recognition) return
+      try { recognition.stop() } catch {}
+      recognition.onresult = null
+      recognition.onerror = null
+      recognition.onend = null
+      recognition.onstart = null
+      ;(recognition as any).onsoundstart = null
+      recognition = null
     }
 
     const applySpeed = (next: number, announce = true) => {
@@ -377,116 +386,169 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       setTimeout(() => onCloseRef.current(), 300)
     }
 
-    recognition.onresult = (event: any) => {
-      if (event.resultIndex !== currentResultIndex) {
-        currentResultIndex = event.resultIndex
-        consumedKeywords = []
-        globalBuffer = ""
+    const buildRecognition = () => {
+      const instance = new SpeechRecognitionCtor()
+      instance.continuous = true
+      instance.interimResults = true
+      instance.lang = "en-US"
+
+      instance.onstart = () => {
+        lastActivityTimestamp = Date.now()
+      }
+      
+      ;(instance as any).onsoundstart = () => {
+        lastActivityTimestamp = Date.now()
       }
 
-      let interimChunk = ""
-      let newFinals = ""
+      instance.onresult = (event: any) => {
+        lastActivityTimestamp = Date.now()
+        if (event.resultIndex !== currentResultIndex) {
+          currentResultIndex = event.resultIndex
+          consumedKeywords = []
+          globalBuffer = ""
+        }
 
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const text = event.results[i][0].transcript
-        if (event.results[i].isFinal) {
-          newFinals += text + " "
+        let interimChunk = ""
+        let newFinals = ""
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const text = event.results[i][0].transcript
+          if (event.results[i].isFinal) {
+            newFinals += text + " "
+          } else {
+            interimChunk += text + " "
+          }
+        }
+
+        globalBuffer += newFinals
+        const rawTranscript = (globalBuffer + " " + interimChunk).trim()
+        if (!rawTranscript) return
+
+        let cleanText = normalizeTranscript(rawTranscript)
+        
+        if (consumedKeywords.length > 0) {
+          consumedKeywords.forEach(kw => {
+            const escapedKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            cleanText = cleanText.replace(new RegExp(`\\b${escapedKw}\\b`), " ")
+          })
+          cleanText = cleanText.replace(/\s+/g, " ").trim()
+        }
+        
+        const paddedSpeech = ` ${cleanText} `
+        const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
+        const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(cleanText, target, maxDistance)
+
+        const applyCommand = (commandName: string, keywordsToConsume: string[], action: () => void) => {
+          if (Date.now() < ignoreSpeechUntil && commandName === lastCommandName) return
+          ignoreSpeechUntil = Date.now() + 800
+          lastCommandName = commandName
+          consumedKeywords.push(...keywordsToConsume)
+          action()
+        }
+
+        const currentWakeWord = (wakeWordRef.current || "Sensa").toLowerCase().trim()
+        const isCustomWakeWord = currentWakeWord !== "sensa"
+
+        if (!isVoiceCommandActiveRef.current) {
+          const wakeMatched = isCustomWakeWord
+            ? paddedSpeech.includes(` ${currentWakeWord} `) || fuzzyCheck(currentWakeWord, 1)
+            : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start") || fuzzyCheck("sensa", 1)
+
+          if (wakeMatched) {
+            applyCommand("activate-voice", [currentWakeWord, "sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start"], () => {
+              chrome.storage.local.set({ sensa_voice_command_active: true })
+              playClickAudio("Voice commands activated")
+            })
+            return
+          }
         } else {
-          interimChunk += text + " "
+          if (check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening") || fuzzyCheck("sleep", 1) || fuzzyCheck("mute", 1)) {
+            applyCommand("deactivate-voice", ["stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening"], () => {
+              chrome.storage.local.set({ sensa_voice_command_active: false })
+              playClickAudio("Voice commands deactivated")
+            })
+            return
+          }
         }
-      }
 
-      globalBuffer += newFinals
-      const rawTranscript = (globalBuffer + " " + interimChunk).trim()
-      if (!rawTranscript) return
-
-      let cleanText = normalizeTranscript(rawTranscript)
-      
-      if (consumedKeywords.length > 0) {
-        consumedKeywords.forEach(kw => {
-          const escapedKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-          cleanText = cleanText.replace(new RegExp(`\\b${escapedKw}\\b`), " ")
-        })
-        cleanText = cleanText.replace(/\s+/g, " ").trim()
-      }
-      
-      const paddedSpeech = ` ${cleanText} `
-      const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
-      const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(cleanText, target, maxDistance)
-
-      const applyCommand = (commandName: string, keywordsToConsume: string[], action: () => void) => {
-        if (Date.now() < ignoreSpeechUntil && commandName === lastCommandName) return
-        ignoreSpeechUntil = Date.now() + 800
-        lastCommandName = commandName
-        consumedKeywords.push(...keywordsToConsume)
-        action()
-      }
-
-      const currentWakeWord = (wakeWordRef.current || "Sensa").toLowerCase().trim()
-      const isCustomWakeWord = currentWakeWord !== "sensa"
-
-      if (!isVoiceCommandActiveRef.current) {
-        const wakeMatched = isCustomWakeWord
-          ? paddedSpeech.includes(` ${currentWakeWord} `) || fuzzyCheck(currentWakeWord, 1)
-          : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start") || fuzzyCheck("sensa", 1)
-
-        if (wakeMatched) {
-          applyCommand("activate-voice", [currentWakeWord, "sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start"], () => {
-            chrome.storage.local.set({ sensa_voice_command_active: true })
-            playClickAudio("Voice commands activated")
+        if (check("help", "commands", "options", "what can i say")) {
+          applyCommand("help", ["help", "commands", "options", "what can i say"], () => {
+            playClickAudio("Say increase or decrease to adjust reading speed. Or say close to exit.")
           })
           return
         }
-      } else {
-        if (check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening") || fuzzyCheck("sleep", 1) || fuzzyCheck("mute", 1)) {
-          applyCommand("deactivate-voice", ["stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening"], () => {
-            chrome.storage.local.set({ sensa_voice_command_active: false })
-            playClickAudio("Voice commands deactivated")
-          })
+
+        if (check("close", "cancel", "back", "exit", "dismiss", "hide") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1)) {
+          applyCommand("close", ["close", "cancel", "back", "exit", "dismiss", "hide"], () => closeOverlay())
           return
         }
+
+        if (check("increase", "faster", "speed up", "up")) {
+          applyCommand("increase", ["increase", "faster", "speed up", "up"], () => applySpeed(speedRef.current + 0.25))
+          return
+        }
+
+        if (check("decrease", "slower", "lower", "slow down", "down")) {
+          applyCommand("decrease", ["decrease", "slower", "lower", "slow down", "down"], () => applySpeed(speedRef.current - 0.25))
+          return
+        }
+
       }
 
-      if (check("close", "cancel", "back", "exit", "dismiss", "hide") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1)) {
-        applyCommand("close", ["close", "cancel", "back", "exit", "dismiss", "hide"], () => closeOverlay())
-        return
+      instance.onerror = (event: any) => {
+        lastActivityTimestamp = Date.now()
+        if (event.error === "not-allowed" || event.error === "service-not-allowed" || event.error === "aborted") return
+        if (event.error === "network") {
+          rebuildRecognition()
+          return
+        }
+        scheduleRestart()
       }
 
-      if (check("increase", "faster", "speed up", "up")) {
-        applyCommand("increase", ["increase", "faster", "speed up", "up"], () => applySpeed(speedRef.current + 0.25))
-        return
+      instance.onend = () => {
+        lastActivityTimestamp = Date.now()
+        scheduleRestart()
       }
 
-      if (check("decrease", "slower", "lower", "slow down", "down")) {
-        applyCommand("decrease", ["decrease", "slower", "lower", "slow down", "down"], () => applySpeed(speedRef.current - 0.25))
-        return
-      }
-
+      recognition = instance
     }
 
-    recognition.onerror = (event: any) => {
-      if (event.error === "not-allowed" || event.error === "service-not-allowed" || event.error === "aborted") return
-      scheduleRestart()
+    const rebuildRecognition = () => {
+      if (!isComponentMounted || isPermanentlyDead) return
+      teardownRecognition()
+      buildRecognition()
+      if (restartTimer) window.clearTimeout(restartTimer)
+      restartTimer = window.setTimeout(() => {
+        if (!recognition || !isComponentMounted) return
+        try { recognition.start() } catch (e) {}
+      }, 500)
     }
 
-    recognition.onend = () => scheduleRestart()
-
-    let isPermanentlyDead = false
     const reviveEngine = () => {
       if (isPermanentlyDead) {
         isPermanentlyDead = false
-        try { recognition.start() } catch (e) {}
+        rebuildRecognition()
       }
     }
+
     window.addEventListener("click", reviveEngine)
     window.addEventListener("focus", reviveEngine)
     window.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") reviveEngine()
     })
 
+    buildRecognition()
     const startTimeout = window.setTimeout(() => {
-      try { recognition.start() } catch (e) {}
+      try { recognition?.start() } catch (e) {}
     }, 150)
+
+    watchdogTimer = window.setInterval(() => {
+      if (!isComponentMounted || isPermanentlyDead || document.visibilityState !== "visible") return
+      const elapsed = Date.now() - lastActivityTimestamp
+      if (elapsed > 15000) {
+        rebuildRecognition()
+      }
+    }, 5000)
 
     return () => {
       isComponentMounted = false
@@ -494,13 +556,11 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       window.removeEventListener("focus", reviveEngine)
       window.removeEventListener("visibilitychange", reviveEngine)
       if (restartTimer) window.clearTimeout(restartTimer)
+      if (watchdogTimer) window.clearInterval(watchdogTimer)
       window.clearTimeout(startTimeout)
-      try { recognition.stop() } catch (e) {}
-      recognition.onresult = null
-      recognition.onerror = null
-      recognition.onend = null
+      teardownRecognition()
     }
-  }, [])
+  }, [playClickAudio])
 
   const modalBg = isDark ? "bg-[#141416]/96 backdrop-blur-3xl border-white/10" : "bg-white/95 backdrop-blur-3xl border-white/40"
   const textColor = isDark ? "text-gray-100" : "text-gray-900"

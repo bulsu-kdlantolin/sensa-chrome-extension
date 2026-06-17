@@ -248,8 +248,8 @@ interface VisualDockProps {
   onPrev: () => void
   onRestart: () => void
   onMinimizeToggle: () => void
-  onOpenReadingSpeed: () => void
-  onOpenSettings: () => void
+  onOpenReadingSpeed: (viaVoice?: boolean) => void
+  onOpenSettings: (viaVoice?: boolean) => void
   onClose: () => void
   isVoiceCommandsSuspended?: boolean
 }
@@ -706,14 +706,14 @@ export default function VisualDock({
           else if (check("speed", "rate", "reading speed", "voice speed") || fuzzyCheck("speed", 1) || fuzzyCheck("rate", 1)) {
             applyCommand("speed", () => {
               callbacksRef.current.playClickAudio?.('Reeding speed')
-              callbacksRef.current.onOpenReadingSpeed()
+              callbacksRef.current.onOpenReadingSpeed(true)
             })
             return true
           }
           else if (check("setting", "settings", "options", "open settings") || fuzzyCheck("settings", 1) || fuzzyCheck("options", 1)) {
             applyCommand("settings", () => {
               callbacksRef.current.playClickAudio?.('Settings')
-              callbacksRef.current.onOpenSettings()
+              callbacksRef.current.onOpenSettings(true)
             })
             return true
           }

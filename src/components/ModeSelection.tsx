@@ -361,6 +361,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   }
 
   const speakCardSequence = (index: number) => {
+    if (narrationCanceledRef.current) return
     if (index >= 2) {
       narrationStageRef.current = "cardsDone"
       setReminderTrigger({ skipped: false })
@@ -547,49 +548,98 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     const target = event.target as HTMLElement
     if (target.closest("button")) return
 
+    // Cancel any in-progress narration FIRST to prevent onend callbacks from firing
+    narrationCanceledRef.current = true
     window.speechSynthesis.cancel()
+    activeUtteranceRef.current = null
+
+    // Clear any pending voice retry timers that could re-trigger speech
+    if (voiceRetryTimerRef.current !== null) {
+      window.clearTimeout(voiceRetryTimerRef.current)
+      voiceRetryTimerRef.current = null
+    }
+    if (voiceReadyRetryRef.current !== null) {
+      window.clearInterval(voiceReadyRetryRef.current)
+      voiceReadyRetryRef.current = null
+    }
+    pendingUtteranceRef.current = null
 
     if (narrationStageRef.current === "idle") {
       narrationStageRef.current = "titleDone"
       setStartDescription(true)
       setTypedDescriptionCount(descriptionWords.length)
+      // Re-enable narration for the next stage
+      narrationCanceledRef.current = false
       return
     }
 
     if (!startDescription) {
+      narrationStageRef.current = "titleDone"
       setStartDescription(true)
       setTypedDescriptionCount(descriptionWords.length)
+      narrationCanceledRef.current = false
       return
     }
 
     if (typedDescriptionCount < descriptionWords.length) {
       setTypedDescriptionCount(descriptionWords.length)
+      narrationCanceledRef.current = false
+      return
+    }
+
+    if (narrationStageRef.current === "titleDone") {
+      // TTS is speaking the description text, skip to subtitle
+      narrationStageRef.current = "descriptionDone"
+      setStartSubtitle(true)
+      setTypedWordCount(subtitleWords.length)
+      narrationCanceledRef.current = false
       return
     }
 
     if (!startSubtitle) {
+      narrationStageRef.current = "descriptionDone"
       setStartSubtitle(true)
       setTypedWordCount(subtitleWords.length)
+      narrationCanceledRef.current = false
       return
     }
 
     if (typedWordCount < subtitleWords.length) {
       setTypedWordCount(subtitleWords.length)
+      narrationCanceledRef.current = false
+      return
+    }
+
+    if (narrationStageRef.current === "descriptionDone") {
+      // TTS is speaking the subtitle text, skip to showing cards
+      narrationStageRef.current = "subtitleDone"
+      setVisibleCards(1)
+      narrationCanceledRef.current = false
       return
     }
 
     if (narrationStageRef.current === "subtitleDone") {
       if (visibleCards < 1) {
         setVisibleCards(1)
+        narrationCanceledRef.current = false
         return
       }
       if (visibleCards < 2) {
         setVisibleCards(2)
         narrationStageRef.current = "cardsDone"
+        narrationCanceledRef.current = false
         setReminderTrigger({ skipped: true })
         return
       }
+      // If both cards visible but stage still subtitleDone (card TTS playing), skip to done
+      narrationStageRef.current = "cardsDone"
+      narrationCanceledRef.current = false
+      setReminderTrigger({ skipped: true })
+      return
     }
+
+    // If already at cardsDone, nothing to skip — re-enable narration
+    narrationCanceledRef.current = false
   }
 
   return (
