@@ -42,16 +42,52 @@ const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
 
 const simplifyVoiceName = (name: string): string => {
   let simplified = name
+  simplified = simplified.replace(/Deutsch/gi, "German")
+  simplified = simplified.replace(/français/gi, "French")
+  simplified = simplified.replace(/português do brasil/gi, "Portuguese")
+  simplified = simplified.replace(/português/gi, "Portuguese")
+  simplified = simplified.replace(/español.*españa.*/gi, "Spanish Male")
+  simplified = simplified.replace(/español.*estados unidos.*/gi, "Spanish Female")
+  simplified = simplified.replace(/español/gi, "Spanish")
+  simplified = simplified.replace(/italiano/gi, "Italian")
+  simplified = simplified.replace(/nederlands/gi, "Dutch")
+  simplified = simplified.replace(/Nederland/gi, "")
+  simplified = simplified.replace(/polski/gi, "Polish")
+  simplified = simplified.replace(/русский/gi, "Russian")
+  simplified = simplified.replace(/普通话.*中国大陆.*/gi, "Mainland Mandarin")
+  simplified = simplified.replace(/普通话/gi, "Mandarin")
+  simplified = simplified.replace(/[粵粤]語.*香港.*/gi, "Cantonese")
+  simplified = simplified.replace(/[粵粤]語/gi, "Cantonese")
+  simplified = simplified.replace(/國語.*臺灣.*/gi, "Taiwanese Mandarin")
+  simplified = simplified.replace(/國語.*台湾.*/gi, "Taiwanese Mandarin")
+  simplified = simplified.replace(/國語/gi, "Taiwanese Mandarin")
+  simplified = simplified.replace(/国语/gi, "Taiwanese Mandarin")
+  simplified = simplified.replace(/中文.*香港.*/gi, "Cantonese")
+  simplified = simplified.replace(/中文.*台灣.*/gi, "Taiwanese Mandarin")
+  simplified = simplified.replace(/中文.*台湾.*/gi, "Taiwanese Mandarin")
+  simplified = simplified.replace(/中文.*中国.*/gi, "Mainland Mandarin")
+  simplified = simplified.replace(/中文/gi, "Chinese")
+  simplified = simplified.replace(/日本語/gi, "Japanese")
+  simplified = simplified.replace(/한국어/gi, "Korean")
+  simplified = simplified.replace(/hanguge/gi, "Korean")
+  simplified = simplified.replace(/한국의/gi, "Korean")
+  simplified = simplified.replace(/हिन्दी/gi, "Hindi")
+  simplified = simplified.replace(/suomi/gi, "Finnish")
+  simplified = simplified.replace(/svenska/gi, "Swedish")
+  simplified = simplified.replace(/dansk/gi, "Danish")
+  simplified = simplified.replace(/norsk/gi, "Norwegian")
+  
   simplified = simplified.replace(/ - English \([^)]+\)/i, "")
   simplified = simplified.replace(/ English \([^)]+\)/i, "")
   simplified = simplified.replace(/ \([a-z]{2}-[A-Z]{2}\)/i, "")
   simplified = simplified.replace(/ Desktop/i, "")
+  simplified = simplified.replace(/[\(\)]/g, "")
+  simplified = simplified.replace(/\s+/g, " ")
+  
   return simplified.trim() || name
 }
 
 const DEFAULT_HIGHLIGHT_COLOR = "#FFFE00"
-const DEFAULT_INPUT_DEVICE_ID = "default"
-const DEFAULT_OUTPUT_DEVICE_ID = "default"
 
 interface VisualSettingsModalProps {
   onClose: () => void
@@ -71,10 +107,6 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
 
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR)
-  const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([])
-  const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([])
-  const [selectedInputDeviceId, setSelectedInputDeviceId] = useState(DEFAULT_INPUT_DEVICE_ID)
-  const [selectedOutputDeviceId, setSelectedOutputDeviceId] = useState(DEFAULT_OUTPUT_DEVICE_ID)
   const [isAutoscrollEnabled, setIsAutoscrollEnabled] = useState(true)
   const [isHighlightMouseScreenReaderEnabled, setIsHighlightMouseScreenReaderEnabled] = useState(false)
 
@@ -98,10 +130,6 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
     isSoundEffectsEnabled,
     showColorPicker,
     highlightColor,
-    inputDevices,
-    outputDevices,
-    selectedInputDeviceId,
-    selectedOutputDeviceId,
     isAutoscrollEnabled,
     isHighlightMouseScreenReaderEnabled,
     voices,
@@ -266,7 +294,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
     if (!voiceUri) return
     hasAnnouncedOpenRef.current = true
     if (openedViaVoice) {
-      speakSettingsGuide("Settings opened. Here are the commands. Voice selection. This opens the voice list. Input device. This changes the microphone. Output device. This changes the speaker. Restore default. This resets all settings to default. Close. This exits settings.")
+      speakSettingsGuide("Settings opened. Here are the commands. Voice selection. This opens the voice list. Reset. This resets all settings to default. Close. This exits settings.")
     } else {
       speakSettingsGuide("Settings opened")
     }
@@ -305,10 +333,6 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
       isSoundEffectsEnabled,
       showColorPicker,
       highlightColor,
-      inputDevices,
-      outputDevices,
-      selectedInputDeviceId,
-      selectedOutputDeviceId,
       isAutoscrollEnabled,
       isHighlightMouseScreenReaderEnabled,
       voices,
@@ -317,14 +341,10 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
     }
   }, [
     highlightColor,
-    inputDevices,
     isAutoscrollEnabled,
     isHighlightMouseScreenReaderEnabled,
     isVoiceDropdownOpen,
     isVoiceGuideEnabled,
-    outputDevices,
-    selectedInputDeviceId,
-    selectedOutputDeviceId,
     selectedVoiceURI,
     showColorPicker,
     voices,
@@ -384,8 +404,6 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
       "sensa_voice_command_active"
     ], (res) => {
       if (typeof res.sensa_visual_highlight_color === "string") setHighlightColor(res.sensa_visual_highlight_color)
-      if (typeof res.sensa_visual_input_device_id === "string") setSelectedInputDeviceId(res.sensa_visual_input_device_id)
-      if (typeof res.sensa_visual_output_device_id === "string") setSelectedOutputDeviceId(res.sensa_visual_output_device_id)
       if (typeof res.sensa_visual_autoscroll_enabled === "boolean") setIsAutoscrollEnabled(res.sensa_visual_autoscroll_enabled)
       if (typeof res.sensa_visual_voice_guide_enabled === "boolean") {
         setIsVoiceGuideEnabled(res.sensa_visual_voice_guide_enabled)
@@ -445,30 +463,6 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
     }
     loadVoices()
     window.speechSynthesis.onvoiceschanged = loadVoices
-  }, [])
-
-  React.useEffect(() => {
-    const loadDevices = async () => {
-      if (!navigator.mediaDevices?.enumerateDevices) return
-      try {
-        await navigator.mediaDevices.getUserMedia({
-          audio: {
-            noiseSuppression: true,
-            echoCancellation: true,
-            autoGainControl: true,
-            channelCount: 1,
-            sampleRate: 48000
-          }
-        })
-      } catch { }
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      setInputDevices(devices.filter((d) => d.kind === "audioinput"))
-      setOutputDevices(devices.filter((d) => d.kind === "audiooutput"))
-    }
-    loadDevices()
-    const handleDeviceChange = () => loadDevices()
-    navigator.mediaDevices?.addEventListener?.("devicechange", handleDeviceChange)
-    return () => navigator.mediaDevices?.removeEventListener?.("devicechange", handleDeviceChange)
   }, [])
 
   useEffect(() => {
@@ -540,37 +534,22 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
       })
     }
 
-    const cycleDevice = (kind: "input" | "output", step: 1 | -1) => {
-      const state = overlayStateRef.current
-      const devices = kind === "input" ? state.inputDevices : state.outputDevices
-      const currentId = kind === "input" ? state.selectedInputDeviceId : state.selectedOutputDeviceId
-      const defaultDevice = {
-        deviceId: DEFAULT_INPUT_DEVICE_ID,
-        label: kind === "input" ? "Default - Microphone" : "Default - Speaker",
-      }
-      const options = [defaultDevice, ...devices]
-      if (!options.length) return
-      const currentIndex = Math.max(options.findIndex((device) => device.deviceId === currentId), 0)
-      const nextDevice = options[(currentIndex + step + options.length) % options.length]
-      if (!nextDevice) return
-      if (kind === "input") {
-        setSelectedInputDeviceId(nextDevice.deviceId)
-        chrome.storage.local.set({ sensa_visual_input_device_id: nextDevice.deviceId })
-      } else {
-        setSelectedOutputDeviceId(nextDevice.deviceId)
-        chrome.storage.local.set({ sensa_visual_output_device_id: nextDevice.deviceId })
-      }
-      speakFeedback(nextDevice.label || `${kind} device selected`)
-    }
-
     const voiceSelectionMatches = (text: string) => {
       const cleanText = text.toLowerCase()
-      const matchedVoice = overlayStateRef.current.voices.find((voice) => {
+      if (cleanText.split(' ').length < 2) return false
+      const matches = overlayStateRef.current.voices.filter((voice) => {
         const name = (voice.name || "").toLowerCase()
         const simpleName = simplifyVoiceName(voice.name || "").toLowerCase()
+        if (cleanText === name || cleanText === simpleName) return true
         return cleanText.includes(name) || name.includes(cleanText) || cleanText.includes(simpleName) || simpleName.includes(cleanText)
       })
-      if (!matchedVoice) return false
+      if (matches.length === 0) return false
+      
+      if (matches.length > 1 && (cleanText === "google" || cleanText === "microsoft" || cleanText === "apple" || cleanText === "english")) {
+        return false
+      }
+      
+      const matchedVoice = matches[0]
       setSelectedVoiceURI(matchedVoice.voiceURI)
       chrome.storage.local.set({ sensa_visual_voice_uri: matchedVoice.voiceURI, sensa_visual_voice_name: matchedVoice.name || "" })
       setIsVoiceDropdownOpen(false)
@@ -601,6 +580,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
       instance.onresult = (event: any) => {
         lastActivityTimestamp = Date.now()
         if (!settingsRecognitionArmedRef.current) return
+        if (window.speechSynthesis.speaking || window.speechSynthesis.pending) return
 
         if (event.resultIndex !== currentResultIndex) {
           consumedString = ""
@@ -707,18 +687,6 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
               }
               window.speechSynthesis.speak(outro)
             }
-          } else if (check("next input", "input device", "next microphone", "input next", "microphone")) {
-            commandFired = true
-            cycleDevice("input", 1)
-          } else if (check("previous input", "prev input", "previous microphone")) {
-            commandFired = true
-            cycleDevice("input", -1)
-          } else if (check("next output", "output device", "next speaker", "output next", "speaker")) {
-            commandFired = true
-            cycleDevice("output", 1)
-          } else if (check("previous output", "prev output", "previous speaker")) {
-            commandFired = true
-            cycleDevice("output", -1)
           }
         }
 
@@ -824,22 +792,6 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
     }, 220)
   }
 
-  const handleInputDeviceChange = (deviceId: string) => {
-    playClickSfx()
-    setSelectedInputDeviceId(deviceId)
-    chrome.storage.local.set({ sensa_visual_input_device_id: deviceId })
-    const label = inputDevices.find(d => d.deviceId === deviceId)?.label || "Input device selected"
-    playClickAudio(label)
-  }
-
-  const handleOutputDeviceChange = (deviceId: string) => {
-    playClickSfx()
-    setSelectedOutputDeviceId(deviceId)
-    chrome.storage.local.set({ sensa_visual_output_device_id: deviceId })
-    const label = outputDevices.find(d => d.deviceId === deviceId)?.label || "Output device selected"
-    playClickAudio(label)
-  }
-
   const handleAutoscrollToggle = (enabled: boolean) => {
     playToggleSfx(enabled)
     setIsAutoscrollEnabled(enabled)
@@ -886,13 +838,12 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
 
   const handleResetToDefault = () => {
     playClickSfx()
-    const defaultVoice = voices.find((voice) => voice.name.includes("Google US English")) || voices[0]
+    const currentVoices = overlayStateRef.current.voices
+    const defaultVoice = currentVoices.find((voice) => voice.name.includes("Google US English")) || currentVoices[0]
     const defaultVoiceURI = defaultVoice?.voiceURI || ""
     setShowColorPicker(false)
     setIsVoiceDropdownOpen(false)
     setHighlightColor(DEFAULT_HIGHLIGHT_COLOR)
-    setSelectedInputDeviceId(DEFAULT_INPUT_DEVICE_ID)
-    setSelectedOutputDeviceId(DEFAULT_OUTPUT_DEVICE_ID)
     setIsAutoscrollEnabled(true)
     setIsHighlightMouseScreenReaderEnabled(true)
     setIsVoiceGuideEnabled(true)
@@ -900,8 +851,6 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
     setSelectedVoiceURI(defaultVoiceURI)
     chrome.storage.local.set({
       sensa_visual_highlight_color: DEFAULT_HIGHLIGHT_COLOR,
-      sensa_visual_input_device_id: DEFAULT_INPUT_DEVICE_ID,
-      sensa_visual_output_device_id: DEFAULT_OUTPUT_DEVICE_ID,
       sensa_visual_autoscroll_enabled: true,
       sensa_visual_highlight_mouse_screen_reader: true,
       sensa_visual_voice_guide_enabled: true,
@@ -1140,49 +1089,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
             </div>
           </div>
 
-          <div
-            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
-            {...getHoverHandlers("Input Device")}
-          >
-            <div className="flex items-center gap-3">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="22" /></svg>
-              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Input Device</span>
-            </div>
-            <div className="relative w-[190px]">
-              <select
-                value={selectedInputDeviceId} onChange={(e) => handleInputDeviceChange(e.target.value)} aria-label="Input Device"
-                className={`appearance-none w-full border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
-              >
-                <option value="default">Default - Microphone</option>
-                {inputDevices.map((d, i) => <option key={d.deviceId || `in-${i}`} value={d.deviceId}>{d.label || `Microphone ${i + 1}`}</option>)}
-              </select>
-              <div className={`pointer-events-none absolute inset-y-0 right-3 flex items-center ${secondaryText}`}>
-                <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
-              </div>
-            </div>
-          </div>
 
-          <div
-            className={`flex items-center justify-between py-3 px-3 hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
-            {...getHoverHandlers("Output Device")}
-          >
-            <div className="flex items-center gap-3">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" /></svg>
-              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Output Device</span>
-            </div>
-            <div className="relative w-[190px]">
-              <select
-                value={selectedOutputDeviceId} onChange={(e) => handleOutputDeviceChange(e.target.value)} aria-label="Output Device"
-                className={`appearance-none w-full border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
-              >
-                <option value="default">Default - Speaker</option>
-                {outputDevices.map((d, i) => <option key={d.deviceId || `out-${i}`} value={d.deviceId}>{d.label || `Speaker ${i + 1}`}</option>)}
-              </select>
-              <div className={`pointer-events-none absolute inset-y-0 right-3 flex items-center ${secondaryText}`}>
-                <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
-              </div>
-            </div>
-          </div>
 
         </div>
 
@@ -1191,10 +1098,10 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
             type="button"
             onClick={handleResetToDefault}
             className={`flex items-center gap-2 bg-transparent hover:bg-[#0A44FF]/10 hover:text-[#0A44FF] hover:border-[#0A44FF]/30 dark:hover:bg-[#0A44FF]/20 dark:hover:border-[#0A44FF]/40 ${textColor} border ${inputBorder} font-semibold h-11 px-8 rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 text-[14px] tracking-wide hover:shadow-sm`}
-            {...getHoverHandlers("Reset to default")}
+            {...getHoverHandlers("Reset")}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><polyline points="3 3 3 8 8 8" /></svg>
-            Restore Defaults
+            Reset
           </button>
         </div>
 
