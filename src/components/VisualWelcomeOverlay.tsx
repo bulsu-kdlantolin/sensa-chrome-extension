@@ -289,9 +289,9 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
       }
       return
     }
-
-    window.speechSynthesis.cancel()
-
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      window.speechSynthesis.cancel()
+    }
     const utterance = new SpeechSynthesisUtterance(text)
     const preferredVoice =
       voices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
@@ -372,7 +372,9 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
 
     return () => {
       narrationCanceledRef.current = true
-      window.speechSynthesis.cancel()
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        window.speechSynthesis.cancel()
+      }
       if (descriptionFallbackRef.current !== null) {
         window.clearTimeout(descriptionFallbackRef.current)
         descriptionFallbackRef.current = null
@@ -411,7 +413,6 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     if (!reminderTrigger) return
 
     const playReminder = () => {
-      if (document.hidden) return
       speakWithResolvedVoice(commandReminderText, () => {})
     }
 
@@ -444,7 +445,9 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
   useEffect(() => {
     return () => {
       narrationCanceledRef.current = true
-      window.speechSynthesis.cancel()
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        window.speechSynthesis.cancel()
+      }
       if (commandReminderIntervalRef.current !== null) {
         window.clearInterval(commandReminderIntervalRef.current)
         commandReminderIntervalRef.current = null
@@ -481,13 +484,17 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
       if (!document.hidden) return
       setIsSkipping(true)
       narrationCanceledRef.current = true
-      window.speechSynthesis.cancel()
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        window.speechSynthesis.cancel()
+      }
     }
 
     const handleBlur = () => {
       setIsSkipping(true)
       narrationCanceledRef.current = true
-      window.speechSynthesis.cancel()
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        window.speechSynthesis.cancel()
+      }
     }
 
     document.addEventListener("visibilitychange", handleVisibilityChange)
@@ -502,7 +509,9 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
   const handleManualProceed = () => {
     setIsSkipping(true)
     narrationCanceledRef.current = true
-    window.speechSynthesis.cancel()
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      window.speechSynthesis.cancel()
+    }
     playPopSfx()
     chrome.storage.local.set({
       sensa_visual_entered_from_welcome: true
@@ -563,7 +572,9 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
   const handleSkipStep = () => {
     setIsSkipping(true)
     narrationCanceledRef.current = true
-    window.speechSynthesis.cancel()
+    if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+      window.speechSynthesis.cancel()
+    }
     playPopSfx()
     setStartDescription(true)
     setTypedWordCount(descriptionWords.length)

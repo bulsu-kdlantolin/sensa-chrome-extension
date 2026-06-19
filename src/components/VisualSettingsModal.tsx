@@ -92,10 +92,12 @@ const DEFAULT_HIGHLIGHT_COLOR = "#FFFE00"
 interface VisualSettingsModalProps {
   onClose: () => void
   isDark?: boolean
+  isVoiceCommandActive?: boolean
+  onToggleVoiceCommand?: () => void
   openedViaVoice?: boolean
 }
 
-export default function VisualSettingsModal({ onClose, isDark = false, openedViaVoice = false }: VisualSettingsModalProps) {
+export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCommandActive = false, onToggleVoiceCommand, openedViaVoice = false }: VisualSettingsModalProps) {
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   const audioCtxRef = useRef<AudioContext | null>(null)
   const [isVoiceGuideEnabled, setIsVoiceGuideEnabled] = useState<boolean>(true)
@@ -119,9 +121,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
   const pauseSettingsRecognitionRef = useRef<(() => void) | null>(null)
   const resumeSettingsRecognitionRef = useRef<(() => void) | null>(null)
   const settingsRecognitionArmedRef = useRef(false)
-
-  const wakeWordRef = useRef("Sensa")
-  const isVoiceCommandActiveRef = useRef(false)
+  const isVoiceCommandActiveRef = useRef(isVoiceCommandActive)
 
   const [isMounted, setIsMounted] = useState(false)
   const onCloseRef = useRef(onClose)
@@ -293,12 +293,12 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
     const voiceUri = selectedVoiceURI || defaultVoiceURIRef.current
     if (!voiceUri) return
     hasAnnouncedOpenRef.current = true
-    if (openedViaVoice) {
-      speakSettingsGuide("Settings opened. Here are the commands. Voice selection. This opens the voice list. Reset. This resets all settings to default. Close. This exits settings.")
+    if (isVoiceCommandActive) {
+      speakSettingsGuide("Settings opened. You can say commands to hear the list of available actions.")
     } else {
       speakSettingsGuide("Settings opened")
     }
-  }, [isMounted, isStorageLoaded, selectedVoiceURI, speakSettingsGuide, openedViaVoice])
+  }, [isMounted, isStorageLoaded, selectedVoiceURI, speakSettingsGuide, isVoiceCommandActive])
 
   useEffect(() => {
     const resumeAudio = () => {
@@ -412,31 +412,24 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
       if (typeof res.sensa_visual_sound_effects_enabled === "boolean") setIsSoundEffectsEnabled(res.sensa_visual_sound_effects_enabled)
       if (typeof res.sensa_visual_voice_uri === "string") setSelectedVoiceURI(res.sensa_visual_voice_uri)
       if (typeof res.sensa_visual_highlight_mouse_screen_reader === "boolean") setIsHighlightMouseScreenReaderEnabled(res.sensa_visual_highlight_mouse_screen_reader)
-      if (typeof res.sensa_visual_wake_word === "string" && res.sensa_visual_wake_word.trim()) wakeWordRef.current = res.sensa_visual_wake_word.trim()
-      if (typeof res.sensa_voice_command_active === "boolean") isVoiceCommandActiveRef.current = res.sensa_voice_command_active
       setIsStorageLoaded(true)
     })
   }, [])
 
   useEffect(() => {
     const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-      if (changes.sensa_visual_wake_word !== undefined) {
-        const next = changes.sensa_visual_wake_word.newValue
-        wakeWordRef.current = typeof next === "string" && next.trim() ? next.trim() : "Sensa"
-      }
-      if (changes.sensa_voice_command_active !== undefined) {
-        isVoiceCommandActiveRef.current = !!changes.sensa_voice_command_active.newValue
-      }
     }
     chrome.storage.onChanged.addListener(handleStorageChange)
     return () => chrome.storage.onChanged.removeListener(handleStorageChange)
   }, [])
 
+  useEffect(() => {
+    isVoiceCommandActiveRef.current = isVoiceCommandActive
+  }, [isVoiceCommandActive])
+
   const resumeSettingsVoiceRecognition = () => {
     window.setTimeout(() => resumeSettingsRecognitionRef.current?.(), 350)
   }
-
-  // Wake word logic removed
 
   React.useEffect(() => {
     const loadVoices = () => {
@@ -471,10 +464,10 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
 
     let isComponentMounted = true
     let restartTimer: number | null = null
+
+    let ignoreSpeechUntil = 0
     let consumedString = ""
     let currentResultIndex = 0
-    let lastActivityTimestamp = Date.now()
-    let watchdogTimer: number | null = null
     let recognition: any = null
     let isPermanentlyDead = false
 
@@ -494,6 +487,10 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
         }
       }, 300)
     }
+
+
+
+
 
     const teardownRecognition = () => {
       if (!recognition) return
@@ -569,18 +566,39 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
       instance.lang = "en-US"
 
       instance.onstart = () => {
-        lastActivityTimestamp = Date.now()
         settingsRecognitionArmedRef.current = true
       }
       
       ;(instance as any).onsoundstart = () => {
-        lastActivityTimestamp = Date.now()
       }
 
       instance.onresult = (event: any) => {
-        lastActivityTimestamp = Date.now()
         if (!settingsRecognitionArmedRef.current) return
-        if (window.speechSynthesis.speaking || window.speechSynthesis.pending) return
+
+        if (!isVoiceCommandActiveRef.current) {
+          let liveText = ""
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            liveText += event.results[i][0].transcript + " "
+          }
+          liveText = liveText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
+          
+          let newSpeech = liveText
+          if (liveText.startsWith(consumedString) && consumedString.length > 0) {
+            newSpeech = liveText.slice(consumedString.length).trim()
+          }
+
+          const paddedSpeech = ` ${newSpeech} `
+          const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
+          const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(newSpeech, target, maxDistance)
+
+          if (check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start") || fuzzyCheck("sensa", 1)) {
+            ignoreSpeechUntil = Date.now() + 800
+            consumedString = liveText
+            playClickAudio("Voice commands activated")
+            onToggleVoiceCommand?.()
+          }
+          return
+        }
 
         if (event.resultIndex !== currentResultIndex) {
           consumedString = ""
@@ -599,32 +617,23 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
         }
 
         if (!newSpeech) return
+
+        if (Date.now() < ignoreSpeechUntil) {
+          consumedString = liveText
+          return
+        }
         const paddedSpeech = ` ${newSpeech} `
         const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
         const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(newSpeech, target, maxDistance)
 
-        const currentWakeWord = (wakeWordRef.current || "Sensa").toLowerCase().trim()
-        const isCustomWakeWord = currentWakeWord !== "sensa"
-
-        if (!isVoiceCommandActiveRef.current) {
-          const wakeMatched = isCustomWakeWord
-            ? paddedSpeech.includes(` ${currentWakeWord} `) || fuzzyCheck(currentWakeWord, 1)
-            : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start") || fuzzyCheck("sensa", 1)
-
-          if (wakeMatched) {
-            chrome.storage.local.set({ sensa_voice_command_active: true })
-            speakFeedback("Voice commands activated")
-            consumedString = liveText
-            return
-          }
-        } else {
-          if (check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening") || fuzzyCheck("sleep", 1) || fuzzyCheck("mute", 1)) {
-            chrome.storage.local.set({ sensa_voice_command_active: false })
-            speakFeedback("Voice commands deactivated")
-            consumedString = liveText
-            return
-          }
+        if (check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening")) {
+          ignoreSpeechUntil = Date.now() + 800
+          consumedString = liveText
+          playClickAudio("Voice commands deactivated")
+          onToggleVoiceCommand?.()
+          return
         }
+
 
         const state = overlayStateRef.current
         let commandFired = false
@@ -647,7 +656,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
         } else {
           if (check("help", "commands", "options", "what can i say")) {
             commandFired = true
-            speakFeedback("Here are the commands. Voice selection. This opens the voice list. Input device. This changes the microphone. Output device. This changes the speaker. Restore default. This resets all settings to default. Close. This exits settings.")
+            speakFeedback("Here are the commands. Voice selection. This opens the voice list. Reset. This resets all settings to default. Close. This exits settings.")
           } else if (check("close settings", "close", "cancel", "back", "exit") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1)) {
             commandFired = true
             setIsMounted(false)
@@ -696,32 +705,22 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
       }
 
       instance.onerror = (event: any) => {
-        lastActivityTimestamp = Date.now()
-        if (event.error === "not-allowed" || event.error === "service-not-allowed" || event.error === "aborted") return
-        if (event.error === "network") {
-          rebuildRecognition()
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+          window.setTimeout(scheduleRestart, 1500)
+          return
+        }
+        if (event.error === "aborted") {
+          scheduleRestart()
           return
         }
         scheduleRestart()
       }
 
       instance.onend = () => {
-        lastActivityTimestamp = Date.now()
         scheduleRestart()
       }
 
       recognition = instance
-    }
-
-    const rebuildRecognition = () => {
-      if (!isComponentMounted || isPermanentlyDead) return
-      teardownRecognition()
-      buildRecognition()
-      if (restartTimer) window.clearTimeout(restartTimer)
-      restartTimer = window.setTimeout(() => {
-        if (!recognition || !isComponentMounted) return
-        try { recognition.start() } catch (e) {}
-      }, 500)
     }
 
     pauseSettingsRecognitionRef.current = () => {
@@ -740,39 +739,35 @@ export default function VisualSettingsModal({ onClose, isDark = false, openedVia
     const reviveEngine = () => {
       if (isPermanentlyDead) {
         isPermanentlyDead = false
-        rebuildRecognition()
+        scheduleRestart()
       }
+    }
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") reviveEngine()
     }
     
     window.addEventListener("click", reviveEngine)
     window.addEventListener("focus", reviveEngine)
-    window.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") reviveEngine()
-    })
+    window.addEventListener("visibilitychange", handleVisibilityChange)
 
     buildRecognition()
     const startTimeout = window.setTimeout(() => {
       try { recognition?.start() } catch (e) {}
     }, 150)
 
-    watchdogTimer = window.setInterval(() => {
-      if (!isComponentMounted || isPermanentlyDead || document.visibilityState !== "visible") return
-      const elapsed = Date.now() - lastActivityTimestamp
-      if (elapsed > 15000) {
-        rebuildRecognition()
-      }
-    }, 5000)
-
     return () => {
       isComponentMounted = false
       settingsRecognitionArmedRef.current = false
       window.removeEventListener("click", reviveEngine)
       window.removeEventListener("focus", reviveEngine)
-      window.removeEventListener("visibilitychange", reviveEngine)
+      window.removeEventListener("visibilitychange", handleVisibilityChange)
       if (restartTimer) window.clearTimeout(restartTimer)
-      if (watchdogTimer) window.clearInterval(watchdogTimer)
+
       window.clearTimeout(startTimeout)
-      teardownRecognition()
+      if (recognition) {
+        try { recognition.stop() } catch (e) {}
+      }
     }
   }, [playClickAudio])
 

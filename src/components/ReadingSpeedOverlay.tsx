@@ -43,11 +43,13 @@ interface ReadingSpeedOverlayProps {
   onClose: () => void
   initialSpeed?: number
   onSpeedChange?: (speed: number) => void
-  isDark?: boolean // 🚨 Added isDark to match the Dock's theme
+  isDark?: boolean
+  isVoiceCommandActive?: boolean
+  onToggleVoiceCommand?: () => void
   openedViaVoice?: boolean
 }
 
-export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeedChange, isDark = false, openedViaVoice = false }: ReadingSpeedOverlayProps) {
+export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeedChange, isDark = false, isVoiceCommandActive = false, onToggleVoiceCommand, openedViaVoice = false }: ReadingSpeedOverlayProps) {
   const [speed, setSpeed] = useState(initialSpeed)
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   const onCloseRef = useRef(onClose)
@@ -69,9 +71,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   const speedRef = useRef(speed)
   const lastExecutedRef = useRef<Record<string, number>>({})
   const lastTranscriptRef = useRef<Record<string, string>>({})
-
-  const wakeWordRef = useRef("Sensa")
-  const isVoiceCommandActiveRef = useRef(false)
+  const isVoiceCommandActiveRef = useRef(isVoiceCommandActive)
 
   const getAudioContext = () => {
     if (!isSoundEffectsEnabledRef.current) return null
@@ -92,15 +92,9 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   }, [isSoundEffectsEnabled])
 
   useEffect(() => {
-    chrome.storage.local.get(["sensa_visual_sound_effects_enabled", "sensa_visual_wake_word", "sensa_voice_command_active"], (res) => {
+    chrome.storage.local.get(["sensa_visual_sound_effects_enabled"], (res) => {
       if (typeof res.sensa_visual_sound_effects_enabled === "boolean") {
         setIsSoundEffectsEnabled(res.sensa_visual_sound_effects_enabled)
-      }
-      if (typeof res.sensa_visual_wake_word === "string" && res.sensa_visual_wake_word.trim()) {
-        wakeWordRef.current = res.sensa_visual_wake_word.trim()
-      }
-      if (typeof res.sensa_voice_command_active === "boolean") {
-        isVoiceCommandActiveRef.current = res.sensa_voice_command_active
       }
     })
 
@@ -113,18 +107,15 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           audioCtxRef.current = null
         }
       }
-      if (changes.sensa_visual_wake_word !== undefined) {
-        const next = changes.sensa_visual_wake_word.newValue
-        wakeWordRef.current = typeof next === "string" && next.trim() ? next.trim() : "Sensa"
-      }
-      if (changes.sensa_voice_command_active !== undefined) {
-        isVoiceCommandActiveRef.current = !!changes.sensa_voice_command_active.newValue
-      }
     }
 
     chrome.storage.onChanged.addListener(handleStorageChange)
     return () => chrome.storage.onChanged.removeListener(handleStorageChange)
   }, [])
+
+  useEffect(() => {
+    isVoiceCommandActiveRef.current = isVoiceCommandActive
+  }, [isVoiceCommandActive])
 
   const playHoverSfx = () => {
     const ctx = getAudioContext()
@@ -266,12 +257,12 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   })
 
   useEffect(() => {
-    if (!openedViaVoice) return
+    if (!isVoiceCommandActive) return
 
     let timeout: number
 
     const announce = () => {
-      playClickAudio("Say increase or decrease to adjust reading speed. Or say close to exit the overlay.")
+      playClickAudio("Say increase or decrease to adjust reading speed. Or say close to exit the overlay.", 0.8)
     }
 
     // Play once shortly after opening (delayed so it doesn't interrupt "Reading speed")
@@ -280,7 +271,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     return () => {
       window.clearTimeout(timeout)
     }
-  }, [playClickAudio, openedViaVoice])
+  }, [playClickAudio, isVoiceCommandActive])
 
   const speedStops = [1, 1.25, 1.5, 1.75, 2]
 
@@ -325,13 +316,12 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
 
     let isComponentMounted = true
     let restartTimer: number | null = null
+
     let currentResultIndex = 0
     let globalBuffer = ""
     let ignoreSpeechUntil = 0
     let lastCommandName = ""
     let consumedKeywords: string[] = []
-    let lastActivityTimestamp = Date.now()
-    let watchdogTimer: number | null = null
     let recognition: SpeechRecognition | null = null
     let isPermanentlyDead = false
 
@@ -357,6 +347,10 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         }
       }, 300)
     }
+
+
+
+
 
     const teardownRecognition = () => {
       if (!recognition) return
@@ -393,15 +387,12 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       instance.lang = "en-US"
 
       instance.onstart = () => {
-        lastActivityTimestamp = Date.now()
       }
       
       ;(instance as any).onsoundstart = () => {
-        lastActivityTimestamp = Date.now()
       }
 
       instance.onresult = (event: any) => {
-        lastActivityTimestamp = Date.now()
         if (event.resultIndex !== currentResultIndex) {
           currentResultIndex = event.resultIndex
           consumedKeywords = []
@@ -424,12 +415,16 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         const rawTranscript = (globalBuffer + " " + interimChunk).trim()
         if (!rawTranscript) return
 
+        if (Date.now() < ignoreSpeechUntil) {
+          return
+        }
+
         let cleanText = normalizeTranscript(rawTranscript)
         
         if (consumedKeywords.length > 0) {
           consumedKeywords.forEach(kw => {
             const escapedKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-            cleanText = cleanText.replace(new RegExp(`\\b${escapedKw}\\b`), " ")
+            cleanText = cleanText.replace(new RegExp(`\\b${escapedKw}\\b`, 'g'), " ")
           })
           cleanText = cleanText.replace(/\s+/g, " ").trim()
         }
@@ -446,29 +441,22 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           action()
         }
 
-        const currentWakeWord = (wakeWordRef.current || "Sensa").toLowerCase().trim()
-        const isCustomWakeWord = currentWakeWord !== "sensa"
-
         if (!isVoiceCommandActiveRef.current) {
-          const wakeMatched = isCustomWakeWord
-            ? paddedSpeech.includes(` ${currentWakeWord} `) || fuzzyCheck(currentWakeWord, 1)
-            : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start") || fuzzyCheck("sensa", 1)
-
-          if (wakeMatched) {
-            applyCommand("activate-voice", [currentWakeWord, "sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start"], () => {
-              chrome.storage.local.set({ sensa_voice_command_active: true })
+          if (check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start") || fuzzyCheck("sensa", 1)) {
+            applyCommand("sensa", ["sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start"], () => {
               playClickAudio("Voice commands activated")
+              onToggleVoiceCommand?.()
             })
-            return
           }
-        } else {
-          if (check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening") || fuzzyCheck("sleep", 1) || fuzzyCheck("mute", 1)) {
-            applyCommand("deactivate-voice", ["stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening"], () => {
-              chrome.storage.local.set({ sensa_voice_command_active: false })
-              playClickAudio("Voice commands deactivated")
-            })
-            return
-          }
+          return
+        }
+
+        if (check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening")) {
+          applyCommand("deactivate-voice", ["stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening"], () => {
+            playClickAudio("Voice commands deactivated")
+            onToggleVoiceCommand?.()
+          })
+          return
         }
 
         if (check("help", "commands", "options", "what can i say")) {
@@ -496,69 +484,55 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       }
 
       instance.onerror = (event: any) => {
-        lastActivityTimestamp = Date.now()
-        if (event.error === "not-allowed" || event.error === "service-not-allowed" || event.error === "aborted") return
-        if (event.error === "network") {
-          rebuildRecognition()
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+          window.setTimeout(scheduleRestart, 1500)
+          return
+        }
+        if (event.error === "aborted") {
+          scheduleRestart()
           return
         }
         scheduleRestart()
       }
 
       instance.onend = () => {
-        lastActivityTimestamp = Date.now()
         scheduleRestart()
       }
 
       recognition = instance
     }
 
-    const rebuildRecognition = () => {
-      if (!isComponentMounted || isPermanentlyDead) return
-      teardownRecognition()
-      buildRecognition()
-      if (restartTimer) window.clearTimeout(restartTimer)
-      restartTimer = window.setTimeout(() => {
-        if (!recognition || !isComponentMounted) return
-        try { recognition.start() } catch (e) {}
-      }, 500)
-    }
-
     const reviveEngine = () => {
       if (isPermanentlyDead) {
         isPermanentlyDead = false
-        rebuildRecognition()
+        scheduleRestart()
       }
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") reviveEngine()
     }
 
     window.addEventListener("click", reviveEngine)
     window.addEventListener("focus", reviveEngine)
-    window.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") reviveEngine()
-    })
+    window.addEventListener("visibilitychange", handleVisibilityChange)
 
     buildRecognition()
     const startTimeout = window.setTimeout(() => {
       try { recognition?.start() } catch (e) {}
     }, 150)
 
-    watchdogTimer = window.setInterval(() => {
-      if (!isComponentMounted || isPermanentlyDead || document.visibilityState !== "visible") return
-      const elapsed = Date.now() - lastActivityTimestamp
-      if (elapsed > 15000) {
-        rebuildRecognition()
-      }
-    }, 5000)
-
     return () => {
       isComponentMounted = false
       window.removeEventListener("click", reviveEngine)
       window.removeEventListener("focus", reviveEngine)
-      window.removeEventListener("visibilitychange", reviveEngine)
+      window.removeEventListener("visibilitychange", handleVisibilityChange)
       if (restartTimer) window.clearTimeout(restartTimer)
-      if (watchdogTimer) window.clearInterval(watchdogTimer)
+
       window.clearTimeout(startTimeout)
-      teardownRecognition()
+      if (recognition) {
+        try { recognition.stop() } catch (e) {}
+      }
     }
   }, [playClickAudio])
 

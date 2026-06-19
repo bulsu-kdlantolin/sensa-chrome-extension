@@ -618,19 +618,25 @@ export default function FloatingDockManager() {
         {/* 1. THE SETTINGS MODAL (Floats dead center, outside the drag logic) */}
         {isVisualSettingsOpen && (
           <VisualSettingsModal
-            openedViaVoice={isVisualSettingsOpenViaVoice}
             onClose={() => {
               setIsVisualSettingsOpen(false)
               setIsVisualSettingsOpenViaVoice(false)
               speakOverlayFeedback("Settings overlay closed")
             }}
             isDark={isDark}
+            isVoiceCommandActive={isVoiceCommandActive}
+            onToggleVoiceCommand={() => {
+              setIsVoiceCommandActive(prev => {
+                const next = !prev
+                chrome.storage.local.set({ sensa_voice_command_active: next })
+                return next
+              })
+            }}
           />
         )}
 
         {isReadingSpeedOpen && (
           <ReadingSpeedOverlay
-            openedViaVoice={isReadingSpeedOpenViaVoice}
             initialSpeed={readingSpeed}
             onSpeedChange={(newSpeed) => {
               setReadingSpeed(newSpeed)
@@ -642,6 +648,14 @@ export default function FloatingDockManager() {
               speakOverlayFeedback("Reading speed overlay closed")
             }}
             isDark={isDark}
+            isVoiceCommandActive={isVoiceCommandActive}
+            onToggleVoiceCommand={() => {
+              setIsVoiceCommandActive(prev => {
+                const next = !prev
+                chrome.storage.local.set({ sensa_voice_command_active: next })
+                return next
+              })
+            }}
           />
         )}
 

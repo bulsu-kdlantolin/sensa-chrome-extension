@@ -409,9 +409,20 @@ export default function VisualDock({
     if (isVoiceCommandActive || isPlaying || isVoiceCommandsSuspended) return
 
     const speakReminder = () => {
-      if (document.hidden) return
-      const text = `You can say ${wakeWordRef.current} to activate voice commands.`
-      playClickAudio(text)
+      const cbs = callbacksRef.current
+      if (cbs.isVoiceCommandActive || cbs.isPlaying || cbs.isVoiceCommandsSuspended) return
+      if (document.visibilityState !== "visible") return
+      chrome.storage.local.get(["sensa_last_voice_reminder_time"], (res) => {
+        const cbsAsync = callbacksRef.current
+        if (cbsAsync.isVoiceCommandActive || cbsAsync.isPlaying || cbsAsync.isVoiceCommandsSuspended) return
+        const lastTime = res.sensa_last_voice_reminder_time || 0
+        const now = Date.now()
+        if (now - lastTime < 50000) return 
+        
+        chrome.storage.local.set({ sensa_last_voice_reminder_time: now })
+        const text = `You can say ${wakeWordRef.current} to activate voice commands.`
+        playClickAudio(text)
+      })
     }
 
     let initialTimeout: number | null = null
@@ -467,23 +478,71 @@ export default function VisualDock({
 
   const handleToggleVoiceCommand = () => {
     playClickSfx()
-    playClickAudio(isVoiceCommandActive ? "Voice commands deactivated" : "Voice commands activated. You can say 'help' when you want to know the list of commands for the visual dock.")
+    playClickAudio(isVoiceCommandActive ? "Voice commands deactivated" : "Voice commands activated. You can say 'commands' when you want to know the list of commands for the visual dock.")
     onToggleVoiceCommand()
   }
 
   const callbacksRef = useRef({
-    isVoiceCommandActive, isMinimized, isPlaying, isPaused, onToggleVoiceCommand, onTogglePlay, onNext, onPrev, onRestart,
-    onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio
+    isVoiceCommandActive,
+    isMinimized,
+    isPlaying,
+    isPaused,
+    isVoiceCommandsSuspended,
+    isSoundEffectsEnabled,
+    onToggleVoiceCommand,
+    onTogglePlay,
+    onNext,
+    onPrev,
+    onRestart,
+    onMinimizeToggle,
+    onOpenReadingSpeed,
+    onOpenSettings,
+    onClose,
+    playClickAudio,
+    cancelHoverAudio,
   })
 
   const wakeWordRef = useRef(DEFAULT_WAKE_WORD)
 
   useEffect(() => {
     callbacksRef.current = {
-      isVoiceCommandActive, isMinimized, isPlaying, isPaused, onToggleVoiceCommand, onTogglePlay, onNext, onPrev, onRestart,
-      onMinimizeToggle, onOpenReadingSpeed, onOpenSettings, onClose, playClickAudio
+      isVoiceCommandActive,
+      isMinimized,
+      isPlaying,
+      isPaused,
+      isVoiceCommandsSuspended,
+      isSoundEffectsEnabled,
+      onTogglePlay,
+      onToggleVoiceCommand,
+      onNext,
+      onPrev,
+      onRestart,
+      onMinimizeToggle,
+      onOpenReadingSpeed,
+      onOpenSettings,
+      onClose,
+      playClickAudio,
+      cancelHoverAudio,
     }
-  })
+  }, [
+    isVoiceCommandActive,
+    isMinimized,
+    isPlaying,
+    isPaused,
+    isVoiceCommandsSuspended,
+    isSoundEffectsEnabled,
+    onTogglePlay,
+    onToggleVoiceCommand,
+    onNext,
+    onPrev,
+    onRestart,
+    onMinimizeToggle,
+    onOpenReadingSpeed,
+    onOpenSettings,
+    onClose,
+    playClickAudio,
+    cancelHoverAudio,
+  ])
 
   useEffect(() => {
     chrome.storage.local.get(["sensa_visual_wake_word"], (res) => {
@@ -505,7 +564,7 @@ export default function VisualDock({
 
   useEffect(() => {
     resetSilenceTimerRef.current?.()
-  }, [isVoiceCommandActive])
+  }, [isVoiceCommandActive, isPlaying, isPaused])
 
   useEffect(() => {
     if (isVoiceCommandsSuspended) return
@@ -548,20 +607,7 @@ export default function VisualDock({
     }
 
     const resetSilenceTimer = () => {
-      if (silenceTimer) {
-        window.clearTimeout(silenceTimer)
-        silenceTimer = null
-      }
-
-      if (callbacksRef.current.isVoiceCommandActive) {
-        silenceTimer = window.setTimeout(() => {
-          const cbs = callbacksRef.current
-          if (cbs.isVoiceCommandActive) {
-            cbs.playClickAudio?.('Voice commands deactivated')
-            try { cbs.onToggleVoiceCommand() } catch { }
-          }
-        }, 30000)
-      }
+      // Intentionally empty. User requested continuous voice command availability.
     }
 
     resetSilenceTimerRef.current = resetSilenceTimer
@@ -586,6 +632,8 @@ export default function VisualDock({
     const lockVoiceToggle = () => {
       voiceToggleLockUntil = Date.now() + 1800
     }
+
+
 
     recognition.onstart = () => {
       currentResultIndex = 0
@@ -637,12 +685,17 @@ export default function VisualDock({
 
         if (consumedKeywords.length > 0) {
           consumedKeywords.forEach(kw => {
-            cleanText = cleanText.replace(new RegExp(`\\b${kw}\\b`), " ")
+            const escapedKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            cleanText = cleanText.replace(new RegExp(`\\b${escapedKw}\\b`, "g"), " ")
           })
           cleanText = cleanText.replace(/\s+/g, " ").trim()
         }
 
         if (!cleanText) return false
+
+        if (Date.now() < ignoreSpeechUntil) {
+          return false
+        }
 
         const paddedSpeech = ` ${cleanText} `
         const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
@@ -677,7 +730,7 @@ export default function VisualDock({
           if (canToggleVoiceMode && wakeMatched) {
             applyCommand("activate-voice", () => {
               lockVoiceToggle()
-              callbacksRef.current.playClickAudio?.("Voice commands activated. You can say 'help' when you want to know the list of commands for the visual dock.")
+              callbacksRef.current.playClickAudio?.("Voice commands activated. You can say 'commands' when you want to know the list of commands for the visual dock.")
               try { callbacksRef.current.onToggleVoiceCommand() } catch { }
             })
             shouldProcessCommands = true
@@ -719,9 +772,17 @@ export default function VisualDock({
           }
           else if (check("play", "resume", "continue", "start reading", "read") || fuzzyCheck("play", 1) || fuzzyCheck("resume", 1)) {
             if (!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) {
-              applyCommand("play", () => {
-                callbacksRef.current.onTogglePlay()
-              })
+              const playAction = () => {
+                applyCommand("play", () => {
+                  callbacksRef.current.onTogglePlay()
+                })
+              }
+              // If the matched word is "read", wait 600ms to see if it turns into "reading speed"
+              if (check("read") && !check("start reading")) {
+                commandTimeout = window.setTimeout(playAction, 600)
+              } else {
+                playAction()
+              }
             }
             return true
           }
@@ -850,11 +911,12 @@ export default function VisualDock({
         try { recognition.start() } catch (e) { }
       }
     }
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") reviveEngine()
+    }
     window.addEventListener("click", reviveEngine)
     window.addEventListener("focus", reviveEngine)
-    window.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") reviveEngine()
-    })
+    window.addEventListener("visibilitychange", handleVisibilityChange)
 
     const startTimeout = window.setTimeout(() => {
       try { recognition.start() } catch (e) { }
@@ -864,10 +926,10 @@ export default function VisualDock({
       isComponentMounted = false
       window.removeEventListener("click", reviveEngine)
       window.removeEventListener("focus", reviveEngine)
-      window.removeEventListener("visibilitychange", reviveEngine)
+      window.removeEventListener("visibilitychange", handleVisibilityChange)
       if (restartTimer) window.clearTimeout(restartTimer)
-      window.clearTimeout(startTimeout)
       if (silenceTimer) window.clearTimeout(silenceTimer)
+      window.clearTimeout(startTimeout)
       if (commandTimeout) window.clearTimeout(commandTimeout)
       try { recognition.stop() } catch (e) { }
       recognition.onresult = null
