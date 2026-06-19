@@ -417,8 +417,8 @@ export default function VisualDock({
         if (cbsAsync.isVoiceCommandActive || cbsAsync.isPlaying || cbsAsync.isVoiceCommandsSuspended) return
         const lastTime = res.sensa_last_voice_reminder_time || 0
         const now = Date.now()
-        if (now - lastTime < 50000) return 
-        
+        if (now - lastTime < 50000) return
+
         chrome.storage.local.set({ sensa_last_voice_reminder_time: now })
         const text = `You can say ${wakeWordRef.current} to activate voice commands.`
         playClickAudio(text)
@@ -613,9 +613,9 @@ export default function VisualDock({
       if (!isComponentMounted || isPermanentlyDead) return
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
-        try { 
-          recognition.start() 
-        } catch (e: any) { 
+        try {
+          recognition.start()
+        } catch (e: any) {
           console.error("[Sensa VisualDock] Failed to start recognition:", e)
           if (e && e.name === 'InvalidStateError') {
             restartTimer = window.setTimeout(scheduleRestart, 400)
@@ -952,8 +952,8 @@ export default function VisualDock({
           {...getHoverHandlers("Audio Visualizer")}
         >
           <Tooltip label="Audio Visualizer" isDark={isDark} />
-          <GodTierMicIcon 
-            isActive={isVoiceCommandActive} 
+          <GodTierMicIcon
+            isActive={isVoiceCommandActive}
             onSoundDetected={() => {
               if (resetSilenceTimerRef.current) resetSilenceTimerRef.current()
             }}
