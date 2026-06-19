@@ -432,11 +432,8 @@ export default function VisualDock({
       initialTimeout = window.setTimeout(speakReminder, 3000)
     }
 
-    const interval = window.setInterval(speakReminder, 60000)
-
     return () => {
       if (initialTimeout) window.clearTimeout(initialTimeout)
-      window.clearInterval(interval)
     }
   }, [isVoiceCommandActive, isPlaying, isVoiceCommandsSuspended, playClickAudio])
 
