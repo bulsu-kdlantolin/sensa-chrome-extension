@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react"
+import React, { useEffect, useRef, useState, useCallback } from "react"
 import { Tooltip } from "./Tooltip"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
@@ -278,7 +278,13 @@ export default function VisualDock({
   const audioCtxRef = useRef<AudioContext | null>(null)
   const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState(true)
   const isSoundEffectsEnabledRef = useRef(true)
-  const resetSilenceTimerRef = useRef<() => void>()
+  const resetSilenceTimerRef = useRef<(() => void) | null>(null)
+  const lastUISpeechTimeRef = useRef(0)
+
+  const wrappedPlayClickAudio = useCallback((text: string, rate?: number) => {
+    lastUISpeechTimeRef.current = Date.now()
+    playClickAudio(text, rate)
+  }, [playClickAudio])
 
   const getAudioContext = () => {
     if (!isSoundEffectsEnabledRef.current) return null
@@ -406,22 +412,49 @@ export default function VisualDock({
   const hasPlayedInitialReminderRef = useRef(false)
 
   useEffect(() => {
-    if (isVoiceCommandActive || isPlaying || isVoiceCommandsSuspended) return
+    let loopTimer: number | null = null
 
-    const speakReminder = () => {
+    const checkReminder = () => {
       const cbs = callbacksRef.current
-      if (cbs.isVoiceCommandActive || cbs.isPlaying || cbs.isVoiceCommandsSuspended) return
-      if (document.visibilityState !== "visible") return
+      if (cbs.isPlaying || cbs.isVoiceCommandsSuspended || document.visibilityState !== "visible") {
+        loopTimer = window.setTimeout(checkReminder, 1000)
+        return
+      }
+      
+      if (Date.now() - lastUISpeechTimeRef.current < 10000) {
+        loopTimer = window.setTimeout(checkReminder, 1000)
+        return
+      }
+
       chrome.storage.local.get(["sensa_last_voice_reminder_time"], (res) => {
         const cbsAsync = callbacksRef.current
-        if (cbsAsync.isVoiceCommandActive || cbsAsync.isPlaying || cbsAsync.isVoiceCommandsSuspended) return
+        if (cbsAsync.isPlaying || cbsAsync.isVoiceCommandsSuspended) {
+          loopTimer = window.setTimeout(checkReminder, 1000)
+          return
+        }
+        if (Date.now() - lastUISpeechTimeRef.current < 10000) {
+          loopTimer = window.setTimeout(checkReminder, 1000)
+          return
+        }
+
         const lastTime = res.sensa_last_voice_reminder_time || 0
         const now = Date.now()
-        if (now - lastTime < 50000) return
+        
+        // Wait exactly 60s since the last reminder
+        if (now - lastTime < 60000) {
+          loopTimer = window.setTimeout(checkReminder, 1000)
+          return
+        }
 
         chrome.storage.local.set({ sensa_last_voice_reminder_time: now })
-        const text = `You can say ${wakeWordRef.current} to activate voice commands.`
-        playClickAudio(text)
+
+        if (cbsAsync.isVoiceCommandActive) {
+          cbsAsync.playClickAudio("You can say commands when you want to know the list of commands for the visual dock.")
+        } else {
+          cbsAsync.playClickAudio(`You can say ${wakeWordRef.current} to activate voice commands.`)
+        }
+
+        loopTimer = window.setTimeout(checkReminder, 1000)
       })
     }
 
@@ -429,13 +462,27 @@ export default function VisualDock({
 
     if (!hasPlayedInitialReminderRef.current) {
       hasPlayedInitialReminderRef.current = true
-      initialTimeout = window.setTimeout(speakReminder, 3000)
+      initialTimeout = window.setTimeout(() => {
+        const cbs = callbacksRef.current
+        if (!cbs.isPlaying && !cbs.isVoiceCommandsSuspended && document.visibilityState === "visible" && Date.now() - lastUISpeechTimeRef.current >= 10000) {
+          chrome.storage.local.set({ sensa_last_voice_reminder_time: Date.now() })
+          if (cbs.isVoiceCommandActive) {
+            cbs.playClickAudio("You can say commands when you want to know the list of commands for the visual dock.")
+          } else {
+            cbs.playClickAudio(`You can say ${wakeWordRef.current} to activate voice commands.`)
+          }
+        }
+        loopTimer = window.setTimeout(checkReminder, 1000)
+      }, 3000)
+    } else {
+      loopTimer = window.setTimeout(checkReminder, 1000)
     }
 
     return () => {
       if (initialTimeout) window.clearTimeout(initialTimeout)
+      if (loopTimer) window.clearTimeout(loopTimer)
     }
-  }, [isVoiceCommandActive, isPlaying, isVoiceCommandsSuspended, playClickAudio])
+  }, [])
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -475,7 +522,7 @@ export default function VisualDock({
 
   const handleToggleVoiceCommand = () => {
     playClickSfx()
-    playClickAudio(isVoiceCommandActive ? "Voice commands deactivated" : "Voice commands activated. You can say 'commands' when you want to know the list of commands for the visual dock.")
+    wrappedPlayClickAudio(isVoiceCommandActive ? "Voice commands deactivated" : "Voice commands activated. You can say 'commands' when you want to know the list of commands for the visual dock.")
     onToggleVoiceCommand()
   }
 
@@ -495,7 +542,7 @@ export default function VisualDock({
     onOpenReadingSpeed,
     onOpenSettings,
     onClose,
-    playClickAudio,
+    playClickAudio: wrappedPlayClickAudio,
     cancelHoverAudio,
   })
 
@@ -518,7 +565,7 @@ export default function VisualDock({
       onOpenReadingSpeed,
       onOpenSettings,
       onClose,
-      playClickAudio,
+      playClickAudio: wrappedPlayClickAudio,
       cancelHoverAudio,
     }
   }, [
@@ -537,7 +584,7 @@ export default function VisualDock({
     onOpenReadingSpeed,
     onOpenSettings,
     onClose,
-    playClickAudio,
+    wrappedPlayClickAudio,
     cancelHoverAudio,
   ])
 
@@ -559,12 +606,22 @@ export default function VisualDock({
     return () => chrome.storage.onChanged.removeListener(handleStorageChange)
   }, [])
 
-  useEffect(() => {
-    resetSilenceTimerRef.current?.()
-  }, [isVoiceCommandActive, isPlaying, isPaused])
+  const [isTabVisible, setIsTabVisible] = useState(!document.hidden)
 
   useEffect(() => {
-    if (isVoiceCommandsSuspended) return
+    resetSilenceTimerRef.current?.()
+  }, [isVoiceCommandActive, isVoiceCommandsSuspended, isTabVisible, wrappedPlayClickAudio, playClickAudio])
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsTabVisible(!document.hidden)
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
+  }, [])
+
+  useEffect(() => {
+    if (isVoiceCommandsSuspended || !isTabVisible) return
 
     const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognitionCtor) return
@@ -672,6 +729,11 @@ export default function VisualDock({
       const rawTranscript = (globalBuffer + " " + interimChunk).trim()
       if (!rawTranscript) return
 
+      // Prevent Chrome memory leak from prolonged continuous speech recognition
+      if (event.results.length > 40) {
+        try { recognition.stop() } catch { }
+      }
+
       if (commandTimeout) {
         window.clearTimeout(commandTimeout)
         commandTimeout = null
@@ -704,11 +766,13 @@ export default function VisualDock({
         let shouldProcessCommands = callbacksRef.current.isVoiceCommandActive
 
         const applyCommand = (commandName: string, action: () => void) => {
+          if (commandName !== "activate-voice") {
+            consumedKeywords.push(...getKeywordsForCommand(commandName))
+          }
           if (Date.now() < ignoreSpeechUntil && commandName === lastCommandName) return
           if (commandName !== "activate-voice") {
             ignoreSpeechUntil = Date.now() + 800
             lastCommandName = commandName
-            consumedKeywords.push(...getKeywordsForCommand(commandName))
           }
           action()
         }
@@ -722,7 +786,7 @@ export default function VisualDock({
           const isCustom = currentWakeWord !== "sensa"
           const wakeMatched = isCustom
             ? paddedSpeech.includes(` ${currentWakeWord} `) || fuzzyCheck(currentWakeWord, 1)
-            : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start") || fuzzyCheck("sensa", 1)
+            : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake up", "hey sensa") || fuzzyCheck("sensa", 1)
 
           if (canToggleVoiceMode && wakeMatched) {
             applyCommand("activate-voice", () => {

@@ -22,6 +22,12 @@ const getLevenshteinDistance = (a: string, b: string): number => {
   return tmp[a.length][b.length]
 }
 
+declare global {
+  interface Window {
+    sensa_utterances?: SpeechSynthesisUtterance[]
+  }
+}
+
 const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
   if (text.includes(target)) return true
   const tokens = text.split(/\s+/).filter(Boolean)
@@ -111,13 +117,26 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR)
   const [isAutoscrollEnabled, setIsAutoscrollEnabled] = useState(true)
   const [isHighlightMouseScreenReaderEnabled, setIsHighlightMouseScreenReaderEnabled] = useState(false)
+  const [isImageAltReaderEnabled, setIsImageAltReaderEnabled] = useState(true)
 
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>("")
+  const [speakingVoiceURI, setSpeakingVoiceURI] = useState<string | null>(null)
+  
   const defaultVoiceURIRef = useRef<string>("")
   const defaultVoiceLabelRef = useRef<string>("")
   const defaultVoiceAppliedRef = useRef(false)
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false)
+
+  useEffect(() => {
+    if (speakingVoiceURI && isVoiceDropdownOpen) {
+      const safeId = `voice-option-${speakingVoiceURI.replace(/[^a-zA-Z0-9]/g, '_')}`
+      const element = document.getElementById(safeId)
+      if (element) {
+        element.scrollIntoView({ behavior: 'auto', block: 'center' })
+      }
+    }
+  }, [speakingVoiceURI, isVoiceDropdownOpen])
   const pauseSettingsRecognitionRef = useRef<(() => void) | null>(null)
   const resumeSettingsRecognitionRef = useRef<(() => void) | null>(null)
   const settingsRecognitionArmedRef = useRef(false)
@@ -219,6 +238,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const selectedVoiceURIRef = useRef(selectedVoiceURI)
   const hasAnnouncedOpenRef = useRef(false)
   const speakSettingsGuideRef = useRef<(message: string) => void>(() => { })
+  const lastUISpeechTimeRef = useRef(0)
 
   useEffect(() => {
     selectedVoiceURIRef.current = selectedVoiceURI
@@ -226,6 +246,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
   const speakSettingsGuide = React.useCallback((message: string) => {
     if (!message.trim()) return
+    lastUISpeechTimeRef.current = Date.now()
     const speakNow = () => {
       const voices = window.speechSynthesis.getVoices()
       if (!voices.length) return false
@@ -299,6 +320,42 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       speakSettingsGuide("Settings opened")
     }
   }, [isMounted, isStorageLoaded, selectedVoiceURI, speakSettingsGuide, isVoiceCommandActive])
+
+  useEffect(() => {
+    if (!isVoiceCommandActive) return
+
+    let loopTimer: number | null = null
+    let lastReminderTime = Date.now()
+
+    const checkReminder = () => {
+      if (document.visibilityState !== "visible") {
+        loopTimer = window.setTimeout(checkReminder, 1000)
+        return
+      }
+
+      if (Date.now() - lastUISpeechTimeRef.current < 10000) {
+        loopTimer = window.setTimeout(checkReminder, 1000)
+        return
+      }
+
+      const now = Date.now()
+
+      if (now - lastReminderTime >= 60000) {
+        lastReminderTime = now
+        if (isVoiceGuideEnabledRef.current) {
+          speakSettingsGuide("You can say commands to hear the list of available actions.")
+        }
+      }
+
+      loopTimer = window.setTimeout(checkReminder, 1000)
+    }
+
+    loopTimer = window.setTimeout(checkReminder, 1000)
+
+    return () => {
+      if (loopTimer) window.clearTimeout(loopTimer)
+    }
+  }, [speakSettingsGuide, isVoiceCommandActive])
 
   useEffect(() => {
     const resumeAudio = () => {
@@ -400,6 +457,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       "sensa_visual_sound_effects_enabled",
       "sensa_visual_voice_uri",
       "sensa_visual_highlight_mouse_screen_reader",
+      "sensa_visual_image_alt_reader_enabled",
       "sensa_visual_wake_word",
       "sensa_voice_command_active"
     ], (res) => {
@@ -411,7 +469,9 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       }
       if (typeof res.sensa_visual_sound_effects_enabled === "boolean") setIsSoundEffectsEnabled(res.sensa_visual_sound_effects_enabled)
       if (typeof res.sensa_visual_voice_uri === "string") setSelectedVoiceURI(res.sensa_visual_voice_uri)
+      if (typeof res.sensa_visual_autoscroll_enabled === "boolean") setIsAutoscrollEnabled(res.sensa_visual_autoscroll_enabled)
       if (typeof res.sensa_visual_highlight_mouse_screen_reader === "boolean") setIsHighlightMouseScreenReaderEnabled(res.sensa_visual_highlight_mouse_screen_reader)
+      if (typeof res.sensa_visual_image_alt_reader_enabled === "boolean") setIsImageAltReaderEnabled(res.sensa_visual_image_alt_reader_enabled)
       setIsStorageLoaded(true)
     })
   }, [])
@@ -457,8 +517,19 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     loadVoices()
     window.speechSynthesis.onvoiceschanged = loadVoices
   }, [])
+  const [isTabVisible, setIsTabVisible] = useState(!document.hidden)
 
   useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsTabVisible(!document.hidden)
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
+  }, [])
+
+  useEffect(() => {
+    if (!isTabVisible) return
+
     const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognitionCtor) return
 
@@ -670,6 +741,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             
             if (isVoiceGuideEnabledRef.current) {
               window.speechSynthesis.cancel()
+              window.sensa_utterances = []
               
               const allVoices = window.speechSynthesis.getVoices()
               const defaultUri = selectedVoiceURIRef.current || defaultVoiceURIRef.current
@@ -680,12 +752,16 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
                 intro.voice = defaultVoiceObj
                 intro.lang = defaultVoiceObj.lang
               }
+              window.sensa_utterances.push(intro)
               window.speechSynthesis.speak(intro)
 
               overlayStateRef.current.voices.forEach((voice) => {
                 const utterance = new SpeechSynthesisUtterance(simplifyVoiceName(voice.name))
                 utterance.voice = voice
                 utterance.lang = voice.lang
+                utterance.onstart = () => setSpeakingVoiceURI(voice.voiceURI)
+                utterance.onend = () => setSpeakingVoiceURI((prev) => prev === voice.voiceURI ? null : prev)
+                window.sensa_utterances!.push(utterance)
                 window.speechSynthesis.speak(utterance)
               })
 
@@ -694,6 +770,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
                 outro.voice = defaultVoiceObj
                 outro.lang = defaultVoiceObj.lang
               }
+              window.sensa_utterances.push(outro)
               window.speechSynthesis.speak(outro)
             }
           }
@@ -769,7 +846,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
         try { recognition.stop() } catch (e) {}
       }
     }
-  }, [playClickAudio])
+  }, [playClickAudio, isTabVisible])
 
   const handleHighlightChange = (color: string) => {
     const normalizedNew = color.toUpperCase()
@@ -799,6 +876,13 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     setIsHighlightMouseScreenReaderEnabled(enabled)
     chrome.storage.local.set({ sensa_visual_highlight_mouse_screen_reader: enabled })
     playClickAudio(enabled ? "Mouse reader enabled" : "Mouse reader disabled")
+  }
+
+  const handleImageAltReaderToggle = (enabled: boolean) => {
+    playToggleSfx(enabled)
+    setIsImageAltReaderEnabled(enabled)
+    chrome.storage.local.set({ sensa_visual_image_alt_reader_enabled: enabled })
+    playClickAudio(enabled ? "Image reader enabled" : "Image reader disabled")
   }
 
   const handleVoiceGuideToggle = (enabled: boolean) => {
@@ -841,6 +925,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     setHighlightColor(DEFAULT_HIGHLIGHT_COLOR)
     setIsAutoscrollEnabled(true)
     setIsHighlightMouseScreenReaderEnabled(true)
+    setIsImageAltReaderEnabled(true)
     setIsVoiceGuideEnabled(true)
     setIsSoundEffectsEnabled(true)
     setSelectedVoiceURI(defaultVoiceURI)
@@ -848,6 +933,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       sensa_visual_highlight_color: DEFAULT_HIGHLIGHT_COLOR,
       sensa_visual_autoscroll_enabled: true,
       sensa_visual_highlight_mouse_screen_reader: true,
+      sensa_visual_image_alt_reader_enabled: true,
       sensa_visual_voice_guide_enabled: true,
       sensa_visual_sound_effects_enabled: true,
       sensa_visual_voice_uri: defaultVoiceURI,
@@ -1004,6 +1090,26 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             </span>
           </label>
 
+          <label
+            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
+            {...getHoverHandlers("Image Reader")}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 pointer-events-none">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><rect x="3" y="3" width="18" height="18" rx="2" ry="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>
+              <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Image Reader</span>
+            </div>
+            <span className="relative inline-flex items-center shrink-0 pointer-events-none">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={isImageAltReaderEnabled}
+                onChange={(e) => handleImageAltReaderToggle(e.target.checked)}
+              />
+              <span className={toggleSwitchClass} aria-hidden="true" />
+            </span>
+          </label>
+
           <div
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
             {...getHoverHandlers("Highlight color")}
@@ -1067,10 +1173,19 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
                   <ul className={`absolute right-0 z-50 mt-2 w-[240px] max-h-56 overflow-y-auto ${modalBg} border ${inputBorder} rounded-xl shadow-2xl py-2 text-[13px] custom-scrollbar`} role="listbox">
                     {voices.map((voice) => (
                       <li
+                        id={`voice-option-${voice.voiceURI.replace(/[^a-zA-Z0-9]/g, '_')}`}
                         key={voice.voiceURI}
                         role="option"
                         aria-selected={selectedVoiceURI === voice.voiceURI}
-                        className={`px-4 py-2.5 cursor-pointer block w-full text-left truncate transition-all font-medium m-1 rounded-lg ${selectedVoiceURI === voice.voiceURI ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white shadow-md" : isDark ? "text-gray-200 hover:bg-[#0A44FF]/20 hover:text-[#0A44FF]" : "text-gray-700 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF]"}`}
+                        className={`px-4 py-2.5 cursor-pointer block w-full text-left truncate transition-all font-medium m-1 rounded-lg ${
+                          speakingVoiceURI === voice.voiceURI
+                            ? "bg-[#0A44FF]/30 text-[#0A44FF] shadow-inner border border-[#0A44FF]/50"
+                            : selectedVoiceURI === voice.voiceURI
+                              ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white shadow-md"
+                              : isDark
+                                ? "text-gray-200 hover:bg-[#0A44FF]/20 hover:text-[#0A44FF]"
+                                : "text-gray-700 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF]"
+                        }`}
                         onMouseEnter={() => { playHoverSfx(); previewVoice(voice) }}
                         onClick={() => { handleVoiceChange(voice.voiceURI); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }}
                         style={{ fontFamily: `"${voice.name}", system-ui, sans-serif` }}

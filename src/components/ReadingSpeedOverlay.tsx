@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react"
+import React, { useEffect, useRef, useState, useCallback } from "react"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
 const getLevenshteinDistance = (a: string, b: string): number => {
@@ -58,6 +58,12 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   const audioCtxRef = useRef<AudioContext | null>(null)
   const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState(true)
   const isSoundEffectsEnabledRef = useRef(true)
+
+  const lastUISpeechTimeRef = useRef(0)
+  const wrappedPlayClickAudio = useCallback((text: string, rate?: number) => {
+    lastUISpeechTimeRef.current = Date.now()
+    playClickAudio(text, rate)
+  }, [playClickAudio])
 
   // Dragging State
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
@@ -259,19 +265,45 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   useEffect(() => {
     if (!isVoiceCommandActive) return
 
-    let timeout: number
+    let loopTimer: number | null = null
+    let lastReminderTime = Date.now()
+    let initialPlayed = false
 
-    const announce = () => {
-      playClickAudio("Say increase or decrease to adjust reading speed. Or say close to exit the overlay.", 0.8)
+    const checkReminder = () => {
+      if (document.visibilityState !== "visible") {
+        loopTimer = window.setTimeout(checkReminder, 1000)
+        return
+      }
+
+      if (Date.now() - lastUISpeechTimeRef.current < 10000) {
+        loopTimer = window.setTimeout(checkReminder, 1000)
+        return
+      }
+
+      const now = Date.now()
+
+      if (!initialPlayed) {
+        if (now - lastReminderTime >= 2500) {
+          initialPlayed = true
+          lastReminderTime = now
+          wrappedPlayClickAudio("Say increase or decrease to adjust reading speed. Or say close to exit the overlay.", 0.8)
+        }
+      } else {
+        if (now - lastReminderTime >= 60000) {
+          lastReminderTime = now
+          wrappedPlayClickAudio("Say increase or decrease to adjust reading speed. Or say close to exit the overlay.", 0.8)
+        }
+      }
+
+      loopTimer = window.setTimeout(checkReminder, 1000)
     }
 
-    // Play once shortly after opening (delayed so it doesn't interrupt "Reading speed")
-    timeout = window.setTimeout(announce, 2500)
+    loopTimer = window.setTimeout(checkReminder, 1000)
 
     return () => {
-      window.clearTimeout(timeout)
+      if (loopTimer) window.clearTimeout(loopTimer)
     }
-  }, [playClickAudio, isVoiceCommandActive])
+  }, [wrappedPlayClickAudio, isVoiceCommandActive])
 
   const speedStops = [1, 1.25, 1.5, 1.75, 2]
 
@@ -280,7 +312,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       const next = Math.max(0.5, +(prev - 0.25).toFixed(2))
       onSpeedChange?.(next)
       playClickSfx()
-      playClickAudio(`${next.toFixed(2).replace(/\.00$/, '')}x`)
+      wrappedPlayClickAudio(`${next.toFixed(2).replace(/\.00$/, '')}x`)
       return next
     })
   }
@@ -290,7 +322,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       const next = Math.min(3, +(prev + 0.25).toFixed(2))
       onSpeedChange?.(next)
       playClickSfx()
-      playClickAudio(`${next.toFixed(2).replace(/\.00$/, '')}x`)
+      wrappedPlayClickAudio(`${next.toFixed(2).replace(/\.00$/, '')}x`)
       return next
     })
   }
@@ -305,12 +337,24 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     if (event.target === event.currentTarget) {
       setIsMounted(false)
       playClickSfx()
-      playClickAudio("Closing speed settings")
+      wrappedPlayClickAudio("Closing speed settings")
       setTimeout(onClose, 300) // Wait for exit animation
     }
   }
 
+  const [isTabVisible, setIsTabVisible] = useState(!document.hidden)
+
   useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsTabVisible(!document.hidden)
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
+  }, [])
+
+  useEffect(() => {
+    if (!isTabVisible) return
+
     const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognitionCtor) return
 
@@ -453,7 +497,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
 
         if (check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening")) {
           applyCommand("deactivate-voice", ["stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening"], () => {
-            playClickAudio("Voice commands deactivated")
+            wrappedPlayClickAudio("Voice commands deactivated")
             onToggleVoiceCommand?.()
           })
           return
@@ -461,7 +505,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
 
         if (check("help", "commands", "options", "what can i say")) {
           applyCommand("help", ["help", "commands", "options", "what can i say"], () => {
-            playClickAudio("Say increase or decrease to adjust reading speed. Or say close to exit.")
+            wrappedPlayClickAudio("Say increase or decrease to adjust reading speed. Or say close to exit.")
           })
           return
         }
@@ -534,7 +578,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         try { recognition.stop() } catch (e) {}
       }
     }
-  }, [playClickAudio])
+  }, [playClickAudio, isTabVisible])
 
   const modalBg = isDark ? "bg-[#141416]/96 backdrop-blur-3xl border-white/10" : "bg-white/95 backdrop-blur-3xl border-white/40"
   const textColor = isDark ? "text-gray-100" : "text-gray-900"

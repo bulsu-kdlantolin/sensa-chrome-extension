@@ -153,6 +153,7 @@ export default function FloatingDockManager() {
   const [visualInputDeviceId, setVisualInputDeviceId] = useState("default")
   const [isVisualAutoscrollEnabled, setIsVisualAutoscrollEnabled] = useState(true)
   const [isHighlightMouseScreenReaderEnabled, setIsHighlightMouseScreenReaderEnabled] = useState(false)
+  const [isImageAltReaderEnabled, setIsImageAltReaderEnabled] = useState(true)
 
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
@@ -274,7 +275,7 @@ export default function FloatingDockManager() {
 
   // --- THE BRIDGE ---
   useEffect(() => {
-    chrome.storage.local.get(["sensa_visual_active", "sensa_auditory_active", "sensa_user_profile", "sensa_visual_reading_speed", "sensa_visual_highlight_color", "sensa_visual_input_device_id", "sensa_visual_autoscroll_enabled", "sensa_visual_highlight_mouse_screen_reader", "sensa_auditory_caption_language", "sensa_auditory_text_size", "sensa_auditory_caption_transparency", "sensa_auditory_focus_mode", "sensa_auditory_settings", "sensa_voice_command_active"], (res) => {
+    chrome.storage.local.get(["sensa_visual_active", "sensa_auditory_active", "sensa_user_profile", "sensa_visual_reading_speed", "sensa_visual_highlight_color", "sensa_visual_input_device_id", "sensa_visual_autoscroll_enabled", "sensa_visual_highlight_mouse_screen_reader", "sensa_visual_image_alt_reader_enabled", "sensa_auditory_caption_language", "sensa_auditory_text_size", "sensa_auditory_caption_transparency", "sensa_auditory_focus_mode", "sensa_auditory_settings", "sensa_voice_command_active"], (res) => {
       const storedMode = res.sensa_visual_active ? "visual" : res.sensa_auditory_active ? "auditory" : null
       setActiveMode(storedMode)
       if (res.sensa_user_profile?.globalSettings?.theme === "dark") setUserThemePref(true)
@@ -301,6 +302,9 @@ export default function FloatingDockManager() {
       }
       if (typeof res.sensa_visual_highlight_mouse_screen_reader === "boolean") {
         setIsHighlightMouseScreenReaderEnabled(res.sensa_visual_highlight_mouse_screen_reader)
+      }
+      if (typeof res.sensa_visual_image_alt_reader_enabled === "boolean") {
+        setIsImageAltReaderEnabled(res.sensa_visual_image_alt_reader_enabled)
       }
       if (typeof res.sensa_voice_command_active === "boolean") {
         setIsVoiceCommandActive(res.sensa_voice_command_active)
@@ -460,6 +464,9 @@ export default function FloatingDockManager() {
       if (changes.sensa_visual_highlight_mouse_screen_reader !== undefined && typeof changes.sensa_visual_highlight_mouse_screen_reader.newValue === "boolean") {
         setIsHighlightMouseScreenReaderEnabled(changes.sensa_visual_highlight_mouse_screen_reader.newValue)
       }
+      if (changes.sensa_visual_image_alt_reader_enabled !== undefined && typeof changes.sensa_visual_image_alt_reader_enabled.newValue === "boolean") {
+        setIsImageAltReaderEnabled(changes.sensa_visual_image_alt_reader_enabled.newValue)
+      }
       if (changes.sensa_voice_command_active !== undefined && typeof changes.sensa_voice_command_active.newValue === "boolean") {
         setIsVoiceCommandActive(changes.sensa_voice_command_active.newValue)
       }
@@ -584,6 +591,62 @@ export default function FloatingDockManager() {
       window.speechSynthesis.cancel()
     }
   }, [isHighlightMouseScreenReaderEnabled, activeMode, readingSpeed, isSettingsOverlayOpen])
+
+  // --- IMAGE ALT TEXT READER ---
+  useEffect(() => {
+    if (!isImageAltReaderEnabled || activeMode !== "visual" || isSettingsOverlayOpen) {
+      return
+    }
+
+    let hoverTimer: number | null = null
+    let currentImg: HTMLImageElement | null = null
+
+    const handleMouseOver = (ev: MouseEvent) => {
+      const target = ev.target as HTMLElement
+      if (target.tagName === 'IMG') {
+        const img = target as HTMLImageElement
+        const altText = img.alt?.trim()
+        if (altText) {
+          currentImg = img
+          hoverTimer = window.setTimeout(() => {
+            window.speechSynthesis.cancel()
+            const utterance = new SpeechSynthesisUtterance("Image: " + altText)
+            utterance.rate = getSpeechRate(readingSpeed)
+
+            const availableVoices = window.speechSynthesis.getVoices()
+            if (availableVoices.length > 0) {
+              let preferred = availableVoices.find((v) => v.voiceURI === selectedVoiceURIRef.current)
+              if (!preferred && selectedVoiceNameRef.current) {
+                preferred = availableVoices.find((v) => v.name === selectedVoiceNameRef.current || v.name?.includes(selectedVoiceNameRef.current))
+              }
+              if (preferred) utterance.voice = preferred
+            }
+            window.speechSynthesis.speak(utterance)
+          }, 800) // 800ms hover delay
+        }
+      }
+    }
+
+    const handleMouseOut = (ev: MouseEvent) => {
+      if (currentImg && ev.target === currentImg) {
+        if (hoverTimer) {
+          window.clearTimeout(hoverTimer)
+          hoverTimer = null
+        }
+        window.speechSynthesis.cancel()
+        currentImg = null
+      }
+    }
+
+    document.addEventListener("mouseover", handleMouseOver, true)
+    document.addEventListener("mouseout", handleMouseOut, true)
+
+    return () => {
+      document.removeEventListener("mouseover", handleMouseOver, true)
+      document.removeEventListener("mouseout", handleMouseOut, true)
+      if (hoverTimer) window.clearTimeout(hoverTimer)
+    }
+  }, [isImageAltReaderEnabled, activeMode, readingSpeed, isSettingsOverlayOpen])
 
 
   // --- RENDER LOGIC & THEME SCOPING ---
