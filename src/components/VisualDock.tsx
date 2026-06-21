@@ -299,6 +299,12 @@ export default function VisualDock({
   }
 
   useEffect(() => {
+    if (!isVoiceCommandsSuspended) {
+      lastUISpeechTimeRef.current = Date.now()
+    }
+  }, [isVoiceCommandsSuspended])
+
+  useEffect(() => {
     isSoundEffectsEnabledRef.current = isSoundEffectsEnabled
   }, [isSoundEffectsEnabled])
 
@@ -998,7 +1004,7 @@ export default function VisualDock({
       recognition.onend = null
       recognition.onsoundstart = null
     }
-  }, [isVoiceCommandsSuspended])
+  }, [isVoiceCommandsSuspended, isTabVisible])
 
   return (
     <div

@@ -90,6 +90,11 @@ const simplifyVoiceName = (name: string): string => {
   simplified = simplified.replace(/[\(\)]/g, "")
   simplified = simplified.replace(/\s+/g, " ")
   
+  // Custom user requests for specific Google voices
+  simplified = simplified.replace(/Google Taiwanese Mandarin/gi, "Google Taiwanese")
+  simplified = simplified.replace(/Google Mainland Mandarin/gi, "Google Mandarin")
+  simplified = simplified.replace(/Google Bahasa Indonesia/gi, "Google Indonesia")
+  
   return simplified.trim() || name
 }
 
@@ -127,16 +132,30 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const defaultVoiceLabelRef = useRef<string>("")
   const defaultVoiceAppliedRef = useRef(false)
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false)
+  const isReadingVoiceListRef = useRef(false)
 
   useEffect(() => {
-    if (speakingVoiceURI && isVoiceDropdownOpen) {
-      const safeId = `voice-option-${speakingVoiceURI.replace(/[^a-zA-Z0-9]/g, '_')}`
-      const element = document.getElementById(safeId)
-      if (element) {
-        element.scrollIntoView({ behavior: 'auto', block: 'center' })
-      }
+    const uriToScroll = speakingVoiceURI || (isVoiceDropdownOpen ? selectedVoiceURI : null)
+    if (uriToScroll && isVoiceDropdownOpen) {
+      const safeId = `voice-option-${uriToScroll.replace(/[^a-zA-Z0-9]/g, '_')}`
+      setTimeout(() => {
+        const element = document.getElementById(safeId)
+        if (element) {
+          const container = element.closest('ul')
+          if (container) {
+            const containerHeight = container.clientHeight
+            const elementTop = element.offsetTop
+            const elementHeight = element.offsetHeight
+            if (containerHeight > 0) {
+              container.scrollTop = elementTop - containerHeight / 2 + elementHeight / 2
+            }
+          } else {
+            element.scrollIntoView({ behavior: 'auto', block: 'center' })
+          }
+        }
+      }, 50)
     }
-  }, [speakingVoiceURI, isVoiceDropdownOpen])
+  }, [speakingVoiceURI, selectedVoiceURI, isVoiceDropdownOpen])
   const pauseSettingsRecognitionRef = useRef<(() => void) | null>(null)
   const resumeSettingsRecognitionRef = useRef<(() => void) | null>(null)
   const settingsRecognitionArmedRef = useRef(false)
@@ -592,14 +611,18 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       const nextVoice = state.voices[(currentIndex + step + state.voices.length) % state.voices.length]
       if (!nextVoice) return
       setSelectedVoiceURI(nextVoice.voiceURI)
+      setSpeakingVoiceURI(nextVoice.voiceURI)
       chrome.storage.local.set({ sensa_visual_voice_uri: nextVoice.voiceURI, sensa_visual_voice_name: nextVoice.name || "" })
-      setIsVoiceDropdownOpen(false)
+      setIsVoiceDropdownOpen(true)
       window.speechSynthesis.cancel()
       speakFeedback(`${nextVoice.name} selected`)
       setSettingsState((state) => {
         state.selectedVoiceURI = nextVoice.voiceURI
-        state.isVoiceDropdownOpen = false
+        state.isVoiceDropdownOpen = true
       })
+      setTimeout(() => {
+        setSpeakingVoiceURI((prev) => prev === nextVoice.voiceURI ? null : prev)
+      }, 1500)
     }
 
     const voiceSelectionMatches = (text: string) => {
@@ -619,14 +642,20 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       
       const matchedVoice = matches[0]
       setSelectedVoiceURI(matchedVoice.voiceURI)
+      setSpeakingVoiceURI(matchedVoice.voiceURI)
       chrome.storage.local.set({ sensa_visual_voice_uri: matchedVoice.voiceURI, sensa_visual_voice_name: matchedVoice.name || "" })
-      setIsVoiceDropdownOpen(false)
+      setIsVoiceDropdownOpen(true)
       window.speechSynthesis.cancel()
       speakFeedback(`${matchedVoice.name} selected`)
       setSettingsState((state) => {
         state.selectedVoiceURI = matchedVoice.voiceURI
-        state.isVoiceDropdownOpen = false
+        state.isVoiceDropdownOpen = true
       })
+      setTimeout(() => {
+        setSpeakingVoiceURI((prev) => prev === matchedVoice.voiceURI ? null : prev)
+        setIsVoiceDropdownOpen(false)
+        setSettingsState((state) => { state.isVoiceDropdownOpen = false })
+      }, 1500)
       return true
     }
 
@@ -740,6 +769,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             setIsVoiceDropdownOpen(true)
             
             if (isVoiceGuideEnabledRef.current) {
+              isReadingVoiceListRef.current = true
               window.speechSynthesis.cancel()
               window.sensa_utterances = []
               
@@ -770,6 +800,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
                 outro.voice = defaultVoiceObj
                 outro.lang = defaultVoiceObj.lang
               }
+              outro.onend = () => { isReadingVoiceListRef.current = false }
               window.sensa_utterances.push(outro)
               window.speechSynthesis.speak(outro)
             }
@@ -951,6 +982,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   }
 
   const previewVoice = (voice: SpeechSynthesisVoice) => {
+    if (isReadingVoiceListRef.current) return
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(voice.name)
     utterance.voice = voice
@@ -1170,7 +1202,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
               {isVoiceDropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }} />
-                  <ul className={`absolute right-0 z-50 mt-2 w-[240px] max-h-56 overflow-y-auto ${modalBg} border ${inputBorder} rounded-xl shadow-2xl py-2 text-[13px] custom-scrollbar`} role="listbox">
+                  <ul className={`absolute right-0 z-50 mt-2 w-[240px] max-h-56 overflow-y-auto overflow-x-hidden ${modalBg} border ${inputBorder} rounded-xl shadow-2xl py-2 text-[13px] custom-scrollbar`} role="listbox">
                     {voices.map((voice) => (
                       <li
                         id={`voice-option-${voice.voiceURI.replace(/[^a-zA-Z0-9]/g, '_')}`}
