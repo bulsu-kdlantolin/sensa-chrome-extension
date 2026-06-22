@@ -227,6 +227,10 @@ export default function VisualMode() {
       if (changes.sensa_visual_active !== undefined) {
         setIsListening(changes.sensa_visual_active.newValue)
       }
+      if (changes.sensa_visual_activated_via_voice?.newValue === true) {
+        window.close()
+        chrome.storage.local.remove("sensa_visual_activated_via_voice")
+      }
     }
 
     chrome.storage.onChanged.addListener(handleStorageChange)
@@ -293,11 +297,6 @@ export default function VisualMode() {
       sensa_voice_command_active: false,
       ...(newState ? { sensa_auditory_active: false } : {})
     })
-
-    if (newState) {
-      // Close popup immediately so the user is refocused on the tab/dock
-      window.close()
-    }
   }
 
   const speakWithHoverLock = (message: string) => {

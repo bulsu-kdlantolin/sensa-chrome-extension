@@ -280,9 +280,12 @@ export default function VisualDock({
   const isSoundEffectsEnabledRef = useRef(true)
   const resetSilenceTimerRef = useRef<(() => void) | null>(null)
   const lastUISpeechTimeRef = useRef(0)
+  const lastUISpeechDurationRef = useRef(0)
 
-  const wrappedPlayClickAudio = useCallback((text: string, rate?: number) => {
+  const wrappedPlayClickAudio = useCallback((text: string, rate: number = 1) => {
     lastUISpeechTimeRef.current = Date.now()
+    const wordCount = text.split(/\s+/).length
+    lastUISpeechDurationRef.current = (wordCount * 380) / rate + 1000
     playClickAudio(text, rate)
   }, [playClickAudio])
 
@@ -427,7 +430,7 @@ export default function VisualDock({
         return
       }
       
-      if (Date.now() - lastUISpeechTimeRef.current < 10000) {
+      if (Date.now() - lastUISpeechTimeRef.current < lastUISpeechDurationRef.current) {
         loopTimer = window.setTimeout(checkReminder, 1000)
         return
       }
@@ -438,7 +441,7 @@ export default function VisualDock({
           loopTimer = window.setTimeout(checkReminder, 1000)
           return
         }
-        if (Date.now() - lastUISpeechTimeRef.current < 10000) {
+        if (Date.now() - lastUISpeechTimeRef.current < lastUISpeechDurationRef.current) {
           loopTimer = window.setTimeout(checkReminder, 1000)
           return
         }
@@ -455,7 +458,7 @@ export default function VisualDock({
         chrome.storage.local.set({ sensa_last_voice_reminder_time: now })
 
         if (cbsAsync.isVoiceCommandActive) {
-          cbsAsync.playClickAudio("You can say commands when you want to know the list of commands for the visual dock.")
+          cbsAsync.playClickAudio("You can say 'commands' when you want to know the list of commands for the visual dock.")
         } else {
           cbsAsync.playClickAudio(`You can say ${wakeWordRef.current} to activate voice commands.`)
         }
@@ -470,10 +473,10 @@ export default function VisualDock({
       hasPlayedInitialReminderRef.current = true
       initialTimeout = window.setTimeout(() => {
         const cbs = callbacksRef.current
-        if (!cbs.isPlaying && !cbs.isVoiceCommandsSuspended && document.visibilityState === "visible" && Date.now() - lastUISpeechTimeRef.current >= 10000) {
+        if (!cbs.isPlaying && !cbs.isVoiceCommandsSuspended && document.visibilityState === "visible" && Date.now() - lastUISpeechTimeRef.current >= lastUISpeechDurationRef.current) {
           chrome.storage.local.set({ sensa_last_voice_reminder_time: Date.now() })
           if (cbs.isVoiceCommandActive) {
-            cbs.playClickAudio("You can say commands when you want to know the list of commands for the visual dock.")
+            cbs.playClickAudio("You can say 'commands' when you want to know the list of commands for the visual dock.")
           } else {
             cbs.playClickAudio(`You can say ${wakeWordRef.current} to activate voice commands.`)
           }
@@ -748,6 +751,12 @@ export default function VisualDock({
       const runMatching = (text: string) => {
         let cleanText = normalizeInput(text)
 
+        // Block feedback loops from the system's own speech for the "help/commands" trigger words
+        const systemRecentlySpoke = Date.now() - lastUISpeechTimeRef.current < lastUISpeechDurationRef.current
+        if (systemRecentlySpoke) {
+          cleanText = cleanText.replace(/\b(help|commands|commands list|list commands|help me|what can i say|read commands|show commands)\b/gi, " ")
+        }
+
         if (consumedKeywords.length > 0) {
           consumedKeywords.forEach(kw => {
             const escapedKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -817,8 +826,8 @@ export default function VisualDock({
           else if (check("help", "what can i say", "commands", "commands list", "list commands", "help me", "read commands", "show commands") || fuzzyCheck("help", 1)) {
             applyCommand("help", () => {
               const available = callbacksRef.current.isMinimized
-                ? "Stop listening. This turns off voice commands. Expand. This shows more options. Stop. This stops reading. Close. This will exit and deactivate visual mode."
-                : "Stop listening. This turns off voice commands. Read. This starts reading. Pause. This pauses reading. Stop. This stops reading. Ree-ding speed. This adjusts speed. Settings. This opens options. Minimize. This shrinks the dock. Close. This will exit and deactivate visual mode."
+                ? "Stop listening. This turns off voice commands. Expand. This expands the dock. Read. This starts reading. Stop. This stops reading. Next. This skips forward. Previous. This goes back. Restart. This starts from the beginning. Reading speed. This adjusts speed. Settings. This opens settings. Close. This will exit and deactivate visual mode."
+                : "Stop listening. This turns off voice commands. Read. This starts reading. Stop. This stops reading. Next. This skips forward. Previous. This goes back. Restart. This starts from the beginning. Reading speed. This adjusts speed. Settings. This opens settings. Minimize. This shrinks the dock. Close. This will exit and deactivate visual mode."
               callbacksRef.current.playClickAudio?.("Here are the commands. " + available, 0.8)
             })
             return true

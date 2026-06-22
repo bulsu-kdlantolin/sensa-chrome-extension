@@ -168,6 +168,7 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
   if (command === "activate") {
     chrome.storage.local.set({
       sensa_visual_active: true,
+      sensa_visual_activated_via_voice: true,
       sensa_auditory_active: false,
       sensa_voice_command_active: false
     }, () => {
