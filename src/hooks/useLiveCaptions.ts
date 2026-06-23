@@ -52,8 +52,8 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
     const handleMessage = (msg: any) => {
       if (msg.type === "CAPTION_UPDATE" && msg.text && isCaptionsDisplayedRef.current) {
         setCaptions((prev) => {
-          // 🚨 THE FIX 1: Deep clone the array to prevent React state mutation glitches!
-          const newCaptions = prev.map(c => ({ ...c }))
+          // Shallow clone the array to prevent React state mutation glitches while maintaining high performance!
+          const newCaptions = [...prev]
 
           if (msg.source === "original") {
             if (newCaptions.length === 0 || newCaptions[newCaptions.length - 1].isFinal) {
@@ -64,20 +64,27 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
                 isFinal: msg.isFinal
               })
             } else {
-              newCaptions[newCaptions.length - 1].original = msg.text
-              newCaptions[newCaptions.length - 1].isFinal = msg.isFinal
+              const lastIdx = newCaptions.length - 1
+              newCaptions[lastIdx] = {
+                ...newCaptions[lastIdx],
+                original: msg.text,
+                isFinal: msg.isFinal
+              }
             }
           } 
           else if (msg.source === "translated") {
-            // 🚨 THE FIX 2: Search FORWARDS so translations always attach to the correct sentence in the queue
+            // Search FORWARDS so translations always attach to the correct sentence in the queue
             for (let i = 0; i < newCaptions.length; i++) {
               if (newCaptions[i].isFinal && !newCaptions[i].translated) {
-                newCaptions[i].translated = msg.text
+                newCaptions[i] = {
+                  ...newCaptions[i],
+                  translated: msg.text
+                }
                 break
               }
             }
           }
-          return newCaptions.slice(-3) // Keep 3 lines on screen
+          return newCaptions // Return the FULL history
         })
       }
     }

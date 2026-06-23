@@ -168,10 +168,29 @@ export default function CaptionTransparencyOverlay({
           </div>
           <div className={`absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t ${previewBaselineClass}`} />
           <div
-            className={`absolute bottom-5 left-1/2 -translate-x-1/2 w-[86%] rounded-[18px] px-4 py-3 text-center text-[14px] font-semibold leading-snug transition-all duration-200 ${previewCaptionClass}`}
-            style={{ backgroundColor: isDark ? `rgba(0, 0, 0, ${opacity})` : `rgba(255, 255, 255, ${opacity})` }}
+            className={`absolute bottom-5 left-1/2 -translate-x-1/2 w-[88%] flex flex-col gap-1.5 transition-colors duration-200`}
+            style={{ 
+              backgroundColor: isDark ? `rgba(0, 0, 0, ${opacity})` : `rgba(255, 255, 255, ${opacity})`,
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              border: "1px solid rgba(255,255,255,0.12)",
+              boxShadow: "0 10px 25px rgba(0,0,0,0.25)",
+              padding: "10px 14px",
+              borderRadius: "14px",
+              color: isDark ? "#fff" : "#111"
+            }}
           >
-            This is a sample caption to preview your transparency setting.
+            <div style={{
+              backgroundColor: "rgba(255,255,255,0.06)",
+              padding: "6px 10px",
+              borderRadius: "8px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "2px"
+            }}>
+              <div style={{ opacity: 0.75, fontSize: "11px", fontWeight: 500, fontStyle: "normal" }}>This is the original sentence</div>
+              <div style={{ fontWeight: 700, fontSize: "14px", letterSpacing: "-0.01em", lineHeight: 1.3 }}>This is the translated caption</div>
+            </div>
           </div>
         </div>
 

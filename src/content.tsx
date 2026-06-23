@@ -5,6 +5,7 @@ import VisualDock from "./components/VisualDock"
 import AuditoryDock from "./components/AuditoryDock"
 import VisualSettingsModal from "./components/VisualSettingsModal" // NEW IMPORT
 import AuditorySettingsModal from "./components/AuditorySettingsModal"
+import TranscriptHistoryOverlay from "./components/TranscriptHistoryOverlay"
 import ReadingSpeedOverlay from "./components/ReadingSpeedOverlay"
 import CaptionLanguageOverlay from "./components/CaptionLanguageOverlay"
 import TextSizeOverlay from "./components/TextSizeOverlay"
@@ -137,6 +138,7 @@ export default function FloatingDockManager() {
     }
   }, [])
   const [isCaptionLanguageOpen, setIsCaptionLanguageOpen] = useState(false)
+  const [isTranscriptHistoryOpen, setIsTranscriptHistoryOpen] = useState(false)
   const [isTextSizeOpen, setIsTextSizeOpen] = useState(false)
   const [isCaptionTransparencyOpen, setIsCaptionTransparencyOpen] = useState(false)
   const [auditorySettings, setAuditorySettings] = useState<AuditorySettingsState>(DEFAULT_AUDITORY_SETTINGS)
@@ -166,6 +168,7 @@ export default function FloatingDockManager() {
     isVisualSettingsOpen ||
     isAuditorySettingsOpen ||
     isCaptionLanguageOpen ||
+    isTranscriptHistoryOpen ||
     isTextSizeOpen ||
     isCaptionTransparencyOpen ||
     isReadingSpeedOpen
@@ -741,6 +744,14 @@ export default function FloatingDockManager() {
           />
         )}
 
+        {isTranscriptHistoryOpen && (
+          <TranscriptHistoryOverlay
+            isDark={isDark}
+            captions={captions}
+            onClose={() => setIsTranscriptHistoryOpen(false)}
+          />
+        )}
+
         {isTextSizeOpen && (
           <TextSizeOverlay
             isDark={isDark}
@@ -824,6 +835,7 @@ export default function FloatingDockManager() {
                 // Defer opening so the original click event doesn't immediately hit the modal backdrop
                 setTimeout(() => setIsCaptionLanguageOpen(true), 0)
               }}
+              onOpenTranscriptHistory={() => setIsTranscriptHistoryOpen(true)}
               onOpenTextSize={() => setIsTextSizeOpen(true)}
               onOpenCaptionTransparency={() => setIsCaptionTransparencyOpen(true)}
               isFocusMode={isFocusMode}
@@ -836,6 +848,7 @@ export default function FloatingDockManager() {
               onClose={() => {
                 deactivateDock()
                 setIsCaptionLanguageOpen(false)
+                setIsTranscriptHistoryOpen(false)
                 setIsTextSizeOpen(false)
                 setIsCaptionTransparencyOpen(false)
                 setIsCaptionsActive(false)

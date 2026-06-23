@@ -10,11 +10,18 @@ export default function AudioProxy() {
     let audioEl: HTMLAudioElement | null = null
     let analyser: AnalyserNode | null = null
     let visualizerInterval: ReturnType<typeof setInterval> | null = null
+    let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+    let intentionalStop = false
     
     let currentTargetLang = "EN"
 
     const stopCapture = () => {
+      intentionalStop = true
       try {
+        if (reconnectTimeout) {
+          clearTimeout(reconnectTimeout)
+          reconnectTimeout = null
+        }
         if (visualizerInterval) {
           clearInterval(visualizerInterval)
           visualizerInterval = null
@@ -87,133 +94,151 @@ export default function AudioProxy() {
              log("-> Using default system audio output.")
           }
 
-          log("5. Connecting WebSocket to cloud backend...")
-          socket = new WebSocket(STT_WS_URL)
+          intentionalStop = false
 
-          socket.onopen = () => {
-            log("6. WebSocket CONNECTED! Building Audio Graph...")
-            try {
-              audioCtx = new window.AudioContext({ sampleRate: 16000 })
-              const source = audioCtx.createMediaStreamSource(stream)
-              processor = audioCtx.createScriptProcessor(4096, 1, 1)
-              
-              // 🎯 VISUAL SOUND RADAR
-              analyser = audioCtx.createAnalyser()
-              analyser.fftSize = 2048
-              const dataArray = new Uint8Array(analyser.frequencyBinCount)
+          const connectWebSocket = () => {
+            if (intentionalStop) return
+            
+            log("5. Connecting WebSocket to cloud backend...")
+            socket = new WebSocket(STT_WS_URL)
 
-              source.connect(processor)
-              source.connect(analyser)
-              processor.connect(audioCtx.destination) 
+            socket.onopen = () => {
+              log("6. WebSocket CONNECTED!")
+              try {
+                if (!audioCtx) {
+                  log("-> Building Audio Graph...")
+                  audioCtx = new window.AudioContext({ sampleRate: 16000 })
+                  const source = audioCtx.createMediaStreamSource(stream)
+                  processor = audioCtx.createScriptProcessor(4096, 1, 1)
+                  
+                  // 🎯 VISUAL SOUND RADAR
+                  analyser = audioCtx.createAnalyser()
+                  analyser.fftSize = 2048
+                  const dataArray = new Uint8Array(analyser.frequencyBinCount)
 
-              let packetCount = 0
-              let frequencyCheckCounter = 0
-              
-              processor.onaudioprocess = (e) => {
-                if (socket?.readyState !== WebSocket.OPEN) return
-                
-                packetCount++
-                if (packetCount === 1) log("7. SUCCESS! First audio packet processed and sent to Node!")
+                  source.connect(processor)
+                  source.connect(analyser)
+                  processor.connect(audioCtx.destination) 
 
-                const float32Array = e.inputBuffer.getChannelData(0)
-                const int16Array = new Int16Array(float32Array.length)
-                for (let i = 0; i < float32Array.length; i++) {
-                  let s = Math.max(-1, Math.min(1, float32Array[i]))
-                  int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7fff
-                }
-                socket.send(int16Array.buffer)
-                
-                // 🎯 Hardware Accelerated Visualizer Loop
-                frequencyCheckCounter++
-                if (frequencyCheckCounter > 5) {
-                  frequencyCheckCounter = 0
-                  analyser!.getByteFrequencyData(dataArray)
+                  let packetCount = 0
+                  let frequencyCheckCounter = 0
                   
-                  const nyquistFreq = audioCtx!.sampleRate / 2
-                  const binWidth = nyquistFreq / analyser!.frequencyBinCount
-                  
-                  const speechEndBin = Math.floor(800 / binWidth)
-                  const alarmStartBin = Math.floor(1500 / binWidth)
-                  
-                  let speechEnergy = 0
-                  let alarmEnergy = 0
-                  
-                  for (let i = 0; i < speechEndBin; i++) {
-                    speechEnergy += dataArray[i]
-                  }
-                  
-                  for (let i = alarmStartBin; i < dataArray.length; i++) {
-                    alarmEnergy += dataArray[i]
-                  }
-                  
-                  const avgSpeechEnergy = speechEnergy / Math.max(1, speechEndBin)
-                  const avgAlarmEnergy = alarmEnergy / Math.max(1, dataArray.length - alarmStartBin)
-                  
-                  const isAlarmDetected = avgAlarmEnergy > avgSpeechEnergy * 1.5 && avgAlarmEnergy > 40
-                  
-                  chrome.runtime.sendMessage({
-                    type: "FORWARD_TO_TAB",
-                    tabId: targetTabId,
-                    payload: {
-                      type: "AUDIO_FREQUENCY_UPDATE",
-                      frequencies: Array.from(dataArray.slice(0, 128)),
-                      isAlarmDetected,
-                      speechEnergy: avgSpeechEnergy,
-                      alarmEnergy: avgAlarmEnergy
+                  processor.onaudioprocess = (e) => {
+                    if (socket?.readyState !== WebSocket.OPEN) return
+                    
+                    packetCount++
+                    if (packetCount === 1) log("7. SUCCESS! First audio packet processed and sent to Node!")
+
+                    const float32Array = e.inputBuffer.getChannelData(0)
+                    const int16Array = new Int16Array(float32Array.length)
+                    for (let i = 0; i < float32Array.length; i++) {
+                      let s = Math.max(-1, Math.min(1, float32Array[i]))
+                      int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7fff
                     }
-                  }).catch(() => {})
+                    socket.send(int16Array.buffer)
+                    
+                    // 🎯 Hardware Accelerated Visualizer Loop
+                    frequencyCheckCounter++
+                    if (frequencyCheckCounter > 5) {
+                      frequencyCheckCounter = 0
+                      analyser!.getByteFrequencyData(dataArray)
+                      
+                      const nyquistFreq = audioCtx!.sampleRate / 2
+                      const binWidth = nyquistFreq / analyser!.frequencyBinCount
+                      
+                      const speechEndBin = Math.floor(800 / binWidth)
+                      const alarmStartBin = Math.floor(1500 / binWidth)
+                      
+                      let speechEnergy = 0
+                      let alarmEnergy = 0
+                      
+                      for (let i = 0; i < speechEndBin; i++) {
+                        speechEnergy += dataArray[i]
+                      }
+                      
+                      for (let i = alarmStartBin; i < dataArray.length; i++) {
+                        alarmEnergy += dataArray[i]
+                      }
+                      
+                      const avgSpeechEnergy = speechEnergy / Math.max(1, speechEndBin)
+                      const avgAlarmEnergy = alarmEnergy / Math.max(1, dataArray.length - alarmStartBin)
+                      
+                      const isAlarmDetected = avgAlarmEnergy > avgSpeechEnergy * 1.5 && avgAlarmEnergy > 40
+                      
+                      chrome.runtime.sendMessage({
+                        type: "FORWARD_TO_TAB",
+                        tabId: targetTabId,
+                        payload: {
+                          type: "AUDIO_FREQUENCY_UPDATE",
+                          frequencies: Array.from(dataArray.slice(0, 128)),
+                          isAlarmDetected,
+                          speechEnergy: avgSpeechEnergy,
+                          alarmEnergy: avgAlarmEnergy
+                        }
+                      }).catch(() => {})
+                    }
+                  }
                 }
+              } catch (audioErr: any) {
+                log(`❌ AUDIO GRAPH ERROR: ${audioErr.message}`)
               }
-            } catch (audioErr: any) {
-              log(`❌ AUDIO GRAPH ERROR: ${audioErr.message}`)
+            }
+
+            socket.onerror = () => log("❌ WEBSOCKET ERROR! Cloud backend connection failed.")
+            socket.onclose = () => {
+              log("⚠️ WEBSOCKET CLOSED.")
+              if (!intentionalStop) {
+                log("🔄 Attempting to reconnect to backend in 2 seconds...")
+                if (reconnectTimeout) clearTimeout(reconnectTimeout)
+                reconnectTimeout = setTimeout(connectWebSocket, 2000)
+              }
+            }
+
+            socket.onmessage = (event) => {
+              try {
+                const payload = JSON.parse(event.data)
+                if (payload.type === "TRANSCRIPT" && payload.text) {
+                  const rawText = payload.text
+                  const isFinal = payload.isFinal // 🚨 Extract isFinal flag from Node payload
+                  
+                  // 🚨 Forward the flag to the React UI for smooth scrolling
+                  chrome.runtime.sendMessage({ 
+                    type: "FORWARD_TO_TAB", 
+                    tabId: targetTabId, 
+                    payload: { 
+                      type: "CAPTION_UPDATE", 
+                      text: rawText, 
+                      source: "original",
+                      isFinal: isFinal 
+                    } 
+                  })
+
+                  // 🚨 Restrict translation to final sentences only to save DeepL quota
+                  if (isFinal) {
+                    chrome.runtime.sendMessage(
+                      { type: "TRANSLATE_TEXT", text: rawText, targetLang: currentTargetLang },
+                      (res) => {
+                        if (res?.ok && res.translated) {
+                          chrome.runtime.sendMessage({ 
+                            type: "FORWARD_TO_TAB", 
+                            tabId: targetTabId, 
+                            payload: { 
+                              type: "CAPTION_UPDATE", 
+                              text: res.translated, 
+                              source: "translated",
+                              isFinal: true 
+                            } 
+                          })
+                        }
+                      }
+                    )
+                  }
+                }
+              } catch (err) {}
             }
           }
 
-          socket.onerror = () => log("❌ WEBSOCKET ERROR! Cloud backend connection failed.")
-          socket.onclose = () => log("⚠️ WEBSOCKET CLOSED.")
-
-          socket.onmessage = (event) => {
-            try {
-              const payload = JSON.parse(event.data)
-              if (payload.type === "TRANSCRIPT" && payload.text) {
-                const rawText = payload.text
-                const isFinal = payload.isFinal // 🚨 Extract isFinal flag from Node payload
-                
-                // 🚨 Forward the flag to the React UI for smooth scrolling
-                chrome.runtime.sendMessage({ 
-                  type: "FORWARD_TO_TAB", 
-                  tabId: targetTabId, 
-                  payload: { 
-                    type: "CAPTION_UPDATE", 
-                    text: rawText, 
-                    source: "original",
-                    isFinal: isFinal 
-                  } 
-                })
-
-                // 🚨 Restrict translation to final sentences only to save DeepL quota
-                if (isFinal) {
-                  chrome.runtime.sendMessage(
-                    { type: "TRANSLATE_TEXT", text: rawText, targetLang: currentTargetLang },
-                    (res) => {
-                      if (res?.ok && res.translated) {
-                        chrome.runtime.sendMessage({ 
-                          type: "FORWARD_TO_TAB", 
-                          tabId: targetTabId, 
-                          payload: { 
-                            type: "CAPTION_UPDATE", 
-                            text: res.translated, 
-                            source: "translated",
-                            isFinal: true 
-                          } 
-                        })
-                      }
-                    }
-                  )
-                }
-              }
-            } catch (err) {}
-          }
+          connectWebSocket()
         } catch (err: any) {
           log(`❌ CRITICAL OFFSCREEN ERROR: ${err.message}`)
         }
