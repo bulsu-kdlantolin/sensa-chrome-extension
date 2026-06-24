@@ -34,6 +34,7 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
   // Hover/click audio removed for Auditory settings (not needed here)
   const [settings, setSettings] = useState<AuditorySettingsState>(DEFAULT_SETTINGS)
   const [activeColorPicker, setActiveColorPicker] = useState<"text" | "bg" | null>(null)
+  const [loudNoiseAlerts, setLoudNoiseAlerts] = useState(true)
   
   // Font picker specific states
   const [googleFonts, setGoogleFonts] = useState<Array<{ family: string }>>([])
@@ -72,6 +73,11 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
       if (result.sensa_auditory_settings) {
         setSettings({ ...DEFAULT_SETTINGS, ...result.sensa_auditory_settings })
         setFontInput(result.sensa_auditory_settings.fontFamily || DEFAULT_SETTINGS.fontFamily)
+      }
+    })
+    chrome.storage.local.get(["sensa_loud_noise_alerts"], (res) => {
+      if (typeof res.sensa_loud_noise_alerts === "boolean") {
+        setLoudNoiseAlerts(res.sensa_loud_noise_alerts)
       }
     })
   }, [])
@@ -285,7 +291,10 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
             >
               <div className="flex items-center gap-3">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
-                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Font Family</span>
+                <div className="flex flex-col">
+                  <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Font Family</span>
+                  <span className={`text-[11px] ${secondaryText}`}>Choose a typeface for your captions</span>
+                </div>
               </div>
               <div ref={fontPickerRef} className="relative w-[190px]">
                 <input
@@ -342,6 +351,34 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
               </div>
             </div>
 
+            {/* LOUD NOISE ALERTS TOGGLE */}
+            <label
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} ${sectionHoverClass} rounded-xl transition-colors cursor-pointer`}
+              {...getHoverHandlers("Loud Noise Alerts")}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 pointer-events-none">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                <div className="flex flex-col">
+                  <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Loud Noise Alerts</span>
+                  <span className={`text-[11px] ${secondaryText}`}>Flash screen edges on sudden loud sounds</span>
+                </div>
+              </div>
+              <span className="relative inline-flex items-center shrink-0 pointer-events-none">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={loudNoiseAlerts}
+                  onChange={(e) => {
+                    const val = e.target.checked
+                    setLoudNoiseAlerts(val)
+                    chrome.storage.local.set({ sensa_loud_noise_alerts: val })
+                  }}
+                />
+                <span className={toggleSwitchClass} aria-hidden="true" />
+              </span>
+            </label>
+
             {/* ORIGINAL TEXT TOGGLE */}
             <label
               className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} ${sectionHoverClass} rounded-xl transition-colors cursor-pointer`}
@@ -350,7 +387,10 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
             >
               <div className="flex items-center gap-3 pointer-events-none">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Original Text</span>
+                <div className="flex flex-col">
+                  <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Original Text</span>
+                  <span className={`text-[11px] ${secondaryText}`}>Show untranslated text above captions</span>
+                </div>
               </div>
               <span className="relative inline-flex items-center shrink-0 pointer-events-none">
                 <input
@@ -370,7 +410,10 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
             >
               <div className="flex items-center gap-3">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
-                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Text Color</span>
+                <div className="flex flex-col">
+                  <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Text Color</span>
+                  <span className={`text-[11px] ${secondaryText}`}>Change the color of caption text</span>
+                </div>
               </div>
               <div className="relative flex items-center justify-end w-[190px]">
                 <button 
@@ -399,7 +442,10 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
             >
               <div className="flex items-center gap-3">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
-                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Background Color</span>
+                <div className="flex flex-col">
+                  <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Background Color</span>
+                  <span className={`text-[11px] ${secondaryText}`}>Set the caption box background color</span>
+                </div>
               </div>
               <div className="relative flex items-center justify-end w-[190px]">
                 <button 
@@ -431,12 +477,14 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
                 chrome.storage.local.set({ sensa_auditory_settings: DEFAULT_SETTINGS })
                 setSettings(DEFAULT_SETTINGS)
                 setFontInput(DEFAULT_SETTINGS.fontFamily)
+                setLoudNoiseAlerts(true)
+                chrome.storage.local.set({ sensa_loud_noise_alerts: true })
               }} 
               className={`flex items-center gap-2 bg-transparent hover:bg-[#FF7A2F]/10 hover:text-[#FF7A2F] hover:border-[#FF7A2F]/30 dark:hover:bg-[#FF7A2F]/20 dark:hover:border-[#FF7A2F]/40 ${textColor} border ${inputBorder} font-semibold h-11 px-8 rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF7A2F]/50 text-[14px] tracking-wide hover:shadow-sm`}
               {...getHoverHandlers("Reset to default")}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
-              Restore Defaults
+              Reset
             </button>
           </div>
         </div>

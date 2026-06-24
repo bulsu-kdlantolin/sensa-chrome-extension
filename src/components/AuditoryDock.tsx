@@ -10,8 +10,31 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
   const currentHeights = useRef([4, 6, 8, 6, 4])
   const tickRef = useRef(0)
   const smoothedEnergyRef = useRef(0)
+  const slowEnergyRef = useRef(0)
+  const flashIntensityRef = useRef(0)
+  const loudNoiseEnabledRef = useRef(true)
+  const warmupFramesRef = useRef(0)
 
   useEffect(() => {
+    // Load loud noise alerts preference
+    chrome.storage.local.get(["sensa_loud_noise_alerts"], (res) => {
+      if (typeof res.sensa_loud_noise_alerts === "boolean") {
+        loudNoiseEnabledRef.current = res.sensa_loud_noise_alerts
+      }
+    })
+    const onStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.sensa_loud_noise_alerts && typeof changes.sensa_loud_noise_alerts.newValue === "boolean") {
+        loudNoiseEnabledRef.current = changes.sensa_loud_noise_alerts.newValue
+        // If turned off, immediately hide the flash overlay
+        if (!changes.sensa_loud_noise_alerts.newValue) {
+          flashIntensityRef.current = 0
+          const overlay = document.getElementById('sensa-loud-noise-flash')
+          if (overlay) overlay.style.opacity = '0'
+        }
+      }
+    }
+    chrome.storage.onChanged.addListener(onStorageChange)
+
     let animationId: number
     let audioCtx: AudioContext | null = null
     let analyser: AnalyserNode | null = null
@@ -80,6 +103,12 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
     }
 
     if (isActive) {
+      // Create screen-edge flash overlay for loud noise alerts
+      const flashOverlay = document.createElement('div')
+      flashOverlay.id = 'sensa-loud-noise-flash'
+      flashOverlay.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:99998;opacity:0;'
+      document.documentElement.appendChild(flashOverlay)
+
       hunterInterval = window.setInterval(() => {
         const allMedia = Array.from(document.querySelectorAll("video, audio")) as HTMLMediaElement[]
         allMedia.forEach(media => {
@@ -158,6 +187,31 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
         const visualizerEnergy = smoothedEnergyRef.current
         const hasAudio = visualizerEnergy >= ENERGY_GATE
 
+        // ── Loud Noise Spike Detection ────────────────────────────
+        // Independent of visualizer smoothing. Uses raw energy directly
+        // so it reacts instantly to sudden spikes in the audio stream.
+        if (loudNoiseEnabledRef.current) {
+          if (rawEnergy > 0.01) {
+            if (slowEnergyRef.current < 0.01) {
+              // Seed baseline on first meaningful audio frame (ratio = 1.0, no false trigger)
+              slowEnergyRef.current = rawEnergy
+            } else {
+              slowEnergyRef.current = slowEnergyRef.current * 0.97 + rawEnergy * 0.03
+              // Only check spikes AFTER baseline is seeded (second frame onward)
+              const spikeRatio = rawEnergy / slowEnergyRef.current
+              if (spikeRatio > 2.0 && rawEnergy > 0.10) {
+                flashIntensityRef.current = Math.min(1, flashIntensityRef.current + 0.6)
+              }
+            }
+          } else {
+            // Gradually decay baseline during silence instead of hard-reset
+            slowEnergyRef.current *= 0.99
+            if (slowEnergyRef.current < 0.005) slowEnergyRef.current = 0
+          }
+        }
+        // Framerate-independent decay (always decay so it fades if toggled off mid-flash)
+        flashIntensityRef.current *= Math.pow(0.92, dt * 60)
+
         let targetColor = "#FF7A2F"
 
         if (hasAudio) {
@@ -235,6 +289,20 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
           }
         })
 
+        // ── Screen-Edge Flash Rendering ─────────────────────────
+        const fi = flashIntensityRef.current
+        if (fi > 0.01) {
+          const flashColor = activeTheme === 'red'
+            ? `rgba(255, 50, 50, ${(fi * 0.55).toFixed(3)})`
+            : `rgba(255, 122, 47, ${(fi * 0.45).toFixed(3)})`
+          const spread = (80 + fi * 60).toFixed(1)
+          const bleed = (20 + fi * 30).toFixed(1)
+          flashOverlay.style.boxShadow = `inset 0 0 ${spread}px ${bleed}px ${flashColor}`
+          flashOverlay.style.opacity = '1'
+        } else {
+          flashOverlay.style.opacity = '0'
+        }
+
         animationId = requestAnimationFrame(draw)
       }
       
@@ -242,11 +310,16 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
     }
 
     return () => {
+      chrome.storage.onChanged.removeListener(onStorageChange)
       window.removeEventListener('message', handleMessage)
       if (animationId) cancelAnimationFrame(animationId)
       if (hunterInterval !== undefined) window.clearInterval(hunterInterval)
       if (audioCtx) audioCtx.close().catch(() => undefined)
       smoothedEnergyRef.current = 0
+      slowEnergyRef.current = 0
+      flashIntensityRef.current = 0
+      const existingFlash = document.getElementById('sensa-loud-noise-flash')
+      if (existingFlash) existingFlash.remove()
       document.querySelectorAll('.sensa-dock-pill').forEach((pill) => {
         const htmlPill = pill as HTMLElement
         htmlPill.style.borderColor = borderBaseColor
