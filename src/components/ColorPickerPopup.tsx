@@ -62,13 +62,22 @@ const rgbToHsv = (r: number, g: number, b: number) => {
 }
 
 export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", onColorChange, isDark = false, accent = "blue", placement = "center" }: ColorPickerPopupProps) {
-  // State: Hue (0-1), Saturation (0-1), Value/Brightness (0-1)
   const [hsv, setHsv] = useState(() => {
     const parsed = hexToRgb(initialColor)
     if (!parsed) return { h: 0.16, s: 1, v: 1 }
     return rgbToHsv(parsed[0], parsed[1], parsed[2])
   });
   
+  const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState(true);
+
+  useEffect(() => {
+    chrome.storage.local.get(["sensa_visual_sound_effects_enabled"], (res) => {
+      if (typeof res.sensa_visual_sound_effects_enabled === "boolean") {
+        setIsSoundEffectsEnabled(res.sensa_visual_sound_effects_enabled);
+      }
+    });
+  }, []);
+
   const audioCtxRef = useRef<AudioContext | null>(null)
   const popupRef = useRef<HTMLDivElement>(null)
   const mainAreaRef = useRef<HTMLDivElement>(null);
@@ -90,6 +99,7 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
   }
 
   const playHoverSfx = () => {
+    if (!isSoundEffectsEnabled) return;
     const ctx = getAudioContext()
     if (!ctx) return
 
@@ -110,6 +120,7 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
   }
 
   const playClickSfx = () => {
+    if (!isSoundEffectsEnabled) return;
     const ctx = getAudioContext()
     if (!ctx) return
 
@@ -133,11 +144,10 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
     makeClick(1200, 0.07)
   }
 
-  // Derived colors for UI
   const [r, g, b] = hsvToRgb(hsv.h, hsv.s, hsv.v);
   const hex = rgbToHex(r, g, b);
   const [hr, hg, hb] = hsvToRgb(hsv.h, 1, 1)
-  const baseHueColor = rgbToHex(hr, hg, hb); // The top-right color of the box
+  const baseHueColor = rgbToHex(hr, hg, hb);
   const [hexInput, setHexInput] = useState(hex)
   const [rInput, setRInput] = useState(String(r))
   const [gInput, setGInput] = useState(String(g))
@@ -180,6 +190,7 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
 
   useEffect(() => {
     const resumeAudio = () => {
+      if (!isSoundEffectsEnabled) return;
       const ctx = getAudioContext()
       if (ctx && ctx.state === "suspended") {
         ctx.resume().catch(() => undefined)
@@ -196,35 +207,26 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
         audioCtxRef.current = null
       }
     }
-  }, [])
+  }, [isSoundEffectsEnabled])
 
-  // --- DRAG LOGIC FOR MAIN AREA (Saturation / Brightness) ---
   const handleMainDrag = useCallback((clientX: number, clientY: number) => {
     if (!mainAreaRef.current) return;
     const rect = mainAreaRef.current.getBoundingClientRect();
-    
-    // Calculate percentages (0 to 1) and clamp them
     let s = (clientX - rect.left) / rect.width;
     let v = 1 - ((clientY - rect.top) / rect.height);
-    
     s = Math.max(0, Math.min(1, s));
     v = Math.max(0, Math.min(1, v));
-    
     setHsv(prev => ({ ...prev, s, v }));
   }, []);
 
-  // --- DRAG LOGIC FOR HUE SLIDER ---
   const handleHueDrag = useCallback((clientX: number) => {
     if (!hueSliderRef.current) return;
     const rect = hueSliderRef.current.getBoundingClientRect();
-    
     let h = (clientX - rect.left) / rect.width;
     h = Math.max(0, Math.min(1, h));
-    
     setHsv(prev => ({ ...prev, h }));
   }, []);
 
-  // --- WINDOW EVENT LISTENERS ---
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (isDraggingMain.current) handleMainDrag(e.clientX, e.clientY);
@@ -246,35 +248,41 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
   }, [handleMainDrag, handleHueDrag]);
 
   const popupClass = isDark
-    ? "bg-[#1C1C1E] border-[#2C2C2E] shadow-[0_12px_40px_-10px_rgba(0,0,0,0.55)]"
-    : "bg-white border-gray-100 shadow-[0_12px_40px_-10px_rgba(0,0,0,0.2)]"
-  const arrowClass = isDark ? "bg-[#1C1C1E] border-[#2C2C2E]" : "bg-white border-gray-100"
+    ? "bg-[#1C1C1E]/95 backdrop-blur-3xl border-white/10 shadow-[0_24px_64px_-12px_rgba(0,0,0,0.6)]"
+    : "bg-white/95 backdrop-blur-3xl border-black/5 shadow-[0_24px_64px_-12px_rgba(0,0,0,0.15)]"
+  
+  const arrowClass = isDark ? "bg-[#1C1C1E] border-white/10" : "bg-white border-black/5"
+  
   const placementClass =
     placement === "end"
       ? "right-0 left-auto translate-x-0"
       : placement === "start"
         ? "left-0 right-auto translate-x-0"
         : "left-1/2 -translate-x-1/2"
+        
   const arrowPlacementClass =
     placement === "end"
-      ? "right-[14px] left-auto -translate-x-0"
+      ? "right-[18px] left-auto -translate-x-0"
       : placement === "start"
-        ? "left-[14px] right-auto -translate-x-0"
+        ? "left-[18px] right-auto -translate-x-0"
         : "left-1/2 -translate-x-1/2"
-  const labelClass = isDark ? "text-gray-200" : "text-black"
+        
+  const labelClass = isDark ? "text-gray-400" : "text-gray-500"
+  
   const inputClass = isDark
-    ? "border-[#3C3C3E] text-gray-100 bg-[#2C2C2E]"
-    : "border-gray-200 text-gray-800 bg-gray-50"
+    ? "border-white/10 text-gray-100 bg-white/5 hover:bg-white/10 focus:bg-[#2C2C2E]"
+    : "border-black/5 text-gray-800 bg-black/5 hover:bg-black/10 focus:bg-white"
+
+  const activeFocusClass = accent === "orange" ? "focus:ring-[#FF7A2F]/40" : "focus:ring-[#0A44FF]/40"
+
   const actionButtonClass = accent === "orange"
-    ? "bg-[#FF7A2F] hover:bg-[#F26A1B]"
-    : "bg-[#3B82F6] hover:bg-blue-600"
+    ? "bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A] hover:from-[#E66B25] hover:to-[#E68E09] shadow-[0_4px_12px_rgba(255,122,47,0.3)]"
+    : "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] hover:from-[#093CE0] hover:to-[#008AE6] shadow-[0_4px_12px_rgba(10,68,255,0.3)]"
 
   const handleHexInput = (value: string) => {
     const normalized = value.startsWith("#") ? value : `#${value}`
     if (!/^#?[A-Fa-f0-9]{0,6}$/.test(value)) return
-
     setHexInput(normalized)
-
     if (normalized.length === 7) {
       const parsed = hexToRgb(normalized)
       if (!parsed) return
@@ -284,16 +292,12 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
 
   const handleRgbInput = (channel: "r" | "g" | "b", value: string) => {
     if (!/^\d{0,3}$/.test(value)) return
-
     if (channel === "r") setRInput(value)
     if (channel === "g") setGInput(value)
     if (channel === "b") setBInput(value)
-
     if (value === "") return
-
     const nextValue = Number.parseInt(value, 10)
     if (Number.isNaN(nextValue) || nextValue < 0 || nextValue > 255) return
-
     const nextR = channel === "r" ? nextValue : r
     const nextG = channel === "g" ? nextValue : g
     const nextB = channel === "b" ? nextValue : b
@@ -303,105 +307,77 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
   return (
     <div
       ref={popupRef}
-      className={`absolute bottom-[calc(100%+16px)] z-[999999] w-[320px] rounded-[12px] border p-[16px] font-sans select-none cursor-default ${placementClass} ${popupClass}`}
+      className={`absolute bottom-[calc(100%+20px)] z-[999999] w-[340px] rounded-[24px] border p-[20px] font-sans select-none cursor-default transition-all ease-out duration-200 animate-in fade-in slide-in-from-bottom-2 ${placementClass} ${popupClass}`}
     >
-      <div className={`absolute -bottom-[7px] w-[14px] h-[14px] rotate-45 border-b border-r pointer-events-none ${arrowPlacementClass} ${arrowClass}`}></div>
+      <div className={`absolute -bottom-[8px] w-[16px] h-[16px] rotate-45 border-b border-r pointer-events-none rounded-br-[4px] ${arrowPlacementClass} ${arrowClass}`}></div>
       
-      {/* 1. Main Gradient Area (Saturation/Brightness) */}
+      {/* Main Area */}
       <div 
         ref={mainAreaRef}
         onMouseDown={(e) => { e.stopPropagation(); isDraggingMain.current = true; handleMainDrag(e.clientX, e.clientY); }}
-        className="w-full h-[220px] rounded-[8px] relative overflow-hidden shadow-[inset_0_0_2px_rgba(0,0,0,0.1)] cursor-crosshair"
+        className="w-full h-[200px] rounded-[16px] relative overflow-hidden shadow-[inset_0_0_2px_rgba(0,0,0,0.2)] cursor-crosshair border border-white/5"
         style={{ backgroundColor: baseHueColor }}
       >
-        {/* Use inline gradients so the saturation/value field always renders visibly. */}
-        <div 
-          className="absolute inset-0 pointer-events-none" 
-          style={{ background: 'linear-gradient(to right, #ffffff 0%, rgba(255,255,255,0) 100%)' }}
-        ></div>
-        <div 
-          className="absolute inset-0 pointer-events-none" 
-          style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, #000000 100%)' }}
-        ></div>
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(to right, #ffffff 0%, rgba(255,255,255,0) 100%)' }}></div>
+        <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0) 0%, #000000 100%)' }}></div>
         
-        {/* Picker Thumb */}
         <div 
-          className="absolute w-[24px] h-[24px] border-[3px] border-white rounded-full shadow-[0_2px_5px_rgba(0,0,0,0.3)] pointer-events-none transform -translate-x-1/2 -translate-y-1/2"
-          style={{ 
-            left: `${hsv.s * 100}%`, 
-            top: `${(1 - hsv.v) * 100}%`,
-            backgroundColor: hex
-          }}
+          className="absolute w-[24px] h-[24px] border-[3px] border-white rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.4)] pointer-events-none transform -translate-x-1/2 -translate-y-1/2 transition-transform duration-75"
+          style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%`, backgroundColor: hex }}
         ></div>
       </div>
 
-      {/* 2. Hue Slider */}
+      {/* Hue Slider */}
       <div 
         ref={hueSliderRef}
         onMouseDown={(e) => { e.stopPropagation(); isDraggingHue.current = true; handleHueDrag(e.clientX); }}
-        className="mt-[20px] relative w-full h-[14px] rounded-full shadow-[inset_0_0_2px_rgba(0,0,0,0.2)] cursor-pointer" 
+        className="mt-[24px] relative w-full h-[18px] rounded-full shadow-[inset_0_2px_6px_rgba(0,0,0,0.2)] cursor-pointer border border-white/5" 
         style={{ background: 'linear-gradient(to right, #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%)' }}
       >
-        {/* Slider Thumb */}
         <div 
-          className="absolute top-1/2 -translate-y-1/2 w-[26px] h-[26px] border-[4px] border-white rounded-full shadow-[0_2px_5px_rgba(0,0,0,0.3)] pointer-events-none transform -translate-x-1/2"
-          style={{ 
-            left: `${hsv.h * 100}%`,
-            backgroundColor: baseHueColor
-          }}
-        ></div>
+          className="absolute top-1/2 -translate-y-1/2 w-[24px] h-[24px] bg-white border-[2px] border-white rounded-full shadow-[0_2px_6px_rgba(0,0,0,0.3)] pointer-events-none transform -translate-x-1/2 transition-transform duration-75"
+          style={{ left: `${hsv.h * 100}%` }}
+        >
+          <div className="w-full h-full rounded-full shadow-inner" style={{ backgroundColor: baseHueColor }}></div>
+        </div>
       </div>
 
-      {/* 3. Hex & RGB Inputs */}
-      <div className="mt-[20px] flex gap-[12px]">
-        <div className="flex flex-col gap-[6px] flex-[2]">
-          <label className={`text-[12px] font-bold tracking-wide ${labelClass}`}>Hex</label>
+      {/* Inputs */}
+      <div className="mt-[24px] flex gap-[12px]">
+        <div className="flex flex-col gap-[8px] flex-[2.5]">
+          <label className={`text-[11px] font-semibold tracking-wider uppercase ${labelClass}`}>Hex</label>
           <input
             value={hexInput}
             onChange={(event) => handleHexInput(event.target.value.trim())}
-            className={`w-full border rounded-[8px] px-[12px] py-[10px] text-[14px] outline-none ${inputClass}`}
+            className={`w-full border rounded-xl px-[14px] py-[10px] text-[14px] font-medium outline-none transition-colors focus:ring-2 ${inputClass} ${activeFocusClass}`}
+            spellCheck={false}
           />
         </div>
-        <div className="flex flex-col gap-[6px] flex-1">
-          <label className={`text-[12px] font-bold tracking-wide ${labelClass}`}>R</label>
-          <input
-            value={rInput}
-            onChange={(event) => handleRgbInput("r", event.target.value.trim())}
-            className={`w-full border rounded-[8px] px-[4px] py-[10px] text-[14px] text-center outline-none ${inputClass}`}
-          />
-        </div>
-        <div className="flex flex-col gap-[6px] flex-1">
-          <label className={`text-[12px] font-bold tracking-wide ${labelClass}`}>G</label>
-          <input
-            value={gInput}
-            onChange={(event) => handleRgbInput("g", event.target.value.trim())}
-            className={`w-full border rounded-[8px] px-[4px] py-[10px] text-[14px] text-center outline-none ${inputClass}`}
-          />
-        </div>
-        <div className="flex flex-col gap-[6px] flex-1">
-          <label className={`text-[12px] font-bold tracking-wide ${labelClass}`}>B</label>
-          <input
-            value={bInput}
-            onChange={(event) => handleRgbInput("b", event.target.value.trim())}
-            className={`w-full border rounded-[8px] px-[4px] py-[10px] text-[14px] text-center outline-none ${inputClass}`}
-          />
+        <div className="flex gap-[8px] flex-[3]">
+          {["r", "g", "b"].map((channel) => (
+            <div key={channel} className="flex flex-col gap-[8px] flex-1">
+              <label className={`text-[11px] font-semibold tracking-wider uppercase text-center ${labelClass}`}>{channel}</label>
+              <input
+                value={channel === "r" ? rInput : channel === "g" ? gInput : bInput}
+                onChange={(event) => handleRgbInput(channel as any, event.target.value.trim())}
+                className={`w-full border rounded-xl px-[4px] py-[10px] text-[14px] font-medium text-center outline-none transition-colors focus:ring-2 ${inputClass} ${activeFocusClass}`}
+              />
+            </div>
+          ))}
         </div>
       </div>
 
-      <div className="mt-[16px] flex justify-end">
+      {/* Done Button */}
+      <div className="mt-[24px]">
         <button
-          onMouseEnter={() => { if (accent !== "orange") playHoverSfx() }}
-          onFocus={() => { if (accent !== "orange") playHoverSfx() }}
-          onClick={() => {
-            if (accent !== "orange") playClickSfx()
-            onClose()
-          }}
-          className={`px-[16px] py-[8px] text-[14px] font-semibold rounded-[6px] text-white transition-colors ${actionButtonClass}`}
+          onMouseEnter={playHoverSfx}
+          onFocus={playHoverSfx}
+          onClick={() => { playClickSfx(); onClose(); }}
+          className={`w-full py-[12px] text-[15px] font-bold rounded-xl text-white transition-all active:scale-[0.98] ${actionButtonClass}`}
         >
           Done
         </button>
       </div>
-
     </div>
   )
 }
