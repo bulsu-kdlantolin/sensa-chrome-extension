@@ -600,6 +600,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     >
       <div className="relative">
         <div
+          data-sensa-extension-panel="true"
           className={`relative w-[460px] ${modalBg} rounded-[32px] border p-8 text-center shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3),_0_0_2px_rgba(255,255,255,0.2)_inset] transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-[0.95] translate-y-4'}`}
           onMouseDown={onHeaderMouseDown}
           style={{

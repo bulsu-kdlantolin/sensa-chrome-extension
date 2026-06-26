@@ -83,6 +83,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const targetLang = typeof message?.targetLang === "string" ? message.targetLang : "EN"
         if (!text.trim()) return sendResponse({ ok: true, translated: "" })
 
+        const deeplKey = process.env.PLASMO_PUBLIC_DEEPL_API_KEY
+        if (!deeplKey) {
+          return sendResponse({ ok: false, error: "missing DeepL API key in environment" })
+        }
+
         const params = new URLSearchParams()
         params.append("text", text)
         params.append("target_lang", targetLang)
@@ -90,7 +95,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const response = await fetch("https://api-free.deepl.com/v2/translate", {
           method: "POST",
           headers: {
-            Authorization: "DeepL-Auth-Key cd0619de-9ed9-4d6c-ab2c-1d9e84dce95e:fx",
+            Authorization: `DeepL-Auth-Key ${deeplKey}`,
             "Content-Type": "application/x-www-form-urlencoded"
           },
           body: params.toString()

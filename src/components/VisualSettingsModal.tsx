@@ -123,6 +123,8 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const [isAutoscrollEnabled, setIsAutoscrollEnabled] = useState(true)
   const [isHighlightMouseScreenReaderEnabled, setIsHighlightMouseScreenReaderEnabled] = useState(false)
   const [isImageAltReaderEnabled, setIsImageAltReaderEnabled] = useState(true)
+  const [magnifierSize, setMagnifierSize] = useState(240)
+  const [magnifierZoom, setMagnifierZoom] = useState(2.0)
 
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>("")
@@ -491,6 +493,8 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       if (typeof res.sensa_visual_autoscroll_enabled === "boolean") setIsAutoscrollEnabled(res.sensa_visual_autoscroll_enabled)
       if (typeof res.sensa_visual_highlight_mouse_screen_reader === "boolean") setIsHighlightMouseScreenReaderEnabled(res.sensa_visual_highlight_mouse_screen_reader)
       if (typeof res.sensa_visual_image_alt_reader_enabled === "boolean") setIsImageAltReaderEnabled(res.sensa_visual_image_alt_reader_enabled)
+      if (typeof res.sensa_visual_magnifier_size === "number") setMagnifierSize(res.sensa_visual_magnifier_size)
+      if (typeof res.sensa_visual_magnifier_zoom === "number") setMagnifierZoom(res.sensa_visual_magnifier_zoom)
       setIsStorageLoaded(true)
     })
   }, [])
@@ -960,6 +964,8 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     setIsVoiceGuideEnabled(true)
     setIsSoundEffectsEnabled(true)
     setSelectedVoiceURI(defaultVoiceURI)
+    setMagnifierSize(240)
+    setMagnifierZoom(2.0)
     chrome.storage.local.set({
       sensa_visual_highlight_color: DEFAULT_HIGHLIGHT_COLOR,
       sensa_visual_autoscroll_enabled: true,
@@ -968,7 +974,9 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       sensa_visual_voice_guide_enabled: true,
       sensa_visual_sound_effects_enabled: true,
       sensa_visual_voice_uri: defaultVoiceURI,
-      sensa_visual_voice_name: defaultVoice?.name || ""
+      sensa_visual_voice_name: defaultVoice?.name || "",
+      sensa_visual_magnifier_size: 240,
+      sensa_visual_magnifier_zoom: 2.0
     })
     playClickAudio("Settings reset to default")
   }
@@ -1009,6 +1017,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       aria-modal="true"
     >
       <div
+        data-sensa-extension-panel="true"
         className={`relative w-[480px] ${modalBg} rounded-[32px] border p-8 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3),_0_0_2px_rgba(255,255,255,0.2)_inset] transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-[0.95] translate-y-4'}`}
         onMouseDown={onHeaderMouseDown}
         style={{
@@ -1252,7 +1261,69 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             </div>
           </div>
 
+          <div
+            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
+            {...getHoverHandlers("Capture Area. Set the size of the magnifying bubble on screen.")}
+          >
+            <div className="flex items-center gap-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 shrink-0 ${iconColor}`}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>
+              <div className="flex flex-col">
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Capture Area</span>
+                <span className={`text-[11px] ${secondaryText}`}>Set the size of the magnifying bubble on screen</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 ml-4 shrink-0">
+              <input
+                type="range" min="150" max="400" step="10"
+                value={magnifierSize}
+                onChange={(e) => {
+                  const val = Number(e.target.value)
+                  setMagnifierSize(val)
+                  chrome.storage.local.set({ sensa_visual_magnifier_size: val })
+                }}
+                onPointerUp={() => {
+                  playClickAudio(`${magnifierSize} pixels`)
+                }}
+                className="w-28 accent-[#0A44FF] cursor-pointer"
+                aria-label="Magnifier Capture Area"
+              />
+              <span className={`text-[14px] font-bold w-14 text-right tracking-tight ${iconColor}`}>
+                {magnifierSize}px
+              </span>
+            </div>
+          </div>
 
+          <div
+            className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} relative hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors`}
+            {...getHoverHandlers("Magnifier Zoom. Set how much the lens magnifies the text.")}
+          >
+            <div className="flex items-center gap-3">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 shrink-0 ${iconColor}`}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              <div className="flex flex-col">
+                <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Magnifier Zoom</span>
+                <span className={`text-[11px] ${secondaryText}`}>Set how much the lens magnifies the text</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 ml-4 shrink-0">
+              <input
+                type="range" min="1.5" max="4.0" step="0.25"
+                value={magnifierZoom}
+                onChange={(e) => {
+                  const val = Number(e.target.value)
+                  setMagnifierZoom(val)
+                  chrome.storage.local.set({ sensa_visual_magnifier_zoom: val })
+                }}
+                onPointerUp={() => {
+                  playClickAudio(`${magnifierZoom} times zoom`)
+                }}
+                className="w-28 accent-[#0A44FF] cursor-pointer"
+                aria-label="Magnifier Zoom Level"
+              />
+              <span className={`text-[14px] font-bold w-14 text-right tracking-tight ${iconColor}`}>
+                {magnifierZoom}x
+              </span>
+            </div>
+          </div>
 
         </div>
 

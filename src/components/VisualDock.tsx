@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from "react"
+import ReactDOM from "react-dom"
 import { Tooltip } from "./Tooltip"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
@@ -254,6 +255,164 @@ interface VisualDockProps {
   isVoiceCommandsSuspended?: boolean
 }
 
+let globalLastMousePos = { x: typeof window !== "undefined" ? window.innerWidth / 2 : 0, y: typeof window !== "undefined" ? window.innerHeight / 2 : 0 }
+if (typeof window !== "undefined") {
+  window.addEventListener("mousemove", (e) => {
+    globalLastMousePos = { x: e.clientX, y: e.clientY }
+  }, { passive: true })
+}
+
+function checkIsOverPanelRect(clientX: number, clientY: number): boolean {
+  if (typeof document === "undefined") return false
+  const hosts = document.querySelectorAll("plasmo-csui")
+  for (const host of hosts) {
+    if (host.shadowRoot) {
+      const panels = host.shadowRoot.querySelectorAll("[data-sensa-visual-dock], [data-sensa-extension-panel]")
+      for (const panel of panels) {
+        const rect = panel.getBoundingClientRect()
+        if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) {
+          return true
+        }
+      }
+    }
+  }
+  return false
+}
+
+function ScreenMagnifierOverlay({ isDark, onClose }: { isDark: boolean; onClose: () => void }) {
+  const [lensSize, setLensSize] = useState(240)
+  const [zoomLevel, setZoomLevel] = useState(2.0)
+  const [isHiddenOverUI, setIsHiddenOverUI] = useState(() => checkIsOverPanelRect(globalLastMousePos.x, globalLastMousePos.y))
+  const [pos, setPos] = useState(() => ({
+    x: globalLastMousePos.x,
+    y: globalLastMousePos.y,
+    scrollX: window.scrollX || 0,
+    scrollY: window.scrollY || 0
+  }))
+  const lastClientRef = useRef({ x: globalLastMousePos.x, y: globalLastMousePos.y })
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    chrome.storage.local.get(["sensa_visual_magnifier_size", "sensa_visual_magnifier_zoom"], res => {
+      if (typeof res?.sensa_visual_magnifier_size === "number") setLensSize(res.sensa_visual_magnifier_size)
+      if (typeof res?.sensa_visual_magnifier_zoom === "number") setZoomLevel(res.sensa_visual_magnifier_zoom)
+    })
+
+    const storageListener = (changes: any) => {
+      if (changes.sensa_visual_magnifier_size) setLensSize(changes.sensa_visual_magnifier_size.newValue)
+      if (changes.sensa_visual_magnifier_zoom) setZoomLevel(changes.sensa_visual_magnifier_zoom.newValue)
+    }
+    chrome.storage.onChanged.addListener(storageListener)
+    return () => chrome.storage.onChanged.removeListener(storageListener)
+  }, [])
+
+  const updateSnapshot = useCallback(() => {
+    if (!contentRef.current) return
+    contentRef.current.innerHTML = ""
+    const bodyClone = document.body.cloneNode(true) as HTMLElement
+    bodyClone.querySelectorAll("plasmo-csui, .sensa-ui-root, [data-sensa-visual-dock], script, iframe, [data-sensa-magnifier-lens]").forEach(e => e.remove())
+    bodyClone.style.pointerEvents = "none"
+    bodyClone.style.overflow = "hidden"
+    bodyClone.style.margin = "0"
+    contentRef.current.appendChild(bodyClone)
+  }, [])
+
+  useEffect(() => {
+    updateSnapshot()
+    const intervalTimer = window.setInterval(updateSnapshot, 500)
+    window.addEventListener("click", updateSnapshot, { passive: true })
+    return () => {
+      window.clearInterval(intervalTimer)
+      window.removeEventListener("click", updateSnapshot)
+    }
+  }, [updateSnapshot])
+
+  useEffect(() => {
+    const updatePos = (cx: number, cy: number) => {
+      setPos({
+        x: cx,
+        y: cy,
+        scrollX: window.scrollX || document.documentElement?.scrollLeft || 0,
+        scrollY: window.scrollY || document.documentElement?.scrollTop || 0
+      })
+    }
+
+    const handleMouseMove = (e: MouseEvent) => {
+      lastClientRef.current = { x: e.clientX, y: e.clientY }
+      updatePos(e.clientX, e.clientY)
+      setIsHiddenOverUI(checkIsOverPanelRect(e.clientX, e.clientY))
+    }
+
+    const handleScroll = () => {
+      updatePos(lastClientRef.current.x, lastClientRef.current.y)
+      setIsHiddenOverUI(checkIsOverPanelRect(lastClientRef.current.x, lastClientRef.current.y))
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose()
+    }
+
+    window.addEventListener("mousemove", handleMouseMove, { passive: true })
+    window.addEventListener("scroll", handleScroll, { passive: true })
+    window.addEventListener("keydown", handleKeyDown)
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove)
+      window.removeEventListener("scroll", handleScroll)
+      window.removeEventListener("keydown", handleKeyDown)
+    }
+  }, [onClose])
+
+  const bodyEl = document.body
+  if (!bodyEl) return null
+
+  return ReactDOM.createPortal(
+    <div
+      data-sensa-magnifier-lens="true"
+      style={{
+        position: "fixed",
+        left: `${pos.x - lensSize / 2}px`,
+        top: `${pos.y - lensSize / 2}px`,
+        width: `${lensSize}px`,
+        height: `${lensSize}px`,
+        borderRadius: "50%",
+        overflow: "hidden",
+        border: "3.5px solid #0A44FF",
+        boxShadow: "0 24px 64px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.2)",
+        pointerEvents: "none",
+        zIndex: 2147483647,
+        backgroundColor: isDark ? "#1C1C1E" : "#FFFFFF",
+        opacity: isHiddenOverUI ? 0 : 1,
+        visibility: isHiddenOverUI ? "hidden" : "visible",
+        transition: "opacity 150ms ease-out, visibility 150ms ease-out"
+      }}
+    >
+      <div
+        ref={contentRef}
+        style={{
+          position: "absolute",
+          left: `${lensSize / 2 - (pos.x + pos.scrollX) * zoomLevel}px`,
+          top: `${lensSize / 2 - (pos.y + pos.scrollY) * zoomLevel}px`,
+          transform: `scale(${zoomLevel})`,
+          transformOrigin: "0 0",
+          width: `${document.body.scrollWidth}px`,
+          height: `${document.body.scrollHeight}px`,
+          pointerEvents: "none"
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          borderRadius: "50%",
+          boxShadow: "inset 0 0 24px rgba(10, 68, 255, 0.2)",
+          pointerEvents: "none"
+        }}
+      />
+    </div>,
+    bodyEl
+  )
+}
+
 export default function VisualDock({
   isDark,
   isMinimized,
@@ -275,6 +434,8 @@ export default function VisualDock({
 }: VisualDockProps) {
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   const [isPlayOptimistic, setIsPlayOptimistic] = useState(isPlaying && !isPaused)
+  const [isMagnifierActive, setIsMagnifierActive] = useState(false)
+  const dockRootRef = useRef<HTMLDivElement>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState(true)
   const isSoundEffectsEnabledRef = useRef(true)
@@ -1017,6 +1178,7 @@ export default function VisualDock({
 
   return (
     <div
+      ref={dockRootRef}
       className="flex flex-col w-fit shrink-0 box-border relative z-50"
       role="toolbar"
       aria-label="Reading and Voice Controls"
@@ -1168,6 +1330,27 @@ export default function VisualDock({
               type="button"
               onClick={() => {
                 playClickSfx()
+                setIsMagnifierActive(prev => !prev)
+                wrappedPlayClickAudio(isMagnifierActive ? "Screen Magnifier disabled" : "Screen Magnifier enabled")
+              }}
+              className={`${btnBaseClass} ${btnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""} ${isMagnifierActive ? "!bg-[#0A44FF] !text-white ring-2 ring-[#0A44FF]/40 shadow-lg shadow-[#0A44FF]/30" : ""}`}
+              aria-label="Screen Magnification"
+              aria-pressed={isMagnifierActive}
+              {...getHoverHandlers("Screen Magnification")}
+            >
+              <Tooltip label="Screen Magnifier" isDark={isDark} />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`${iconMotionClass} !w-[22px] !h-[22px] shrink-0`} aria-hidden="true">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                <line x1="11" y1="8" x2="11" y2="14" />
+                <line x1="8" y1="11" x2="14" y2="11" />
+              </svg>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                playClickSfx()
                 onOpenReadingSpeed()
               }}
               className={`${btnBaseClass} ${btnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""} font-bold text-sm tracking-wider`}
@@ -1250,6 +1433,7 @@ export default function VisualDock({
           </svg>
         </button>
       </div>
+      {isMagnifierActive && <ScreenMagnifierOverlay isDark={isDark} onClose={() => setIsMagnifierActive(false)} />}
     </div>
   )
 }
