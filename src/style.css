@@ -95,6 +95,15 @@
   width: 6px;
   height: 6px;
 }
+.custom-scrollbar::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  -webkit-appearance: none !important;
+}
+.custom-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }

@@ -81,15 +81,15 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 
   const titleText = "Welcome to Sensa"
-  const descriptionText = "A tailored accessibility layer that reads, guides, and adapts to you."
+  const descriptionText = "A Chrome extension assisting sensory-impaired users with specialized accessibility tools and features."
   const subtitleText = "Select your primary accessibility mode"
   const descriptionWords = useMemo(() => descriptionText.split(" "), [descriptionText])
   const subtitleWords = useMemo(() => subtitleText.split(" "), [subtitleText])
   const typedDescription = descriptionWords.slice(0, typedDescriptionCount).join(" ")
   const typedSubtitle = subtitleWords.slice(0, typedWordCount).join(" ")
 
-  const visualCardText = "Visual Mode. Support low vision with guided reading and speech."
-  const auditoryCardText = "Auditory Mode. Support hearing loss with captions and visualizer."
+  const visualCardText = "Visual Mode. Support low vision with voice navigation, screen magnifier, and guided reading."
+  const auditoryCardText = "Auditory Mode. Support hearing loss with multilingual captions, audio visualizer, and noise alerts."
   const commandReminderText = "You can say, Visual Mode, or, Auditory Mode, to choose a primary accessibility mode."
 
   const getAudioContext = () => {
@@ -468,7 +468,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     if (!reminderTrigger) return
 
     const playReminder = () => {
-      speakWithResolvedVoice(commandReminderText, () => {})
+      speakWithResolvedVoice(commandReminderText, () => { })
     }
 
     if (reminderTrigger.skipped) {
@@ -724,8 +724,8 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
           {visibleCards >= 1 && (
             <button
               onClick={() => onSelectMode("visual")}
-              onMouseEnter={() => { playHoverSfx(); playHoverAudio("Visual Mode. Support low vision with guided reading and speech.") }}
-              onFocus={() => { playHoverSfx(); playHoverAudio("Visual Mode. Support low vision with guided reading and speech.") }}
+              onMouseEnter={() => { playHoverSfx(); playHoverAudio("Visual Mode. Support low vision with voice navigation, screen magnifier, and guided reading.") }}
+              onFocus={() => { playHoverSfx(); playHoverAudio("Visual Mode. Support low vision with voice navigation, screen magnifier, and guided reading.") }}
               onMouseLeave={cancelHoverAudio}
               onBlur={cancelHoverAudio}
               className={`w-full h-[114px] group relative flex items-center px-[20px] pt-[12px] pb-[18px] rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 active:scale-95 animate-pop ${springTransition}
@@ -747,7 +747,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
                   Visual Mode
                 </h2>
                 <p className={`text-[12px] font-medium leading-[16px] ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Support low vision with guided reading and speech.
+                  Support low vision with voice navigation, screen magnifier, and guided reading.
                 </p>
               </div>
             </button>
@@ -756,8 +756,8 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
           {visibleCards >= 2 && (
             <button
               onClick={() => onSelectMode("auditory")}
-              onMouseEnter={() => { playHoverSfx(); playHoverAudio("Auditory Mode. Support hearing loss with captions and visualizer.") }}
-              onFocus={() => { playHoverSfx(); playHoverAudio("Auditory Mode. Support hearing loss with captions and visualizer.") }}
+              onMouseEnter={() => { playHoverSfx(); playHoverAudio("Auditory Mode. Support hearing loss with multilingual captions, audio visualizer, and noise alerts.") }}
+              onFocus={() => { playHoverSfx(); playHoverAudio("Auditory Mode. Support hearing loss with multilingual captions, audio visualizer, and noise alerts.") }}
               onMouseLeave={cancelHoverAudio}
               onBlur={cancelHoverAudio}
               className={`w-full h-[114px] group relative flex items-center px-[20px] pt-[12px] pb-[18px] rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 active:scale-95 animate-pop ${springTransition}
@@ -779,7 +779,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
                   Auditory Mode
                 </h2>
                 <p className={`text-[12px] font-medium leading-[16px] ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Support hearing loss with captions and visualizer.
+                  Support hearing loss with multilingual captions, audio visualizer, and noise alerts.
                 </p>
               </div>
             </button>

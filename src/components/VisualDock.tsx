@@ -1324,8 +1324,6 @@ export default function VisualDock({
               </svg>
             </button>
 
-            <div className={`!w-7 !min-h-[2px] rounded-full my-1.5 shrink-0 transition-colors duration-300 ${isDark ? 'bg-white/40' : 'bg-black/30'}`} role="separator" aria-hidden="true" />
-
             <button
               type="button"
               onClick={() => {
@@ -1334,9 +1332,9 @@ export default function VisualDock({
                 wrappedPlayClickAudio(isMagnifierActive ? "Screen Magnifier disabled" : "Screen Magnifier enabled")
               }}
               className={`${btnBaseClass} ${btnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""} ${isMagnifierActive ? "!bg-[#0A44FF] !text-white ring-2 ring-[#0A44FF]/40 shadow-lg shadow-[#0A44FF]/30" : ""}`}
-              aria-label="Screen Magnification"
+              aria-label="Screen Magnifier"
               aria-pressed={isMagnifierActive}
-              {...getHoverHandlers("Screen Magnification")}
+              {...getHoverHandlers("Screen Magnifier")}
             >
               <Tooltip label="Screen Magnifier" isDark={isDark} />
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`${iconMotionClass} !w-[22px] !h-[22px] shrink-0`} aria-hidden="true">
@@ -1346,6 +1344,8 @@ export default function VisualDock({
                 <line x1="8" y1="11" x2="14" y2="11" />
               </svg>
             </button>
+
+            <div className={`!w-7 !min-h-[2px] rounded-full my-1.5 shrink-0 transition-colors duration-300 ${isDark ? 'bg-white/40' : 'bg-black/30'}`} role="separator" aria-hidden="true" />
 
             <button
               type="button"

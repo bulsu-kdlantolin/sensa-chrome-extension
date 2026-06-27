@@ -177,6 +177,12 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     isVoiceDropdownOpen,
   })
 
+  const modalBoxRef = useRef<HTMLDivElement>(null)
+  const voiceBtnRef = useRef<HTMLButtonElement>(null)
+  const colorBtnRef = useRef<HTMLButtonElement>(null)
+  const [voiceMenuPos, setVoiceMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
+  const [colorPickerPos, setColorPickerPos] = useState<{ top: number; right: number; width: number; height: number }>({ top: 0, right: 0, width: 40, height: 40 })
+
   const getAudioContext = () => {
     if (!isSoundEffectsEnabledRef.current) return null
     if (!audioCtxRef.current) {
@@ -1005,9 +1011,12 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const secondaryText = isDark ? "text-gray-400" : "text-gray-500"
   const dividerClass = isDark ? "border-white/10" : "border-black/5"
   const iconColor = isDark ? "text-[#0A44FF]" : "text-[#0A44FF]"
-  const toggleSwitchClass = isDark
-    ? "relative inline-block w-12 h-7 rounded-full bg-gray-600 shadow-inner peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] peer-checked:after:translate-x-[20px] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:border-white/20 after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:after:border-white"
-    : "relative inline-block w-12 h-7 rounded-full bg-gray-300 shadow-inner peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#0A44FF]/50 peer-checked:bg-gradient-to-r peer-checked:from-[#0A44FF] peer-checked:to-[#0099FF] peer-checked:after:translate-x-[20px] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:border-gray-200 after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:after:border-white"
+
+  const renderToggleSwitch = (checked: boolean) => (
+    <div className={`w-12 h-7 rounded-full p-0.5 flex items-center transition-all duration-300 shadow-inner shrink-0 cursor-pointer ${checked ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF]" : isDark ? "bg-gray-600" : "bg-gray-300"}`}>
+      <div className={`w-6 h-6 rounded-full bg-white shadow-md border border-black/5 transform transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${checked ? "translate-x-5" : "translate-x-0"}`} />
+    </div>
+  )
 
   return (
     <div
@@ -1017,6 +1026,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       aria-modal="true"
     >
       <div
+        ref={modalBoxRef}
         data-sensa-extension-panel="true"
         className={`relative w-[480px] ${modalBg} rounded-[32px] border p-8 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3),_0_0_2px_rgba(255,255,255,0.2)_inset] transition-all duration-400 ease-[cubic-bezier(0.16,1,0.3,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-[0.95] translate-y-4'}`}
         onMouseDown={onHeaderMouseDown}
@@ -1049,7 +1059,13 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           </button>
         </div>
 
-        <div className="flex flex-col gap-3">
+        <div
+          className="flex flex-col gap-3 max-h-[540px] overflow-y-auto custom-scrollbar pr-2 -mr-2"
+          onScroll={() => {
+            if (isVoiceDropdownOpen) setIsVoiceDropdownOpen(false)
+            if (showColorPicker) setShowColorPicker(false)
+          }}
+        >
 
           <label
             className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-colors cursor-pointer`}
@@ -1066,11 +1082,11 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             <span className="relative inline-flex items-center shrink-0 pointer-events-none">
               <input
                 type="checkbox"
-                className="sr-only peer"
+                className="sr-only"
                 checked={isVoiceGuideEnabled}
                 onChange={(e) => handleVoiceGuideToggle(e.target.checked)}
               />
-              <span className={toggleSwitchClass} aria-hidden="true" />
+              {renderToggleSwitch(isVoiceGuideEnabled)}
             </span>
           </label>
 
@@ -1089,11 +1105,11 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             <span className="relative inline-flex items-center shrink-0 pointer-events-none">
               <input
                 type="checkbox"
-                className="sr-only peer"
+                className="sr-only"
                 checked={isSoundEffectsEnabled}
                 onChange={(e) => handleSoundEffectsToggle(e.target.checked)}
               />
-              <span className={toggleSwitchClass} aria-hidden="true" />
+              {renderToggleSwitch(isSoundEffectsEnabled)}
             </span>
           </label>
 
@@ -1112,11 +1128,11 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             <span className="relative inline-flex items-center shrink-0 pointer-events-none">
               <input
                 type="checkbox"
-                className="sr-only peer"
+                className="sr-only"
                 checked={isAutoscrollEnabled}
                 onChange={(e) => handleAutoscrollToggle(e.target.checked)}
               />
-              <span className={toggleSwitchClass} aria-hidden="true" />
+              {renderToggleSwitch(isAutoscrollEnabled)}
             </span>
           </label>
 
@@ -1135,11 +1151,11 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             <span className="relative inline-flex items-center shrink-0 pointer-events-none">
               <input
                 type="checkbox"
-                className="sr-only peer"
+                className="sr-only"
                 checked={isHighlightMouseScreenReaderEnabled}
                 onChange={(e) => handleHighlightMouseScreenReaderToggle(e.target.checked)}
               />
-              <span className={toggleSwitchClass} aria-hidden="true" />
+              {renderToggleSwitch(isHighlightMouseScreenReaderEnabled)}
             </span>
           </label>
 
@@ -1158,11 +1174,11 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             <span className="relative inline-flex items-center shrink-0 pointer-events-none">
               <input
                 type="checkbox"
-                className="sr-only peer"
+                className="sr-only"
                 checked={isImageAltReaderEnabled}
                 onChange={(e) => handleImageAltReaderToggle(e.target.checked)}
               />
-              <span className={toggleSwitchClass} aria-hidden="true" />
+              {renderToggleSwitch(isImageAltReaderEnabled)}
             </span>
           </label>
 
@@ -1179,20 +1195,32 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             </div>
             <div className="relative flex items-center justify-end w-[190px]">
               <button
+                ref={colorBtnRef}
                 type="button"
                 onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => { e.stopPropagation(); playClickSfx(); setShowColorPicker((prev) => !prev); playClickAudio(showColorPicker ? "Highlight color closed" : "Highlight color opened") }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  playClickSfx()
+                  if (!showColorPicker) {
+                    const btnRect = e.currentTarget.getBoundingClientRect()
+                    const modalRect = modalBoxRef.current?.getBoundingClientRect()
+                    if (btnRect && modalRect) {
+                      const scale = isMounted ? 1 : 0.95
+                      setColorPickerPos({
+                        top: (btnRect.top - modalRect.top) / scale,
+                        right: (modalRect.right - btnRect.right) / scale,
+                        width: btnRect.width / scale,
+                        height: btnRect.height / scale
+                      })
+                    }
+                  }
+                  setShowColorPicker((prev) => !prev)
+                  playClickAudio(showColorPicker ? "Highlight color closed" : "Highlight color opened")
+                }}
                 className="w-10 h-10 rounded-full cursor-pointer shadow-[0_4px_12px_rgba(0,0,0,0.15)] border-2 border-white/40 ring-2 ring-black/5 focus:outline-none focus:ring-4 focus:ring-[#0A44FF]/50 transition-all active:scale-90 hover:scale-105"
                 style={{ backgroundColor: highlightColor }}
                 aria-label="Pick highlight color"
               />
-              {showColorPicker && (
-                <ColorPickerPopup
-                  isDark={isDark} initialColor={highlightColor}
-                  onColorChange={handleHighlightChange} onClose={() => setShowColorPicker(false)}
-                  placement="end"
-                />
-              )}
             </div>
           </div>
 
@@ -1209,8 +1237,25 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             </div>
             <div className="relative w-[160px] shrink-0 ml-4">
               <button
+                ref={voiceBtnRef}
                 type="button"
-                onClick={(e) => { e.stopPropagation(); playClickSfx(); setIsVoiceDropdownOpen((prev) => !prev); playClickAudio("Voice selection") }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  playClickSfx()
+                  if (!isVoiceDropdownOpen) {
+                    const btnRect = e.currentTarget.getBoundingClientRect()
+                    const modalRect = modalBoxRef.current?.getBoundingClientRect()
+                    if (btnRect && modalRect) {
+                      const scale = isMounted ? 1 : 0.95
+                      setVoiceMenuPos({
+                        top: (btnRect.bottom - modalRect.top) / scale + 6,
+                        right: (modalRect.right - btnRect.right) / scale
+                      })
+                    }
+                  }
+                  setIsVoiceDropdownOpen((prev) => !prev)
+                  playClickAudio("Voice selection")
+                }}
                 className={`w-full text-left border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
                 aria-haspopup="listbox"
                 aria-expanded={isVoiceDropdownOpen}
@@ -1228,36 +1273,6 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
                   <svg className={`fill-current h-4 w-4 transition-transform duration-300 ${isVoiceDropdownOpen ? "rotate-180" : ""}`} viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" /></svg>
                 </div>
               </button>
-
-              {isVoiceDropdownOpen && (
-                <>
-                  <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }} />
-                  <ul className={`absolute right-0 z-50 mt-2 w-[240px] max-h-56 overflow-y-auto overflow-x-hidden ${modalBg} border ${inputBorder} rounded-xl shadow-2xl py-2 text-[13px] custom-scrollbar`} role="listbox">
-                    {voices.map((voice) => (
-                      <li
-                        id={`voice-option-${voice.voiceURI.replace(/[^a-zA-Z0-9]/g, '_')}`}
-                        key={voice.voiceURI}
-                        role="option"
-                        aria-selected={selectedVoiceURI === voice.voiceURI}
-                        className={`px-4 py-2.5 cursor-pointer block w-full text-left truncate transition-all font-medium m-1 rounded-lg ${
-                          speakingVoiceURI === voice.voiceURI
-                            ? "bg-[#0A44FF]/30 text-[#0A44FF] shadow-inner border border-[#0A44FF]/50"
-                            : selectedVoiceURI === voice.voiceURI
-                              ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white shadow-md"
-                              : isDark
-                                ? "text-gray-200 hover:bg-[#0A44FF]/20 hover:text-[#0A44FF]"
-                                : "text-gray-700 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF]"
-                        }`}
-                        onMouseEnter={() => { playHoverSfx(); previewVoice(voice) }}
-                        onClick={() => { handleVoiceChange(voice.voiceURI); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }}
-                        style={{ fontFamily: `"${voice.name}", system-ui, sans-serif` }}
-                      >
-                        {simplifyVoiceName(voice.name)}{voice.voiceURI === defaultVoiceURIRef.current ? " (Default)" : ""}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
             </div>
           </div>
 
@@ -1338,6 +1353,66 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             Reset
           </button>
         </div>
+
+        {showColorPicker && (
+          <div
+            style={{
+              position: 'absolute',
+              top: `${colorPickerPos.top}px`,
+              right: `${colorPickerPos.right}px`,
+              width: `${colorPickerPos.width}px`,
+              height: `${colorPickerPos.height}px`
+            }}
+            className="z-[999999] pointer-events-none"
+          >
+            <div className="pointer-events-auto w-full h-full relative">
+              <ColorPickerPopup
+                isDark={isDark} initialColor={highlightColor}
+                onColorChange={handleHighlightChange} onClose={() => setShowColorPicker(false)}
+                placement="end"
+              />
+            </div>
+          </div>
+        )}
+
+        {isVoiceDropdownOpen && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }} />
+            <ul
+              style={{
+                position: 'absolute',
+                top: `${voiceMenuPos.top}px`,
+                right: `${voiceMenuPos.right}px`,
+                width: '240px'
+              }}
+              className={`z-50 max-h-56 overflow-y-auto overflow-x-hidden ${modalBg} border ${inputBorder} rounded-xl shadow-2xl py-2 text-[13px] custom-scrollbar`}
+              role="listbox"
+            >
+              {voices.map((voice) => (
+                <li
+                  id={`voice-option-${voice.voiceURI.replace(/[^a-zA-Z0-9]/g, '_')}`}
+                  key={voice.voiceURI}
+                  role="option"
+                  aria-selected={selectedVoiceURI === voice.voiceURI}
+                  className={`px-4 py-2.5 cursor-pointer block w-full text-left truncate transition-all font-medium m-1 rounded-lg ${
+                    speakingVoiceURI === voice.voiceURI
+                      ? "bg-[#0A44FF]/30 text-[#0A44FF] shadow-inner border border-[#0A44FF]/50"
+                      : selectedVoiceURI === voice.voiceURI
+                        ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white shadow-md"
+                        : isDark
+                          ? "text-gray-200 hover:bg-[#0A44FF]/20 hover:text-[#0A44FF]"
+                          : "text-gray-700 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF]"
+                  }`}
+                  onMouseEnter={() => { playHoverSfx(); previewVoice(voice) }}
+                  onClick={() => { handleVoiceChange(voice.voiceURI); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }}
+                  style={{ fontFamily: `"${voice.name}", system-ui, sans-serif` }}
+                >
+                  {simplifyVoiceName(voice.name)}{voice.voiceURI === defaultVoiceURIRef.current ? " (Default)" : ""}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
 
       </div>
     </div>

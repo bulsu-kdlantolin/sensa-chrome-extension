@@ -32,7 +32,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
 
 
   const titleText = "Welcome to Visual Mode"
-  const descriptionText = "Sensa will intelligently read web pages aloud and simplify navigation for you."
+  const descriptionText = "Assisting visually impaired users with specialized accessibility tools and features."
   const featuresIntroText = "Here are the main features you'll use."
   const commandReminderText = "When you are ready, you can say, Get Started, to proceed to the Visual Mode interface."
   const descriptionWords = useMemo(() => descriptionText.split(" "), [descriptionText])
@@ -117,8 +117,19 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
   const features = useMemo(
     () => [
       {
+        title: "Voice Control",
+        description: "Navigate the web effortlessly using hands-free voice commands.",
+        icon: (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" y1="19" x2="12" y2="22" />
+          </svg>
+        )
+      },
+      {
         title: "Smart Reader",
-        description: "Listen to any page with adjustable voice speeds.",
+        description: "Listen to any web page aloud with adjustable reading speeds.",
         icon: (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
@@ -128,13 +139,14 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
         )
       },
       {
-        title: "Voice Control",
-        description: "Navigate effortlessly using hands-free commands.",
+        title: "Screen Magnifier",
+        description: "Zoom into text and images with an interactive magnifying glass.",
         icon: (
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
-            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-            <line x1="12" y1="19" x2="12" y2="22" />
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            <line x1="11" y1="8" x2="11" y2="14" />
+            <line x1="8" y1="11" x2="14" y2="11" />
           </svg>
         )
       }
@@ -585,7 +597,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
 
   return (
     <div
-      className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] flex flex-col items-center justify-between font-sans relative overflow-hidden select-none transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-white' : 'bg-gray-50 text-gray-900'}`}
+      className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] flex flex-col items-center justify-start font-sans relative overflow-hidden select-none transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-white' : 'bg-gray-50 text-gray-900'}`}
       onClick={handleSkipStep}
     >
       
@@ -628,32 +640,32 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
       <div className={`absolute -bottom-16 -right-16 w-64 h-64 rounded-full mix-blend-multiply filter blur-[60px] animate-float-blue-2 pointer-events-none transform-gpu ${isDark ? 'bg-[#0A44FF]/15' : 'bg-[#0A44FF]/10'}`} />
 
       {/* 🛡️ CONTENT WRAPPER */}
-      <div className="relative z-10 flex flex-col items-center w-full h-full pt-[20px] pb-10 px-8">
+      <div className="relative z-10 flex flex-col items-center justify-start w-full h-full pt-6 pb-6 px-6">
         
         {/* Header (No Logo, Perfectly Centered) */}
-        <div className="flex flex-col items-center w-full mt-2 mb-2">
-          <h1 className="text-[40px] font-black tracking-tighter leading-none mb-3 fade-in-1 text-center bg-gradient-to-r from-[#0A44FF] to-[#0099FF] bg-clip-text text-transparent pb-1">
+        <div className="flex flex-col items-center w-full mb-5">
+          <h1 className="text-[34px] font-black tracking-tight leading-none mb-2.5 fade-in-1 text-center bg-gradient-to-r from-[#0A44FF] to-[#0099FF] bg-clip-text text-transparent px-2 pb-1 overflow-visible">
             Visual Mode
           </h1>
-          <p className={`text-[16px] font-semibold text-center leading-snug fade-in-2 px-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+          <p className={`text-[14.5px] font-medium text-center leading-relaxed fade-in-2 px-1 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
             {typedDescription}
           </p>
         </div>
 
         {/* 👁️ FEATURE HIGHLIGHT CARDS */}
-        <div className="w-full mt-4 fade-in-3">
-          <div className="grid grid-cols-1 gap-3 w-full max-h-[220px] overflow-y-auto px-2 py-2">
+        <div className="w-full fade-in-3 mb-auto">
+          <div className="grid grid-cols-1 gap-3.5 w-full overflow-visible py-1 content-start">
             {features.slice(0, visibleFeatureCount).map((feature) => (
               <div
                 key={feature.title}
-                className={`group flex items-center gap-4 rounded-[20px] px-4 py-4 shadow-md transition-all cursor-pointer animate-pop ${isDark ? 'bg-[#2C2C2E] border-2 border-gray-700 hover:border-[#0A44FF] hover:bg-[#2C2C2E]/90 hover:shadow-[0_12px_26px_rgba(10,68,255,0.25)]' : 'bg-white border-2 border-transparent hover:border-[#0A44FF] hover:shadow-[0_12px_26px_rgba(10,68,255,0.2)]'}`}
+                className={`group flex items-center gap-4 rounded-[20px] px-5 py-3.5 shadow-md transition-all cursor-pointer animate-pop min-h-[74px] shrink-0 ${isDark ? 'bg-[#2C2C2E] border-2 border-gray-700 hover:border-[#0A44FF] hover:bg-[#2C2C2E]/90 hover:shadow-[0_12px_26px_rgba(10,68,255,0.25)]' : 'bg-white border-2 border-transparent hover:border-[#0A44FF] hover:shadow-[0_12px_26px_rgba(10,68,255,0.2)]'}`}
                 onMouseEnter={() => { playHoverSfx(); playHoverAudio(`${feature.title}. ${feature.description}`) }}
                 onFocus={() => { playHoverSfx(); playHoverAudio(`${feature.title}. ${feature.description}`) }}
                 onMouseLeave={cancelHoverAudio}
                 onBlur={cancelHoverAudio}
                 tabIndex={0}
               >
-                <div className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center text-[#0A44FF] ${isDark ? 'bg-[#0A44FF]/20' : 'bg-[#0A44FF]/10'}`}>
+                <div className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center text-[#0A44FF] ${isDark ? 'bg-[#0A44FF]/20' : 'bg-[#0A44FF]/10'}`}>
                   {feature.icon}
                 </div>
                 <div className="flex flex-col">
@@ -670,17 +682,15 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
         </div>
 
         {/* 🚀 SENSA BLUE PROGRESS BUTTON */}
-        {showButton && (
+        <div className={`w-full h-[56px] shrink-0 mt-auto transition-all duration-500 ${showButton ? 'opacity-100 pointer-events-auto fade-in-4' : 'opacity-0 pointer-events-none'}`}>
           <button
             onClick={handleManualProceed}
-            className="w-full h-[60px] mt-auto relative overflow-hidden fade-in-4 rounded-full bg-[#0A44FF] shadow-[0_12px_30px_rgba(10,68,255,0.3)] hover:shadow-[0_16px_40px_rgba(10,68,255,0.4)] hover:scale-[1.03] active:scale-95 transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50"
+            className="w-full h-full relative overflow-hidden rounded-full bg-[#0A44FF] shadow-[0_12px_30px_rgba(10,68,255,0.3)] hover:shadow-[0_16px_40px_rgba(10,68,255,0.4)] hover:scale-[1.03] active:scale-95 transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50"
             onMouseEnter={() => { playHoverSfx(); playHoverAudio("Get Started") }}
             onFocus={() => { playHoverSfx(); playHoverAudio("Get Started") }}
             onMouseLeave={cancelHoverAudio}
             onBlur={cancelHoverAudio}
           >
-
-
             {/* Button Text & Icon */}
             <div className="relative z-10 flex items-center justify-center w-full h-full gap-3 text-white font-black text-[17px] tracking-wide">
               Get Started
@@ -690,7 +700,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
               </svg>
             </div>
           </button>
-        )}
+        </div>
 
       </div>
     </div>
