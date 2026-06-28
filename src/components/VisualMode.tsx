@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef } from "react"
 
-export default function VisualMode() {
+interface VisualModeProps {
+  isActiveView?: boolean
+}
+
+export default function VisualMode({ isActiveView = true }: VisualModeProps) {
   const [isListening, setIsListening] = useState(false)
   const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState(true)
   const selectedVoiceURIRef = useRef("")
@@ -8,6 +12,11 @@ export default function VisualMode() {
   const audioCtxRef = useRef<AudioContext | null>(null)
   const isSoundEffectsEnabledRef = useRef(true)
   const hoverSpeakLockRef = useRef(0)
+  const isActiveViewRef = useRef(isActiveView)
+
+  useEffect(() => {
+    isActiveViewRef.current = isActiveView
+  }, [isActiveView])
 
   const getAudioContext = () => {
     if (!isSoundEffectsEnabledRef.current) return null
@@ -151,6 +160,7 @@ export default function VisualMode() {
     })
 
   const speakFeedback = async (message: string) => {
+    if (!isActiveViewRef.current) return;
     if (typeof window === "undefined" || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
       return
     }
@@ -341,16 +351,22 @@ export default function VisualMode() {
       })
     }
 
-    sendVoiceBridgeMessage("start")
+    if (isActiveView) {
+      sendVoiceBridgeMessage("start")
+    } else {
+      sendVoiceBridgeMessage("stop")
+    }
 
     return () => {
       sendVoiceBridgeMessage("stop")
     }
-  }, [])
+  }, [isActiveView])
 
   useEffect(() => {
     const interval = window.setInterval(() => {
+      if (!isActiveViewRef.current) return;
       chrome.storage.local.get(["sensa_visual_active"], (res) => {
+        if (!isActiveViewRef.current) return;
         void callbacksRef.current.speakFeedback(
           res.sensa_visual_active 
             ? "You can say, deactivate, to disable visual mode." 

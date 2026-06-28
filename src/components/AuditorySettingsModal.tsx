@@ -18,8 +18,8 @@ interface AuditorySettingsState {
 const DEFAULT_SETTINGS: AuditorySettingsState = {
   fontFamily: "Arial",
   showOriginalText: true,
-  textColor: "#000000",
-  captionBgColor: "#FFFFFF",
+  textColor: "#FFFFFF",
+  captionBgColor: "#000000",
 }
 
 const FALLBACK_FONTS = [

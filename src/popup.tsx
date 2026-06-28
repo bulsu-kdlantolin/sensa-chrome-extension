@@ -201,13 +201,13 @@ export default function IndexPopup() {
   
   // MODE_SELECTION is ALWAYS first unless already completed the welcome flow
   if (currentView === "MODE_SELECTION") {
-    return <ModeSelection theme={currentTheme} onSelectMode={handleSelectMode} />
+    return <ModeSelection theme="light" onSelectMode={handleSelectMode} />
   }
   
   if (currentView === "WELCOME") {
     return userProfile.globalSettings.activeMode === "auditory"
-      ? <AuditoryWelcomeOverlay theme={currentTheme} onGetStarted={handleGetStarted} />
-      : <VisualWelcomeOverlay theme={currentTheme} onGetStarted={handleGetStarted} />
+      ? <AuditoryWelcomeOverlay theme="light" onGetStarted={handleGetStarted} />
+      : <VisualWelcomeOverlay theme="light" onGetStarted={handleGetStarted} />
   }
   
   // Dashboard is now an animating view manger. It calls popup.tsx for persistence
@@ -222,5 +222,5 @@ export default function IndexPopup() {
   }
 
   // Fallback: if no route matched, show MODE_SELECTION as safety default
-  return <ModeSelection theme={currentTheme} onSelectMode={handleSelectMode} />
+  return <ModeSelection theme="light" onSelectMode={handleSelectMode} />
 }

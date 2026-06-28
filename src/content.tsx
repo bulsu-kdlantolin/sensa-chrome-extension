@@ -50,6 +50,17 @@ if (document.readyState === 'loading') {
   injectAudioInterceptor()
 }
 
+// ==========================================
+// ⚡ HIDDEN WAKE-UP PING FOR RENDER BACKEND
+// ==========================================
+try {
+  const lastPing = sessionStorage.getItem("sensa_backend_ping")
+  if (!lastPing || Date.now() - Number(lastPing) > 5 * 60 * 1000) {
+    sessionStorage.setItem("sensa_backend_ping", String(Date.now()))
+    fetch("https://sensa-chrome-extension-backend.onrender.com/").catch(() => {})
+  }
+} catch {}
+
 export const config: PlasmoCSConfig = {
   matches: ["<all_urls>"]
 }
@@ -71,8 +82,8 @@ interface AuditorySettingsState {
 const DEFAULT_AUDITORY_SETTINGS: AuditorySettingsState = {
   fontFamily: "Arial",
   showOriginalText: true,
-  textColor: "#000000",
-  captionBgColor: "#FFFFFF",
+  textColor: "#FFFFFF",
+  captionBgColor: "#000000",
   outputDevice: "Default - Speaker"
 }
 
@@ -228,7 +239,7 @@ export default function FloatingDockManager() {
   )
   const targetLanguage = (captionLanguage.split("-")[0] ?? "EN").toUpperCase()
   const { captions, error: captionsError } = useLiveCaptions(
-    isAuditoryModeActive,
+    isAuditoryModeActive && isCaptionsActive,
     targetLanguage,
     auditorySettings.showOriginalText,
     isCaptionsActive  // Pass the UI toggle state so captions clear when turned off

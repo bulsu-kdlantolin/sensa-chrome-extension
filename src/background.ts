@@ -1,13 +1,23 @@
 declare var process: any;
 
+// ==========================================
+// ⚡ HIDDEN WAKE-UP PING FOR RENDER BACKEND
+// ==========================================
+const RENDER_BACKEND_URL = "https://sensa-chrome-extension-backend.onrender.com/"
+const pingBackend = () => {
+  fetch(RENDER_BACKEND_URL).catch(() => { })
+}
+pingBackend()
+setInterval(pingBackend, 10 * 60 * 1000)
+
 async function ensureOffscreen() {
   const url = chrome.runtime.getURL("tabs/audioproxy.html")
-  
+
   if (chrome.offscreen?.hasDocument) {
     const exists = await chrome.offscreen.hasDocument()
     if (exists) return
   }
-  
+
   try {
     await chrome.offscreen.createDocument({
       url,
@@ -18,17 +28,19 @@ async function ensureOffscreen() {
     // Give React 1 full second to boot up inside the invisible window before continuing
     await new Promise(resolve => setTimeout(resolve, 1000))
   } catch (e: any) {
-    if (!e.message.includes('Only a single offscreen')) throw e
+    if (!e.message?.includes('Only a single offscreen') && !e.message?.includes('already exists')) throw e
   }
 }
 
 async function resetOffscreen() {
-  if (chrome.offscreen?.hasDocument) {
-    const exists = await chrome.offscreen.hasDocument()
-    if (exists) {
-      await chrome.offscreen.closeDocument()
+  try {
+    if (chrome.offscreen?.hasDocument) {
+      const exists = await chrome.offscreen.hasDocument()
+      if (exists) {
+        await chrome.offscreen.closeDocument().catch(() => { })
+      }
     }
-  }
+  } catch { }
 }
 
 async function resolveTargetTabId(sender: chrome.runtime.MessageSender): Promise<number | null> {
@@ -74,10 +86,31 @@ async function getStreamIdWithRetry(targetTabId: number, attempts = 3): Promise<
   throw new Error(lastError)
 }
 
+// ==========================================
+// ⚡ TAB SWITCH / RELOAD DEACTIVATION (AUDITORY ONLY)
+// Deactivates Auditory Mode dock when switching tabs or reloading so tabCapture authorization can be granted on popup open.
+// DOES NOT reset user profile, activeMode, or Visual Mode.
+// ==========================================
+const deactivateAuditoryDock = () => {
+  chrome.storage.local.set({
+    sensa_auditory_active: false
+  })
+}
+
+chrome.tabs.onActivated.addListener(() => {
+  deactivateAuditoryDock()
+})
+
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+  if (changeInfo.status === "loading" && tab.url && !tab.url.startsWith("chrome://")) {
+    deactivateAuditoryDock()
+  }
+})
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // --- DEEPL TRANSLATOR ---
   if (message?.type === "TRANSLATE_TEXT") {
-    ;(async () => {
+    ; (async () => {
       try {
         const text = typeof message?.text === "string" ? message.text : ""
         const targetLang = typeof message?.targetLang === "string" ? message.targetLang : "EN"
@@ -115,9 +148,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // --- START INVISIBLE CAPTURE ---
   if (message?.type === "START_CAPTURE") {
-    ;(async () => {
+    ; (async () => {
       try {
-        await resetOffscreen()
+        chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => { })
+        await new Promise(r => setTimeout(r, 200))
+
         const targetTabId = await resolveTargetTabId(sender)
         if (targetTabId === null) {
           sendResponse({ ok: false, error: "No Tab ID (could not resolve active tab)" })
@@ -138,7 +173,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             targetLang: message.targetLang,
             targetTabId,
             deviceId // Passed safely to the offscreen document
-          })
+          }).catch(() => { })
           sendResponse({ ok: true })
         })
       } catch (err) {
@@ -150,10 +185,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // --- STOP CAPTURE ---
   if (message?.type === "STOP_CAPTURE") {
-    ;(async () => {
+    ; (async () => {
       try {
-        chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" })
-        await resetOffscreen()
+        chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => { })
         sendResponse({ ok: true })
       } catch (err) {
         sendResponse({ ok: false, error: String(err) })
@@ -166,33 +200,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.runtime.sendMessage({
       type: "UPDATE_CAPTION_LANGUAGE_OFFSCREEN",
       targetLang: message.targetLang
-    })
+    }).catch(() => { })
     sendResponse({ ok: true })
     return false
   }
 
   // Forward offscreen transcription updates to the originating tab's content script.
   if (message?.type === "FORWARD_TO_TAB" && message.tabId) {
-    chrome.tabs.sendMessage(message.tabId, message.payload).catch(() => {})
+    chrome.tabs.sendMessage(message.tabId, message.payload).catch(() => { })
     sendResponse({ ok: true })
     return false
   }
 
   // --- FETCH GOOGLE FONTS (Bypasses YouTube's strict CSP!) ---
   if (message?.type === "FETCH_GOOGLE_FONTS") {
-    ;(async () => {
+    ; (async () => {
       try {
         // Grab the key securely from the background environment
         const apiKey = process.env.PLASMO_PUBLIC_GOOGLE_FONTS_API_KEY;
-        
+
         if (!apiKey) {
           return sendResponse({ ok: false, error: "missing api key in background" });
         }
 
         const res = await fetch(`https://www.googleapis.com/webfonts/v1/webfonts?key=${apiKey}&sort=popularity`);
-        
+
         if (!res.ok) throw new Error("Google Fonts API failed: " + res.status);
-        
+
         const data = await res.json();
         sendResponse({ ok: true, items: data.items });
       } catch (error) {

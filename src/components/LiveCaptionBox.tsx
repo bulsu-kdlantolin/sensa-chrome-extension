@@ -118,33 +118,33 @@ export default function LiveCaptionBox({
 
 
   // --- RENDER LOGIC ---
-  const renderOriginal = (b: CaptionBlock) => {
+  const renderOriginal = (b: CaptionBlock, isLatest: boolean) => {
     if (!b.original) return null
     return (
       <div style={{ 
         width: "100%", 
         whiteSpace: "pre-wrap", 
         lineHeight: 1.25,
-        // 🚨 THE FIX: Ghost styling for interim text
+        // 🚨 THE FIX: Dim older original text while keeping current original text slightly soft
         color: textColor,
-        opacity: b.isFinal ? 0.75 : 0.45,
+        opacity: isLatest ? (b.isFinal ? 0.75 : 0.45) : 0.4,
         fontStyle: b.isFinal ? "normal" : "italic",
         fontWeight: 500,
-        transition: "opacity 150ms ease, font-style 150ms ease"
+        transition: "opacity 300ms ease, font-style 150ms ease"
       }}>
         {b.original}
       </div>
     )
   }
 
-  const renderTranslation = (b: CaptionBlock) => {
+  const renderTranslation = (b: CaptionBlock, isLatest: boolean) => {
     if (!b.translated) return null
     return (
       <div style={{ 
-        // 🚨 THE FIX: Ghost styling for interim translations
-        opacity: b.isFinal ? 1 : 0.65,
+        // 🚨 THE FIX: Translated text always stays solid and bright across all caption blocks
+        opacity: b.isFinal ? 1 : 0.7,
         fontStyle: b.isFinal ? "normal" : "italic",
-        transition: "opacity 150ms ease, font-style 150ms ease", 
+        transition: "opacity 300ms ease, font-style 150ms ease", 
         color: textColor, 
         fontWeight: 700, 
         fontSize: `${fontSize}px`, 
@@ -199,15 +199,13 @@ export default function LiveCaptionBox({
       ) : (
         displayBlocks.slice(-MAX_VISIBLE_BLOCKS).map((b, index, visibleBlocks) => {
           const isLatest = index === visibleBlocks.length - 1
-          const opacity = isLatest ? 1 : 0.4 
           const minH = blockHeights.current.get(b.id)
           return (
             <div
               key={b.id}
               ref={el => blockRefs.current.set(b.id, el)}
               style={{
-                opacity,
-                transition: "opacity 300ms ease, transform 300ms ease",
+                transition: "transform 300ms ease",
                 display: "flex",
                 flexDirection: "column",
                 gap: "2px", 
@@ -216,17 +214,17 @@ export default function LiveCaptionBox({
                 backgroundColor: isLatest ? "rgba(255,255,255,0.06)" : "transparent",
                 transform: isLatest ? "scale(1)" : "scale(0.99)",
                 minHeight: minH ? `${minH}px` : undefined,
-                willChange: "opacity, transform"
+                willChange: "transform"
               }}
             >
               {showOriginalText && (
                 <div style={{ fontSize: `${Math.max(11, fontSize * 0.75)}px` }}>
-                  {renderOriginal(b)}
+                  {renderOriginal(b, isLatest)}
                 </div>
               )}
 
               <div style={{ display: "flex", flexDirection: "column" }}>
-                {renderTranslation(b)}
+                {renderTranslation(b, isLatest)}
               </div>
             </div>
           )

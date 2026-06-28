@@ -150,7 +150,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
   useEffect(() => {
     chrome.storage.local.get(["sensa_last_tab", "sensa_visual_active"], (res) => {
-      const nextMode = res.sensa_last_tab ?? selectedMode ?? "visual"
+      const nextMode = selectedMode ?? res.sensa_last_tab ?? "visual"
       setCurrentViewMode(nextMode)
       if (res.sensa_visual_active !== undefined) setIsVisualActive(!!res.sensa_visual_active)
 
@@ -183,7 +183,10 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
     if (currentViewMode !== "visual") return
     if (hasAnnouncedVisualOnOpenRef.current) return
 
+    let isCancelled = false
+
     chrome.storage.local.get(["sensa_visual_entered_from_welcome"], (res) => {
+      if (isCancelled || currentViewMode !== "visual") return
       const isFromWelcome = !!res.sensa_visual_entered_from_welcome
       if (isFromWelcome) {
         chrome.storage.local.set({ sensa_visual_entered_from_welcome: false })
@@ -191,6 +194,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
       announceTimerRef.current = window.setTimeout(() => {
         chrome.storage.local.get(["sensa_visual_active"], (r) => {
+          if (isCancelled || currentViewMode !== "visual") return
           hasAnnouncedVisualOnOpenRef.current = true
           const message = getModeInterfaceAnnouncement("visual", isFromWelcome, !!r.sensa_visual_active)
           playClickAudio(message)
@@ -199,6 +203,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
     })
 
     return () => {
+      isCancelled = true
       if (announceTimerRef.current !== null) {
         window.clearTimeout(announceTimerRef.current)
       }
@@ -408,7 +413,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
       {/* --- PURE OPACITY CROSSFADE --- */}
       <div className="flex-1 w-full relative z-10 [&>div>div]:!bg-transparent">
         <div className={`absolute inset-0 w-full h-full flex will-change-opacity transition-opacity duration-500 ease-in-out ${!isAuditory ? 'opacity-100 pointer-events-auto z-10' : 'opacity-0 pointer-events-none z-0'}`}>
-          <VisualMode />
+          <VisualMode isActiveView={!isAuditory} />
         </div>
         <div className={`absolute inset-0 w-full h-full flex will-change-opacity transition-opacity duration-500 ease-in-out ${isAuditory ? 'opacity-100 pointer-events-auto z-10' : 'opacity-0 pointer-events-none z-0'}`}>
           <AuditoryMode isDark={isAuditoryDark} />

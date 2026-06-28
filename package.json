@@ -33,12 +33,12 @@
     "permissions": [
       "storage",
       "tabCapture",
-      "activeTab",
       "offscreen",
       "microphone"
     ],
     "host_permissions": [
       "https://*/*",
+      "http://*/*",
       "https://*.youtube.com/*",
       "<all_urls>"
     ]

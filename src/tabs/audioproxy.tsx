@@ -11,6 +11,7 @@ export default function AudioProxy() {
     let analyser: AnalyserNode | null = null
     let visualizerInterval: ReturnType<typeof setInterval> | null = null
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+    let activeStream: MediaStream | null = null
     let intentionalStop = false
     
     let currentTargetLang = "EN"
@@ -35,16 +36,17 @@ export default function AudioProxy() {
           analyser.disconnect()
           analyser = null
         }
-        if (audioCtx) {
-          audioCtx.close().catch(() => {})
-          audioCtx = null
+        if (audioCtx && audioCtx.state === 'running') {
+          audioCtx.suspend().catch(() => {})
         }
         if (audioEl) {
-          const stream = audioEl.srcObject as MediaStream | null
-          stream?.getTracks().forEach((track) => track.stop())
           audioEl.pause()
           audioEl.srcObject = null
           audioEl = null
+        }
+        if (activeStream) {
+          activeStream.getTracks().forEach((track) => track.stop())
+          activeStream = null
         }
         if (socket && socket.readyState === WebSocket.OPEN) {
           socket.close()
@@ -79,6 +81,7 @@ export default function AudioProxy() {
           const stream = await navigator.mediaDevices.getUserMedia({
             audio: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: streamId } } as any
           })
+          activeStream = stream
           log("3. Audio stream acquired successfully!")
 
           log("4. Setting up Audio element to unmute the tab...")
@@ -108,20 +111,23 @@ export default function AudioProxy() {
                 if (!audioCtx) {
                   log("-> Building Audio Graph...")
                   audioCtx = new window.AudioContext({ sampleRate: 16000 })
-                  const source = audioCtx.createMediaStreamSource(stream)
-                  processor = audioCtx.createScriptProcessor(4096, 1, 1)
-                  
-                  // 🎯 VISUAL SOUND RADAR
-                  analyser = audioCtx.createAnalyser()
-                  analyser.fftSize = 2048
-                  const dataArray = new Uint8Array(analyser.frequencyBinCount)
+                } else if (audioCtx.state === 'suspended') {
+                  audioCtx.resume().catch(() => {})
+                }
+                const source = audioCtx.createMediaStreamSource(stream)
+                processor = audioCtx.createScriptProcessor(4096, 1, 1)
+                
+                // 🎯 VISUAL SOUND RADAR
+                analyser = audioCtx.createAnalyser()
+                analyser.fftSize = 2048
+                const dataArray = new Uint8Array(analyser.frequencyBinCount)
 
-                  source.connect(processor)
-                  source.connect(analyser)
-                  processor.connect(audioCtx.destination) 
+                source.connect(processor)
+                source.connect(analyser)
+                processor.connect(audioCtx.destination) 
 
-                  let packetCount = 0
-                  let frequencyCheckCounter = 0
+                let packetCount = 0
+                let frequencyCheckCounter = 0
                   
                   processor.onaudioprocess = (e) => {
                     if (socket?.readyState !== WebSocket.OPEN) return
@@ -178,7 +184,6 @@ export default function AudioProxy() {
                       }).catch(() => {})
                     }
                   }
-                }
               } catch (audioErr: any) {
                 log(`❌ AUDIO GRAPH ERROR: ${audioErr.message}`)
               }

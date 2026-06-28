@@ -40,8 +40,12 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
         const combinedError = chrome.runtime.lastError?.message || (typeof res?.error === "string" ? res.error : "")
         if (res?.ok) return
         
-        if (/receiving end does not exist|message port closed|No Tab ID|Failed to get stream ID/i.test(combinedError) && attempt < 3) {
-          setTimeout(() => startCapture(attempt + 1), 200)
+        if (/receiving end does not exist|message port closed|No Tab ID|Failed to get stream ID|offscreen|already exists/i.test(combinedError) && attempt < 5) {
+          setTimeout(() => startCapture(attempt + 1), 250)
+          return
+        }
+        if (/Extension has not been invoked|Chrome pages cannot be captured|activeTab|Failed to get stream ID|permission|not allowed|authorization/i.test(combinedError)) {
+          setError("👆 Chrome requires authorization: please click the Sensa extension icon in your top Chrome toolbar once to enable live captions on this tab!")
           return
         }
         setError(combinedError || "Failed to start capture.")

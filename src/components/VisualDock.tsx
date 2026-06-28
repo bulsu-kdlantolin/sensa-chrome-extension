@@ -308,22 +308,39 @@ function ScreenMagnifierOverlay({ isDark, onClose }: { isDark: boolean; onClose:
 
   const updateSnapshot = useCallback(() => {
     if (!contentRef.current) return
-    contentRef.current.innerHTML = ""
     const bodyClone = document.body.cloneNode(true) as HTMLElement
     bodyClone.querySelectorAll("plasmo-csui, .sensa-ui-root, [data-sensa-visual-dock], script, iframe, [data-sensa-magnifier-lens]").forEach(e => e.remove())
     bodyClone.style.pointerEvents = "none"
     bodyClone.style.overflow = "hidden"
     bodyClone.style.margin = "0"
+
+    // Copy canvases (charts, animations)
+    const origCanvases = document.body.getElementsByTagName("canvas")
+    const clonedCanvases = bodyClone.getElementsByTagName("canvas")
+    for (let i = 0; i < origCanvases.length && i < clonedCanvases.length; i++) {
+      try {
+        const destCtx = clonedCanvases[i].getContext("2d")
+        if (destCtx) destCtx.drawImage(origCanvases[i], 0, 0)
+      } catch (e) {}
+    }
+
+    contentRef.current.innerHTML = ""
     contentRef.current.appendChild(bodyClone)
   }, [])
 
   useEffect(() => {
     updateSnapshot()
-    const intervalTimer = window.setInterval(updateSnapshot, 500)
-    window.addEventListener("click", updateSnapshot, { passive: true })
+    const intervalTimer = window.setInterval(updateSnapshot, 2000)
+    let clickTimeout: any = null
+    const handleClick = () => {
+      if (clickTimeout) clearTimeout(clickTimeout)
+      clickTimeout = setTimeout(updateSnapshot, 250)
+    }
+    window.addEventListener("click", handleClick, { passive: true })
     return () => {
       window.clearInterval(intervalTimer)
-      window.removeEventListener("click", updateSnapshot)
+      if (clickTimeout) clearTimeout(clickTimeout)
+      window.removeEventListener("click", handleClick)
     }
   }, [updateSnapshot])
 
