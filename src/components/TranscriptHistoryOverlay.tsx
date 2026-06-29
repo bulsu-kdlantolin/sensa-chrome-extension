@@ -46,9 +46,9 @@ export default function TranscriptHistoryOverlay({ isDark, captions, onClose }: 
   const modalBg = isDark ? "bg-[#17171A]" : "bg-white"
   const textColor = isDark ? "text-white" : "text-gray-950"
   const secondaryText = isDark ? "text-gray-400" : "text-gray-500"
-  
+
   return (
-    <div 
+    <div
       className="fixed right-0 top-0 bottom-0 z-[999999] flex font-sans"
       role="dialog"
       aria-label="Transcript Sidebar"
@@ -76,7 +76,7 @@ export default function TranscriptHistoryOverlay({ isDark, captions, onClose }: 
           </button>
         </div>
 
-        <div 
+        <div
           ref={scrollContainerRef}
           className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 scroll-smooth"
         >
@@ -106,11 +106,10 @@ export default function TranscriptHistoryOverlay({ isDark, captions, onClose }: 
           <button
             onClick={exportTranscript}
             disabled={captions.length === 0}
-            className={`w-full py-3.5 px-4 flex items-center justify-center gap-2 rounded-xl font-semibold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
-              captions.length > 0 
+            className={`w-full py-3.5 px-4 flex items-center justify-center gap-2 rounded-xl font-semibold text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed ${captions.length > 0
                 ? "bg-gradient-to-br from-[#FF7A2F] to-[#E86A25] shadow-[0_4px_14px_rgba(255,122,47,0.3)] hover:shadow-[0_6px_20px_rgba(255,122,47,0.4)] hover:scale-[1.02] active:scale-[0.98]"
                 : "bg-gray-400 dark:bg-gray-700"
-            }`}
+              }`}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />

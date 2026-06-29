@@ -111,7 +111,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
   const [extensionStatus, setExtensionStatus] = useState<"online" | "offline">("offline")
   const [unavailableApis, setUnavailableApis] = useState<string[]>([])
   const [isVisualActive, setIsVisualActive] = useState(false)
-  
+
   const [isMounted, setIsMounted] = useState(false)
   const [hasHydratedInitialMode, setHasHydratedInitialMode] = useState(false)
   const hasAnnouncedVisualOnOpenRef = useRef(false)
@@ -136,15 +136,15 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
   const getModeInterfaceAnnouncement = (mode: "visual" | "auditory", isWelcome = false, isListening = false) => {
     if (mode === "auditory") return "Auditory Mode Interface"
-    
+
     const baseMessage = isWelcome
       ? `We are now in the Visual Mode interface. Target website: ${websiteLabel}. Extension status: ${extensionStatusSpeech}.`
       : `Visual Mode Interface. Target website: ${websiteLabel}. Extension status: ${extensionStatusSpeech}.`
-      
-    const commandHint = isListening 
-      ? "You can say, deactivate, to disable visual mode." 
+
+    const commandHint = isListening
+      ? "You can say, deactivate, to disable visual mode."
       : "You can say, activate, to enable visual mode."
-      
+
     return `${baseMessage} ${commandHint}`
   }
 
@@ -314,8 +314,8 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
 
   const isAuditory = currentViewMode === "auditory"
-  const isAuditoryDark = theme === "dark" 
-  const isDark = isAuditory ? isAuditoryDark : false 
+  const isAuditoryDark = theme === "dark"
+  const isDark = isAuditory ? isAuditoryDark : false
 
   const allowInitialMotion = isMounted && hasHydratedInitialMode
   const syncColors = allowInitialMotion ? "transition-colors duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]" : "transition-none"
@@ -323,14 +323,14 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
   return (
     <div className={`w-[350px] h-[550px] flex flex-col font-sans relative overflow-hidden ${syncColors} ${isDark ? 'bg-[#1C1C1E] text-gray-200' : 'bg-gray-50 text-black'}`}>
-      
+
       {/* --- 🚨 REFINED NAVBAR --- */}
       <div className="flex items-center justify-between px-5 pt-3.5 pb-1 z-20">
         <div className="flex items-center gap-2.5">
           <img src={sensaLogo} alt="Sensa Logo" className="w-[58px] h-[58px] object-contain drop-shadow-sm shrink-0" />
           <h1 className="text-[24px] font-black tracking-tight leading-none -translate-y-[1px]">Sensa</h1>
         </div>
-        
+
         {/* THEME TOGGLE */}
         {isAuditory ? (
           <button
@@ -370,14 +370,14 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
       {/* --- DYNAMIC MODE SWITCHER PILL --- */}
       <div className="px-5 flex justify-center mb-5 z-20 mt-3">
-        <div 
+        <div
           className={`relative flex w-full h-[52px] rounded-full p-1.5 transition-colors duration-500
             ${isDark ? 'bg-black/30 shadow-inner border border-white/5' : 'bg-gray-200/60 shadow-inner border border-black/5'}`}
         >
           <div
             className={`absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] rounded-full ${syncTransform}
-              ${isAuditory 
-                ? 'translate-x-[100%] bg-[#FF7A2F] shadow-[0_4px_16px_rgba(255,122,47,0.4)]' 
+              ${isAuditory
+                ? 'translate-x-[100%] bg-[#FF7A2F] shadow-[0_4px_16px_rgba(255,122,47,0.4)]'
                 : 'translate-x-0 bg-[#0A44FF] shadow-[0_4px_16px_rgba(10,68,255,0.4)]'
               }`}
           />
@@ -402,8 +402,8 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
               ${isAuditory ? 'text-white' : (isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-800')}`}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-[18px] h-[18px]">
-              <path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0"/>
-              <path d="M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4"/>
+              <path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0" />
+              <path d="M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4" />
             </svg>
             Auditory
           </button>
@@ -422,9 +422,10 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
       {/* --- 🚨 UPGRADED FOOTER (Extension Status & Radar Ping) --- */}
       <div className="px-5 mt-auto pb-5 z-20 flex flex-col gap-3 items-center">
-        
+
         {/* CSS Injection for the Status Radar Ping */}
-        <style dangerouslySetInnerHTML={{ __html: `
+        <style dangerouslySetInnerHTML={{
+          __html: `
           @keyframes radar-ping {
             0% { transform: scale(1); opacity: 0.8; }
             70%, 100% { transform: scale(2.5); opacity: 0; }
@@ -433,7 +434,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
         `}} />
 
         <div className={`w-full flex items-center justify-center gap-4 px-5 py-3.5 rounded-[18px] transition-colors duration-500 text-center ${isDark ? 'bg-[#2C2C2E]/80 border border-white/5 shadow-[0_8px_24px_rgba(0,0,0,0.3)]' : 'bg-white border border-black/5 shadow-[0_8px_24px_rgba(0,0,0,0.06)]'}`}>
-          
+
           <div
             className={`flex flex-col items-center overflow-hidden text-center min-w-0 flex-1 rounded-md px-2 py-1 transition-all duration-200 cursor-default ${!isAuditory ? (isDark ? "hover:bg-white/10" : "hover:bg-black/5") : ""} ${!isAuditory ? "hover:ring-2 hover:ring-[#0A44FF]/40 hover:shadow-[0_0_0_4px_rgba(10,68,255,0.12)]" : ""}`}
             tabIndex={!isAuditory ? 0 : -1}
@@ -471,7 +472,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
               <span className={`text-[14px] font-bold ${syncColors} ${extensionStatus === "online" ? (isDark ? 'text-green-400' : 'text-green-600') : 'text-red-500'}`}>
                 {extensionStatus === "online" ? "Connected" : "Offline"}
               </span>
-              
+
               {/* 🚨 THE RADAR PING INDICATOR */}
               <div className="relative flex items-center justify-center w-2.5 h-2.5">
                 {/* Expanding Outer Ring */}
@@ -484,7 +485,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
           </div>
         </div>
 
-        <button 
+        <button
           onClick={onReset}
           className={`self-center text-[12px] font-semibold tracking-wide transition-colors ${isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'} focus:outline-none`}
         >

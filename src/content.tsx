@@ -497,6 +497,18 @@ export default function FloatingDockManager() {
     }
   }, [])
 
+  // Automatically turn off live captions when switching tabs to prevent invalid state / active stream errors
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden" && isCaptionsActive) {
+        setIsCaptionsActive(false)
+        chrome.runtime.sendMessage({ type: "STOP_CAPTURE" }).catch(() => {})
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
+  }, [isCaptionsActive])
+
   // --- DRAG PHYSICS ---
   const handleMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return

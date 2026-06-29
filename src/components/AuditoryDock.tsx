@@ -5,7 +5,7 @@ import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 // ============================================================================
 // 🎯 SITE-ONLY DUAL ENGINE: Unfiltered Transient + Game Audio Interceptor
 // ============================================================================
-const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: boolean }) => {
+const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boolean, isDark: boolean, isCaptionsActive?: boolean }) => {
   const barsRef = useRef<(HTMLDivElement | null)[]>([])
   const currentHeights = useRef([4, 6, 8, 6, 4])
   const tickRef = useRef(0)
@@ -41,6 +41,7 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
     let dataArray: Uint8Array | null = null
     let hunterInterval: number | undefined
     let connectedMediaCount = 0
+    const connectedInThisSession = new Map<HTMLMediaElement, string>()
 
     let gameAudioArray: Uint8Array | null = null
     let lastGameAudioTick = 0
@@ -63,46 +64,115 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
         } else {
           gameAudioArray.set(event.data.frequencies)
         }
-        lastGameAudioTick = Date.now() 
+        lastGameAudioTick = Date.now()
+      }
+    }
+
+    const handleRuntimeMessage = (message: any) => {
+      if (message && message.type === 'AUDIO_FREQUENCY_UPDATE' && message.frequencies) {
+        if (!gameAudioArray || gameAudioArray.length !== message.frequencies.length) {
+          gameAudioArray = new Uint8Array(message.frequencies)
+        } else {
+          gameAudioArray.set(message.frequencies)
+        }
+        lastGameAudioTick = Date.now()
       }
     }
 
     window.addEventListener('message', handleMessage)
+    chrome.runtime.onMessage.addListener(handleRuntimeMessage)
 
-    const attachToSiteMedia = (mediaEl: HTMLMediaElement) => {
+    const findAllMediaElements = (root: any = document): HTMLMediaElement[] => {
+      const mediaElements: HTMLMediaElement[] = []
       try {
-        if ((mediaEl as any)._sensaConnected) return
+        root.querySelectorAll('video, audio').forEach((el: any) => mediaElements.push(el))
+        root.querySelectorAll('*').forEach((el: any) => {
+          if (el.shadowRoot) {
+            mediaElements.push(...findAllMediaElements(el.shadowRoot))
+          }
+        })
+      } catch (e) {}
+      return mediaElements
+    }
+
+    const attachToSiteMediaSafe = (mediaEl: HTMLMediaElement) => {
+      try {
+        const currentSrc = mediaEl.currentSrc || mediaEl.src || "unknown"
+        const lastConnectedSrc = connectedInThisSession.get(mediaEl)
+
+        if (lastConnectedSrc === currentSrc && lastConnectedSrc !== "unknown") return
+
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => { })
+        }
+
+        const captureFunc = (mediaEl as any).captureStream || (mediaEl as any).mozCaptureStream
+        if (!captureFunc) return
+
+        const stream = captureFunc.call(mediaEl) as MediaStream
+        if (!stream || stream.getAudioTracks().length === 0) return
 
         if (!audioCtx) {
           audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
           analyser = audioCtx.createAnalyser()
           analyser.fftSize = 256
-          analyser.smoothingTimeConstant = 0.02 
-          
-          analyser.connect(audioCtx.destination)
+          analyser.smoothingTimeConstant = 0.02
           dataArray = new Uint8Array(analyser.frequencyBinCount)
         }
-        
-        if (audioCtx.state === 'suspended') audioCtx.resume()
 
-        const source = audioCtx.createMediaElementSource(mediaEl)
+        if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => { })
+
+        const source = audioCtx.createMediaStreamSource(stream)
         source.connect(analyser!)
 
-        connectedMediaCount += 1
-        ;(mediaEl as any)._sensaConnected = true
+        if (!lastConnectedSrc) {
+          connectedMediaCount += 1
+        }
+        connectedInThisSession.set(mediaEl, currentSrc)
       } catch (e) {
-        console.warn("Sensa: Media is cross-origin protected or already bound.", e)
+        console.warn("Sensa: Media captureStream protected or unavailable.", e)
       }
     }
 
     const isMediaPlaying = () => {
-      const allMedia = Array.from(document.querySelectorAll("video, audio")) as HTMLMediaElement[]
+      const allMedia = findAllMediaElements(document)
       return allMedia.some(
         (media) => !media.paused && media.currentTime > 0 && !media.muted && media.readyState >= 2
       )
     }
 
+    const handleVisibilityOrFocus = () => {
+      if ((document.visibilityState === 'visible' || document.hasFocus()) && isActive) {
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => { })
+        }
+        if (!isCaptionsActive) {
+          chrome.runtime.sendMessage({ type: "START_RADAR_CAPTURE" }).catch(() => { })
+        }
+      }
+    }
+
+    const scanAndAttachMedia = () => {
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => { })
+      }
+      findAllMediaElements(document).forEach(media => {
+        if (!media.paused && media.currentTime > 0 && !media.muted) attachToSiteMediaSafe(media)
+      })
+    }
+
+    const handleShortsNavigation = () => {
+      setTimeout(scanAndAttachMedia, 400)
+      setTimeout(scanAndAttachMedia, 1000)
+    }
+
     if (isActive) {
+      chrome.runtime.sendMessage({ type: "START_RADAR_CAPTURE" }).catch(() => { })
+      document.addEventListener('visibilitychange', handleVisibilityOrFocus)
+      window.addEventListener('focus', handleVisibilityOrFocus)
+      window.addEventListener('yt-navigate-finish', handleShortsNavigation)
+      window.addEventListener('popstate', handleShortsNavigation)
+
       // Create screen-edge flash overlay for loud noise alerts
       const flashOverlay = document.createElement('div')
       flashOverlay.id = 'sensa-loud-noise-flash'
@@ -110,15 +180,18 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
       document.documentElement.appendChild(flashOverlay)
 
       hunterInterval = window.setInterval(() => {
-        const allMedia = Array.from(document.querySelectorAll("video, audio")) as HTMLMediaElement[]
+        if (audioCtx && audioCtx.state === 'suspended') {
+          audioCtx.resume().catch(() => { })
+        }
+        const allMedia = findAllMediaElements(document)
         allMedia.forEach(media => {
-          if (!media.paused && media.currentTime > 0 && !media.muted) attachToSiteMedia(media)
+          if (!media.paused && media.currentTime > 0 && !media.muted) attachToSiteMediaSafe(media)
         })
       }, 1500)
 
       let activeTheme: 'orange' | 'green' | 'red' = 'orange'
       let themeHoldFrames = 0
-      let smoothedColor = "#FF7A2F" 
+      let smoothedColor = "#FF7A2F"
 
       const draw = () => {
         const time = performance.now()
@@ -127,7 +200,7 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
         lastTime = time
 
         // Normalize ticks to 60fps equivalent for consistent physics
-        tickRef.current += dt * 60 
+        tickRef.current += dt * 60
         const tick = tickRef.current
 
         let rawEnergy = 0
@@ -140,7 +213,7 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
         let activeData: Uint8Array | null = null
         const mediaPlaying = isMediaPlaying()
 
-        const hasGamePacket = gameAudioArray && Date.now() - lastGameAudioTick < 100
+        const hasGamePacket = gameAudioArray && Date.now() - lastGameAudioTick < 350
         let gameSignal = 0
         if (hasGamePacket && gameAudioArray) {
           let gameSum = 0
@@ -150,7 +223,7 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
 
         const hasStrongGameSignal = hasGamePacket && gameAudioArray && gameSignal >= GAME_SIGNAL_MIN
 
-        if (hasStrongGameSignal) {
+        if (hasGamePacket && gameAudioArray) {
           activeData = gameAudioArray
         } else if (mediaPlaying && analyser && dataArray && connectedMediaCount > 0) {
           analyser.getByteFrequencyData(dataArray as any)
@@ -259,7 +332,8 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
           let targetHeight = idleHeights[i]
 
           if (hasAudio) {
-            const voiceSpike = (visualizerEnergy * 28) * shapeMask[i]
+            const curvedEnergy = Math.pow(visualizerEnergy, 1.3)
+            const voiceSpike = (curvedEnergy * 15) * shapeMask[i]
             targetHeight = Math.min(maxHeights[i], idleHeights[i] + voiceSpike)
           } else {
             // Organic, staggered wave using the Delta-Time tick
@@ -268,8 +342,8 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
           }
 
           const isRising = targetHeight > currentHeights.current[i]
-          const baseAmt = hasAudio ? (isRising ? 0.55 : 0.18) : 0.10
-          
+          const baseAmt = hasAudio ? (isRising ? 0.65 : 0.22) : 0.10
+
           // Framerate-independent lerp
           const amt = 1 - Math.pow(1 - baseAmt, dt * 60)
           currentHeights.current[i] = lerp(currentHeights.current[i], targetHeight, amt)
@@ -283,7 +357,7 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
         dockPills.forEach(pill => {
           pill.style.borderColor = smoothedColor
           if (hasAudio) {
-            pill.style.boxShadow = `0 0 24px ${smoothedColor}70, inset 0 0 12px ${smoothedColor}20` 
+            pill.style.boxShadow = `0 0 24px ${smoothedColor}70, inset 0 0 12px ${smoothedColor}20`
           } else {
             pill.style.boxShadow = ''
           }
@@ -305,13 +379,18 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
 
         animationId = requestAnimationFrame(draw)
       }
-      
+
       animationId = requestAnimationFrame(draw)
     }
 
     return () => {
       chrome.storage.onChanged.removeListener(onStorageChange)
       window.removeEventListener('message', handleMessage)
+      chrome.runtime.onMessage.removeListener(handleRuntimeMessage)
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
+      window.removeEventListener('focus', handleVisibilityOrFocus)
+      window.removeEventListener('yt-navigate-finish', handleShortsNavigation)
+      window.removeEventListener('popstate', handleShortsNavigation)
       if (animationId) cancelAnimationFrame(animationId)
       if (hunterInterval !== undefined) window.clearInterval(hunterInterval)
       if (audioCtx) audioCtx.close().catch(() => undefined)
@@ -325,6 +404,13 @@ const SiteAudioSystem = ({ isActive, isDark }: { isActive: boolean, isDark: bool
         htmlPill.style.borderColor = borderBaseColor
         htmlPill.style.boxShadow = ''
       })
+      findAllMediaElements(document).forEach((mediaEl) => {
+        delete (mediaEl as any)._sensaConnected
+        delete (mediaEl as any)._sensaStream
+      })
+      if (isActive) {
+        chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => { })
+      }
     }
   }, [isActive])
 
@@ -376,21 +462,21 @@ export default function AuditoryDock({
   onOpenSettings,
   onClose
 }: AuditoryDockProps) {
-  
-  const glassPanelClass = isDark 
-    ? "bg-[#1C1C1E]/85 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-3xl transform-gpu backface-hidden" 
+
+  const glassPanelClass = isDark
+    ? "bg-[#1C1C1E]/85 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-3xl transform-gpu backface-hidden"
     : "bg-white/90 shadow-[0_8px_32px_rgba(0,0,0,0.15)] backdrop-blur-3xl transform-gpu backface-hidden"
 
   const controlPanelClass = isDark
     ? "bg-[#1C1C1E]/85 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-3xl transform-gpu backface-hidden"
     : "bg-white/90 shadow-[0_8px_32px_rgba(0,0,0,0.15)] backdrop-blur-3xl transform-gpu backface-hidden"
-    
+
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]"
 
   const btnBaseClass = `relative group !w-[44px] !h-[44px] !min-w-[44px] !min-h-[44px] !p-0 !m-0 flex items-center justify-center rounded-full shrink-0 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent box-border will-change-[transform] transform-gpu backface-hidden ${springTransition}`
-  
-  const btnHoverClass = isDark 
-    ? "hover:bg-[#FF7A2F]/15 text-gray-300 hover:text-white" 
+
+  const btnHoverClass = isDark
+    ? "hover:bg-[#FF7A2F]/15 text-gray-300 hover:text-white"
     : "hover:bg-[#FF7A2F]/10 text-gray-600 hover:text-[#FF7A2F]"
 
   const closeBtnClass = `${btnBaseClass} text-gray-500 dark:text-gray-400 transition-all duration-200 active:scale-90 hover:scale-105 ${isDark ? 'hover:bg-red-500/80 hover:text-white' : 'hover:bg-red-500/90 hover:text-white'}`
@@ -402,35 +488,35 @@ export default function AuditoryDock({
     scale-105 ring-[0px] ring-[#FF7A2F]/0
   `
 
-  const dividerClass = isDark 
-    ? "w-6 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-0.5" 
+  const dividerClass = isDark
+    ? "w-6 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent my-0.5"
     : "w-6 h-px bg-gradient-to-r from-transparent via-black/10 to-transparent my-0.5"
 
   return (
-    <div 
+    <div
       className="flex flex-col w-fit shrink-0 box-border relative z-50"
-      role="toolbar" 
+      role="toolbar"
       aria-label="Auditory and Caption Controls"
       data-sensa-auditory-dock
     >
-      
+
       {/* ========================================================= */}
       {/* 🔝 TOP SECTION: VISUALIZER & CAPTIONS */}
       {/* ========================================================= */}
       <div className={`relative flex flex-col items-center rounded-[28px] p-2 gap-1.5 shrink-0 z-30 transition-all duration-300 ${glassPanelClass}`}>
-        
+
         {/* ISOLATED GLOW LAYER */}
-        <div 
-          className="sensa-dock-pill absolute inset-0 rounded-[28px] pointer-events-none transition-colors duration-150" 
-          style={{ 
-            willChange: 'box-shadow' 
-          }} 
+        <div
+          className="sensa-dock-pill absolute inset-0 rounded-[28px] pointer-events-none transition-colors duration-150"
+          style={{
+            willChange: 'box-shadow'
+          }}
         />
 
         {/* Visualizer Frame */}
         <div className={`${btnBaseClass} bg-transparent cursor-default relative z-10`}>
           <SharedTooltip label="Sound Visualizer" isDark={isDark} isAuditory />
-          <SiteAudioSystem isActive={true} isDark={isDark} />
+          <SiteAudioSystem isActive={true} isDark={isDark} isCaptionsActive={isCaptionsActive} />
           <svg viewBox="0 0 24 24" fill="currentColor" className={`absolute !w-[18px] !h-[18px] shrink-0 opacity-10 pointer-events-none ${isDark ? 'text-white' : 'text-black'}`}>
             <rect x="5" y="10" width="2" height="4" rx="1" />
             <rect x="9" y="7" width="2" height="10" rx="1" />
@@ -445,11 +531,10 @@ export default function AuditoryDock({
           type="button"
           onClick={onToggleCaptions}
           aria-pressed={isCaptionsActive}
-          className={`${btnBaseClass} relative z-10 active:scale-90 ${
-            isCaptionsActive 
-              ? activeButtonClass 
-              : `bg-gradient-to-br from-[#FF7A2F] to-[#E86A25] text-white/90 shadow-[0_2px_12px_rgba(255,122,47,0.3)] hover:shadow-[0_4px_20px_rgba(255,122,47,0.5)] hover:scale-105`
-          }`}
+          className={`${btnBaseClass} relative z-10 active:scale-90 ${isCaptionsActive
+            ? activeButtonClass
+            : `bg-gradient-to-br from-[#FF7A2F] to-[#E86A25] text-white/90 shadow-[0_2px_12px_rgba(255,122,47,0.3)] hover:shadow-[0_4px_20px_rgba(255,122,47,0.5)] hover:scale-105`
+            }`}
         >
           <SharedTooltip label={isCaptionsActive ? "Turn Off Captions" : "Turn On Captions"} isDark={isDark} isAuditory />
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[22px] !h-[22px] shrink-0">
@@ -462,7 +547,7 @@ export default function AuditoryDock({
           {/* Active Indicator Badge */}
           {isCaptionsActive && (
             <span className="absolute top-0 right-0 !w-3 !h-3 rounded-full bg-white shadow-[0_0_10px_white]">
-               <span className="absolute inset-0 rounded-full bg-white animate-ping opacity-75" />
+              <span className="absolute inset-0 rounded-full bg-white animate-ping opacity-75" />
             </span>
           )}
         </button>
@@ -471,25 +556,23 @@ export default function AuditoryDock({
       {/* ========================================================= */}
       {/* ↔️ MIDDLE SECTION: SETTINGS */}
       {/* ========================================================= */}
-      <div 
-        className={`grid w-full transform-gpu backface-hidden will-change-[grid-template-rows] ${springTransition} ${
-          isMinimized ? "grid-rows-[0fr] mt-0" : "grid-rows-[1fr] mt-3"
-        }`}
+      <div
+        className={`grid w-full transform-gpu backface-hidden will-change-[grid-template-rows] ${springTransition} ${isMinimized ? "grid-rows-[0fr] mt-0" : "grid-rows-[1fr] mt-3"
+          }`}
       >
         <div className="min-h-0 flex justify-center w-full">
-          <div 
-            className={`relative flex flex-col items-center rounded-[28px] p-2 gap-1.5 w-fit origin-top transform-gpu backface-hidden will-change-[opacity,transform] ${springTransition} ${glassPanelClass} ${
-              isMinimized 
-                ? "opacity-0 scale-75 -translate-y-4 pointer-events-none" 
-                : "opacity-100 scale-100 translate-y-0 pointer-events-auto"
-            }`}
+          <div
+            className={`relative flex flex-col items-center rounded-[28px] p-2 gap-1.5 w-fit origin-top transform-gpu backface-hidden will-change-[opacity,transform] ${springTransition} ${glassPanelClass} ${isMinimized
+              ? "opacity-0 scale-75 -translate-y-4 pointer-events-none"
+              : "opacity-100 scale-100 translate-y-0 pointer-events-auto"
+              }`}
           >
             {/* ISOLATED GLOW LAYER */}
-            <div 
-              className="sensa-dock-pill absolute inset-0 rounded-[28px] pointer-events-none transition-colors duration-150" 
-              style={{ 
-                willChange: 'box-shadow' 
-              }} 
+            <div
+              className="sensa-dock-pill absolute inset-0 rounded-[28px] pointer-events-none transition-colors duration-150"
+              style={{
+                willChange: 'box-shadow'
+              }}
             />
 
             <button
@@ -523,11 +606,10 @@ export default function AuditoryDock({
             <button
               onClick={onToggleFocusMode}
               aria-pressed={isFocusMode}
-              className={`${btnBaseClass} relative z-10 active:scale-90 ${
-                isFocusMode 
-                  ? activeButtonClass 
-                  : `${btnHoverClass} hover:scale-105`
-              }`}
+              className={`${btnBaseClass} relative z-10 active:scale-90 ${isFocusMode
+                ? activeButtonClass
+                : `${btnHoverClass} hover:scale-105`
+                }`}
             >
               <SharedTooltip label="Focus Mode" isDark={isDark} isAuditory />
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[22px] !h-[22px] shrink-0">
@@ -586,13 +668,13 @@ export default function AuditoryDock({
       {/* 🔽 BOTTOM SECTION: WINDOW CONTROLS */}
       {/* ========================================================= */}
       <div className={`relative flex flex-col items-center rounded-[28px] p-2 gap-1.5 shrink-0 mt-3 z-20 transition-all duration-300 transform-gpu backface-hidden ${controlPanelClass}`}>
-        
+
         {/* ISOLATED GLOW LAYER */}
-        <div 
-          className="sensa-dock-pill absolute inset-0 rounded-[28px] pointer-events-none transition-colors duration-150" 
-          style={{ 
-            willChange: 'box-shadow' 
-          }} 
+        <div
+          className="sensa-dock-pill absolute inset-0 rounded-[28px] pointer-events-none transition-colors duration-150"
+          style={{
+            willChange: 'box-shadow'
+          }}
         />
 
         <button
@@ -603,7 +685,7 @@ export default function AuditoryDock({
           aria-label={isMinimized ? "Expand Menu" : "Minimize Menu"}
         >
           <SharedTooltip label={isMinimized ? "Expand" : "Minimize"} isDark={isDark} isAuditory />
-          
+
           <svg
             viewBox="0 0 24 24"
             fill="none"
@@ -614,7 +696,7 @@ export default function AuditoryDock({
             aria-hidden="true"
             className="!w-[22px] !h-[22px] shrink-0 transform-gpu backface-hidden will-change-transform"
             style={{
-              transform: `rotate(${isMinimized ? 180 : 0}deg) translateZ(0)` ,
+              transform: `rotate(${isMinimized ? 180 : 0}deg) translateZ(0)`,
               transformOrigin: '50% 50%',
               willChange: 'transform',
               transition: 'transform 260ms cubic-bezier(0.2, 0.9, 0.2, 1)'

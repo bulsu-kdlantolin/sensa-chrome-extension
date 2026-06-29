@@ -183,6 +183,20 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const [voiceMenuPos, setVoiceMenuPos] = useState<{ top: number; right: number }>({ top: 0, right: 0 })
   const [colorPickerPos, setColorPickerPos] = useState<{ top: number; right: number; width: number; height: number }>({ top: 0, right: 0, width: 40, height: 40 })
 
+  useEffect(() => {
+    if (isVoiceDropdownOpen) {
+      const btnRect = voiceBtnRef.current?.getBoundingClientRect()
+      const modalRect = modalBoxRef.current?.getBoundingClientRect()
+      if (btnRect && modalRect) {
+        const scale = isMounted ? 1 : 0.95
+        setVoiceMenuPos({
+          top: (btnRect.bottom - modalRect.top) / scale + 6,
+          right: (modalRect.right - btnRect.right) / scale
+        })
+      }
+    }
+  }, [isVoiceDropdownOpen, isMounted])
+
   const getAudioContext = () => {
     if (!isSoundEffectsEnabledRef.current) return null
     if (!audioCtxRef.current) {
@@ -625,7 +639,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       chrome.storage.local.set({ sensa_visual_voice_uri: nextVoice.voiceURI, sensa_visual_voice_name: nextVoice.name || "" })
       setIsVoiceDropdownOpen(true)
       window.speechSynthesis.cancel()
-      speakFeedback(`${nextVoice.name} selected`)
+      speakFeedback(`${simplifyVoiceName(nextVoice.name || "")} selected`)
       setSettingsState((state) => {
         state.selectedVoiceURI = nextVoice.voiceURI
         state.isVoiceDropdownOpen = true
@@ -656,7 +670,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       chrome.storage.local.set({ sensa_visual_voice_uri: matchedVoice.voiceURI, sensa_visual_voice_name: matchedVoice.name || "" })
       setIsVoiceDropdownOpen(true)
       window.speechSynthesis.cancel()
-      speakFeedback(`${matchedVoice.name} selected`)
+      speakFeedback(`${simplifyVoiceName(matchedVoice.name || "")} selected`)
       setSettingsState((state) => {
         state.selectedVoiceURI = matchedVoice.voiceURI
         state.isVoiceDropdownOpen = true
@@ -686,6 +700,8 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
         if (!settingsRecognitionArmedRef.current) return
 
         if (!isVoiceCommandActiveRef.current) {
+          if (Date.now() < ignoreSpeechUntil) return
+
           let liveText = ""
           for (let i = event.resultIndex; i < event.results.length; i++) {
             liveText += event.results[i][0].transcript + " "
@@ -701,7 +717,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
           const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(newSpeech, target, maxDistance)
 
-          if (check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start") || fuzzyCheck("sensa", 1)) {
+          if (check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake up", "hey sensa") || fuzzyCheck("sensa", 1)) {
             ignoreSpeechUntil = Date.now() + 800
             consumedString = liveText
             playClickAudio("Voice commands activated")
@@ -749,7 +765,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
         let commandFired = false
 
         if (state.isVoiceDropdownOpen) {
-          if (check("close voice selection", "close dropdown", "cancel", "hide voices")) {
+          if (check("close voice selection", "close dropdown", "cancel", "hide voices", "close", "closed", "clothes", "exit", "quit", "dismiss", "duck")) {
             commandFired = true
             setIsVoiceDropdownOpen(false)
             setSettingsState((next) => { next.isVoiceDropdownOpen = false })
@@ -767,7 +783,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           if (check("help", "commands", "options", "what can i say")) {
             commandFired = true
             speakFeedback("Here are the commands. Voice selection. This opens the voice list. Reset. This resets all settings to default. Close. This exits settings.")
-          } else if (check("close settings", "close", "cancel", "back", "exit") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1)) {
+          } else if (check("close settings", "close", "closed", "clothes", "cancel", "back", "exit", "quit", "dismiss", "duck") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1) || fuzzyCheck("quit", 1)) {
             commandFired = true
             setIsMounted(false)
             setTimeout(() => onCloseRef.current(), 300)
@@ -953,7 +969,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     setSelectedVoiceURI(voiceURI)
     const selected = voices.find((voice) => voice.voiceURI === voiceURI)
     chrome.storage.local.set({ sensa_visual_voice_uri: voiceURI, sensa_visual_voice_name: selected?.name || "" })
-    playClickAudio(`Voice set to ${selected?.name || 'selected voice'}`)
+    playClickAudio(`Voice set to ${selected ? simplifyVoiceName(selected.name) : 'selected voice'}`)
   }
 
   const handleResetToDefault = () => {
@@ -998,7 +1014,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const previewVoice = (voice: SpeechSynthesisVoice) => {
     if (isReadingVoiceListRef.current) return
     window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(voice.name)
+    const utterance = new SpeechSynthesisUtterance(simplifyVoiceName(voice.name))
     utterance.voice = voice
     window.speechSynthesis.speak(utterance)
   }
@@ -1190,10 +1206,10 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M14.5 4.5l5 5" /><path d="M11 8l-7 7-1 4 4-1 7-7" /><path d="M14 7l3 3" /></svg>
               <div className="flex flex-col">
                 <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Highlight Color</span>
-                <span className={`text-[11px] ${secondaryText}`}>Pick the color used while reading</span>
+                <span className={`text-[11px] whitespace-nowrap ${secondaryText}`}>Pick the color used while reading</span>
               </div>
             </div>
-            <div className="relative flex items-center justify-end w-[190px]">
+            <div className="relative flex items-center justify-end shrink-0">
               <button
                 ref={colorBtnRef}
                 type="button"

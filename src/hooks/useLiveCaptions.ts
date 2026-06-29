@@ -40,7 +40,7 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
         const combinedError = chrome.runtime.lastError?.message || (typeof res?.error === "string" ? res.error : "")
         if (res?.ok) return
         
-        if (/receiving end does not exist|message port closed|No Tab ID|Failed to get stream ID|offscreen|already exists/i.test(combinedError) && attempt < 5) {
+        if (/receiving end does not exist|message port closed|No Tab ID|Failed to get stream ID|offscreen|already exists|active stream|Cannot capture/i.test(combinedError) && attempt < 5) {
           setTimeout(() => startCapture(attempt + 1), 250)
           return
         }
@@ -54,6 +54,19 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
     startCapture()
 
     const handleMessage = (msg: any) => {
+      if (msg.type === "CAPTION_ERROR") {
+        const errStr = msg.error || "Failed to start capture."
+        if (/active stream|Cannot capture/i.test(errStr)) {
+          startCapture()
+        } else if (/Extension has not been invoked|Chrome pages cannot be captured|activeTab|Failed to get stream ID|permission|not allowed|authorization/i.test(errStr)) {
+          setError("👆 Chrome requires authorization: please click the Sensa extension icon in your top Chrome toolbar once to enable live captions on this tab!")
+        } else {
+          setError(errStr)
+        }
+      }
+      if (msg.type === "AUDIO_FREQUENCY_UPDATE" && msg.frequencies) {
+        window.postMessage({ type: "SENSA_GAME_AUDIO_FREQUENCY", frequencies: msg.frequencies }, "*")
+      }
       if (msg.type === "CAPTION_UPDATE" && msg.text && isCaptionsDisplayedRef.current) {
         setCaptions((prev) => {
           // Shallow clone the array to prevent React state mutation glitches while maintaining high performance!
@@ -93,9 +106,18 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
       }
     }
 
+    const handleVisibilityOrFocus = () => {
+      if ((document.visibilityState === "visible" || document.hasFocus()) && !cancelled) {
+        startCapture()
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus)
+    window.addEventListener("focus", handleVisibilityOrFocus)
     chrome.runtime.onMessage.addListener(handleMessage)
     return () => {
       cancelled = true
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus)
+      window.removeEventListener("focus", handleVisibilityOrFocus)
       chrome.runtime.onMessage.removeListener(handleMessage)
       chrome.runtime.sendMessage({ type: "STOP_CAPTURE" })
     }

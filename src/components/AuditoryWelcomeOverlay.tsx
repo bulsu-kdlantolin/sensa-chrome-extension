@@ -14,9 +14,10 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
 
   return (
     <div className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] flex flex-col items-center justify-start font-sans relative overflow-hidden select-none transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-white' : 'bg-gray-50 text-gray-900'}`}>
-      
+
       {/* 🚨 CSS INJECTION FOR CINEMATIC ENTRANCE & AMBIENT ORANGE ORBS */}
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @keyframes float-orange-1 {
           0%, 100% { transform: translate(0, 0) scale(1); }
           50% { transform: translate(-20px, -30px) scale(1.1); }
@@ -52,7 +53,7 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
 
       {/* 🛡️ CONTENT WRAPPER */}
       <div className="relative z-10 flex flex-col items-center justify-start w-full h-full pt-6 pb-6 px-6">
-        
+
         {/* Header (No Logo, Perfectly Centered) */}
         <div className="flex flex-col items-center w-full mb-5">
           <h1 className="text-[34px] font-black tracking-tight leading-none mb-2.5 fade-in-1 text-center bg-gradient-to-r from-[#FF7A2F] to-[#FF9E66] bg-clip-text text-transparent px-2 pb-1 overflow-visible">
@@ -66,13 +67,13 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
         {/* 🦻 FEATURE HIGHLIGHT CARDS */}
         <div className="w-full fade-in-3 mb-auto">
           <div className="grid grid-cols-1 gap-2 w-full overflow-visible py-1 content-start">
-            
+
             {/* Live Captions Card */}
-            <div 
+            <div
               tabIndex={0}
               className={`group flex items-center gap-3.5 rounded-[18px] px-3.5 py-2 shadow-md cursor-pointer transition-all duration-300 pop-in-1 min-h-[62px] shrink-0 outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50
-                ${isDark 
-                  ? 'bg-[#2C2C2E] border-2 border-gray-700 hover:border-[#FF7A2F] hover:bg-[#2C2C2E]/90 hover:shadow-[0_12px_26px_rgba(255,122,47,0.25)]' 
+                ${isDark
+                  ? 'bg-[#2C2C2E] border-2 border-gray-700 hover:border-[#FF7A2F] hover:bg-[#2C2C2E]/90 hover:shadow-[0_12px_26px_rgba(255,122,47,0.25)]'
                   : 'bg-white border-2 border-transparent hover:border-[#FF7A2F] hover:shadow-[0_12px_26px_rgba(255,122,47,0.15)]'
                 }`}
             >
@@ -90,11 +91,11 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
             </div>
 
             {/* Audio Visualizer Card */}
-            <div 
+            <div
               tabIndex={0}
               className={`group flex items-center gap-3.5 rounded-[18px] px-3.5 py-2 shadow-md cursor-pointer transition-all duration-300 pop-in-2 min-h-[62px] shrink-0 outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50
-                ${isDark 
-                  ? 'bg-[#2C2C2E] border-2 border-gray-700 hover:border-[#FF7A2F] hover:bg-[#2C2C2E]/90 hover:shadow-[0_12px_26px_rgba(255,122,47,0.25)]' 
+                ${isDark
+                  ? 'bg-[#2C2C2E] border-2 border-gray-700 hover:border-[#FF7A2F] hover:bg-[#2C2C2E]/90 hover:shadow-[0_12px_26px_rgba(255,122,47,0.25)]'
                   : 'bg-white border-2 border-transparent hover:border-[#FF7A2F] hover:shadow-[0_12px_26px_rgba(255,122,47,0.15)]'
                 }`}
             >
@@ -114,11 +115,11 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
             </div>
 
             {/* Noise Alerts Card */}
-            <div 
+            <div
               tabIndex={0}
               className={`group flex items-center gap-3.5 rounded-[18px] px-3.5 py-2 shadow-md cursor-pointer transition-all duration-300 pop-in-3 min-h-[62px] shrink-0 outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50
-                ${isDark 
-                  ? 'bg-[#2C2C2E] border-2 border-gray-700 hover:border-[#FF7A2F] hover:bg-[#2C2C2E]/90 hover:shadow-[0_12px_26px_rgba(255,122,47,0.25)]' 
+                ${isDark
+                  ? 'bg-[#2C2C2E] border-2 border-gray-700 hover:border-[#FF7A2F] hover:bg-[#2C2C2E]/90 hover:shadow-[0_12px_26px_rgba(255,122,47,0.25)]'
                   : 'bg-white border-2 border-transparent hover:border-[#FF7A2F] hover:shadow-[0_12px_26px_rgba(255,122,47,0.15)]'
                 }`}
             >

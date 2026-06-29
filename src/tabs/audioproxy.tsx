@@ -13,7 +13,7 @@ export default function AudioProxy() {
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
     let activeStream: MediaStream | null = null
     let intentionalStop = false
-    
+
     let currentTargetLang = "EN"
 
     const stopCapture = () => {
@@ -37,7 +37,7 @@ export default function AudioProxy() {
           analyser = null
         }
         if (audioCtx && audioCtx.state === 'running') {
-          audioCtx.suspend().catch(() => {})
+          audioCtx.suspend().catch(() => { })
         }
         if (audioEl) {
           audioEl.pause()
@@ -52,7 +52,7 @@ export default function AudioProxy() {
           socket.close()
         }
         socket = null
-      } catch (err) {}
+      } catch (err) { }
     }
 
     const handleMessage = async (msg: any) => {
@@ -70,7 +70,7 @@ export default function AudioProxy() {
             type: "FORWARD_TO_TAB",
             tabId: targetTabId,
             payload: { type: "PROXY_LOG", message }
-          }).catch(() => {})
+          }).catch(() => { })
         }
 
         try {
@@ -87,103 +87,103 @@ export default function AudioProxy() {
           log("4. Setting up Audio element to unmute the tab...")
           audioEl = new Audio()
           audioEl.srcObject = stream
-          audioEl.autoplay = true 
+          audioEl.autoplay = true
 
           if (deviceId && deviceId !== "default" && typeof (audioEl as any).setSinkId === "function") {
             (audioEl as any).setSinkId(deviceId).then(() => {
               log(`-> Output Device successfully routed to: ${deviceId}`)
             }).catch((e: any) => log(`-> Output Device routing failed: ${e}`))
           } else {
-             log("-> Using default system audio output.")
+            log("-> Using default system audio output.")
           }
 
           intentionalStop = false
 
+          if (!audioCtx) {
+            log("-> Building Audio Graph...")
+            audioCtx = new window.AudioContext({ sampleRate: 16000 })
+          } else if (audioCtx.state === 'suspended') {
+            audioCtx.resume().catch(() => { })
+          }
+
+          const source = audioCtx.createMediaStreamSource(stream)
+          analyser = audioCtx.createAnalyser()
+          analyser.fftSize = 256
+          analyser.smoothingTimeConstant = 0.05
+          const dataArray = new Uint8Array(analyser.frequencyBinCount)
+
+          source.connect(analyser)
+
+          if (visualizerInterval) clearInterval(visualizerInterval)
+          visualizerInterval = setInterval(() => {
+            if (!analyser || !audioCtx || intentionalStop) return
+            analyser.getByteFrequencyData(dataArray)
+
+            const nyquistFreq = audioCtx.sampleRate / 2
+            const binWidth = nyquistFreq / analyser.frequencyBinCount
+            const speechEndBin = Math.floor(800 / binWidth)
+            const alarmStartBin = Math.floor(1500 / binWidth)
+
+            let speechEnergy = 0
+            let alarmEnergy = 0
+            for (let i = 0; i < speechEndBin; i++) speechEnergy += dataArray[i]
+            for (let i = alarmStartBin; i < dataArray.length; i++) alarmEnergy += dataArray[i]
+
+            const avgSpeechEnergy = speechEnergy / Math.max(1, speechEndBin)
+            const avgAlarmEnergy = alarmEnergy / Math.max(1, dataArray.length - alarmStartBin)
+            const isAlarmDetected = avgAlarmEnergy > avgSpeechEnergy * 1.5 && avgAlarmEnergy > 40
+
+            chrome.runtime.sendMessage({
+              type: "FORWARD_TO_TAB",
+              tabId: targetTabId,
+              payload: {
+                type: "AUDIO_FREQUENCY_UPDATE",
+                frequencies: Array.from(dataArray),
+                isAlarmDetected,
+                speechEnergy: avgSpeechEnergy,
+                alarmEnergy: avgAlarmEnergy
+              }
+            }).catch(() => { })
+          }, 50)
+
+          if (msg.enableSTT === false) {
+            log("-> Radar capture mode active (STT disabled).")
+            return
+          }
+
           const connectWebSocket = () => {
             if (intentionalStop) return
-            
+
             log("5. Connecting WebSocket to cloud backend...")
             socket = new WebSocket(STT_WS_URL)
 
             socket.onopen = () => {
               log("6. WebSocket CONNECTED!")
               try {
-                if (!audioCtx) {
-                  log("-> Building Audio Graph...")
-                  audioCtx = new window.AudioContext({ sampleRate: 16000 })
-                } else if (audioCtx.state === 'suspended') {
-                  audioCtx.resume().catch(() => {})
-                }
-                const source = audioCtx.createMediaStreamSource(stream)
+                if (!audioCtx) return
                 processor = audioCtx.createScriptProcessor(4096, 1, 1)
-                
-                // 🎯 VISUAL SOUND RADAR
-                analyser = audioCtx.createAnalyser()
-                analyser.fftSize = 2048
-                const dataArray = new Uint8Array(analyser.frequencyBinCount)
-
                 source.connect(processor)
-                source.connect(analyser)
-                processor.connect(audioCtx.destination) 
+                const silentGain = audioCtx.createGain()
+                silentGain.gain.value = 0
+                processor.connect(silentGain)
+                silentGain.connect(audioCtx.destination)
 
                 let packetCount = 0
-                let frequencyCheckCounter = 0
-                  
-                  processor.onaudioprocess = (e) => {
-                    if (socket?.readyState !== WebSocket.OPEN) return
-                    
-                    packetCount++
-                    if (packetCount === 1) log("7. SUCCESS! First audio packet processed and sent to Node!")
 
-                    const float32Array = e.inputBuffer.getChannelData(0)
-                    const int16Array = new Int16Array(float32Array.length)
-                    for (let i = 0; i < float32Array.length; i++) {
-                      let s = Math.max(-1, Math.min(1, float32Array[i]))
-                      int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7fff
-                    }
-                    socket.send(int16Array.buffer)
-                    
-                    // 🎯 Hardware Accelerated Visualizer Loop
-                    frequencyCheckCounter++
-                    if (frequencyCheckCounter > 5) {
-                      frequencyCheckCounter = 0
-                      analyser!.getByteFrequencyData(dataArray)
-                      
-                      const nyquistFreq = audioCtx!.sampleRate / 2
-                      const binWidth = nyquistFreq / analyser!.frequencyBinCount
-                      
-                      const speechEndBin = Math.floor(800 / binWidth)
-                      const alarmStartBin = Math.floor(1500 / binWidth)
-                      
-                      let speechEnergy = 0
-                      let alarmEnergy = 0
-                      
-                      for (let i = 0; i < speechEndBin; i++) {
-                        speechEnergy += dataArray[i]
-                      }
-                      
-                      for (let i = alarmStartBin; i < dataArray.length; i++) {
-                        alarmEnergy += dataArray[i]
-                      }
-                      
-                      const avgSpeechEnergy = speechEnergy / Math.max(1, speechEndBin)
-                      const avgAlarmEnergy = alarmEnergy / Math.max(1, dataArray.length - alarmStartBin)
-                      
-                      const isAlarmDetected = avgAlarmEnergy > avgSpeechEnergy * 1.5 && avgAlarmEnergy > 40
-                      
-                      chrome.runtime.sendMessage({
-                        type: "FORWARD_TO_TAB",
-                        tabId: targetTabId,
-                        payload: {
-                          type: "AUDIO_FREQUENCY_UPDATE",
-                          frequencies: Array.from(dataArray.slice(0, 128)),
-                          isAlarmDetected,
-                          speechEnergy: avgSpeechEnergy,
-                          alarmEnergy: avgAlarmEnergy
-                        }
-                      }).catch(() => {})
-                    }
+                processor.onaudioprocess = (e) => {
+                  if (socket?.readyState !== WebSocket.OPEN) return
+
+                  packetCount++
+                  if (packetCount === 1) log("7. SUCCESS! First audio packet processed and sent to Node!")
+
+                  const float32Array = e.inputBuffer.getChannelData(0)
+                  const int16Array = new Int16Array(float32Array.length)
+                  for (let i = 0; i < float32Array.length; i++) {
+                    let s = Math.max(-1, Math.min(1, float32Array[i]))
+                    int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7fff
                   }
+                  socket.send(int16Array.buffer)
+                }
               } catch (audioErr: any) {
                 log(`❌ AUDIO GRAPH ERROR: ${audioErr.message}`)
               }
@@ -205,17 +205,17 @@ export default function AudioProxy() {
                 if (payload.type === "TRANSCRIPT" && payload.text) {
                   const rawText = payload.text
                   const isFinal = payload.isFinal // 🚨 Extract isFinal flag from Node payload
-                  
+
                   // 🚨 Forward the flag to the React UI for smooth scrolling
-                  chrome.runtime.sendMessage({ 
-                    type: "FORWARD_TO_TAB", 
-                    tabId: targetTabId, 
-                    payload: { 
-                      type: "CAPTION_UPDATE", 
-                      text: rawText, 
+                  chrome.runtime.sendMessage({
+                    type: "FORWARD_TO_TAB",
+                    tabId: targetTabId,
+                    payload: {
+                      type: "CAPTION_UPDATE",
+                      text: rawText,
                       source: "original",
-                      isFinal: isFinal 
-                    } 
+                      isFinal: isFinal
+                    }
                   })
 
                   // 🚨 Restrict translation to final sentences only to save DeepL quota
@@ -224,28 +224,33 @@ export default function AudioProxy() {
                       { type: "TRANSLATE_TEXT", text: rawText, targetLang: currentTargetLang },
                       (res) => {
                         if (res?.ok && res.translated) {
-                          chrome.runtime.sendMessage({ 
-                            type: "FORWARD_TO_TAB", 
-                            tabId: targetTabId, 
-                            payload: { 
-                              type: "CAPTION_UPDATE", 
-                              text: res.translated, 
+                          chrome.runtime.sendMessage({
+                            type: "FORWARD_TO_TAB",
+                            tabId: targetTabId,
+                            payload: {
+                              type: "CAPTION_UPDATE",
+                              text: res.translated,
                               source: "translated",
-                              isFinal: true 
-                            } 
+                              isFinal: true
+                            }
                           })
                         }
                       }
                     )
                   }
                 }
-              } catch (err) {}
+              } catch (err) { }
             }
           }
 
           connectWebSocket()
         } catch (err: any) {
           log(`❌ CRITICAL OFFSCREEN ERROR: ${err.message}`)
+          chrome.runtime.sendMessage({
+            type: "FORWARD_TO_TAB",
+            tabId: targetTabId,
+            payload: { type: "CAPTION_ERROR", error: err.message }
+          }).catch(() => { })
         }
       }
 
@@ -254,9 +259,13 @@ export default function AudioProxy() {
       }
     }
 
-    chrome.runtime.onMessage.addListener(handleMessage)
+    const listener = (msg: any) => {
+      handleMessage(msg)
+      return false
+    }
+    chrome.runtime.onMessage.addListener(listener)
     return () => {
-      chrome.runtime.onMessage.removeListener(handleMessage)
+      chrome.runtime.onMessage.removeListener(listener)
       stopCapture()
     }
   }, [])

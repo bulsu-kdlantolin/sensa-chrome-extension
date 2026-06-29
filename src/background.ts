@@ -58,7 +58,7 @@ async function resolveTargetTabId(sender: chrome.runtime.MessageSender): Promise
   }
 }
 
-async function getStreamIdWithRetry(targetTabId: number, attempts = 3): Promise<string> {
+async function getStreamIdWithRetry(targetTabId: number, attempts = 4): Promise<string> {
   let lastError = "Failed to get stream ID"
 
   for (let i = 0; i < attempts; i++) {
@@ -78,6 +78,12 @@ async function getStreamIdWithRetry(targetTabId: number, attempts = 3): Promise<
       return streamId
     }
 
+    if (lastError.includes("active stream") || lastError.includes("Cannot capture") || lastError.toLowerCase().includes("invalid state")) {
+      await chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => { })
+      await new Promise((resolve) => setTimeout(resolve, 300))
+      continue
+    }
+
     if (i < attempts - 1) {
       await new Promise((resolve) => setTimeout(resolve, 150))
     }
@@ -85,27 +91,6 @@ async function getStreamIdWithRetry(targetTabId: number, attempts = 3): Promise<
 
   throw new Error(lastError)
 }
-
-// ==========================================
-// ⚡ TAB SWITCH / RELOAD DEACTIVATION (AUDITORY ONLY)
-// Deactivates Auditory Mode dock when switching tabs or reloading so tabCapture authorization can be granted on popup open.
-// DOES NOT reset user profile, activeMode, or Visual Mode.
-// ==========================================
-const deactivateAuditoryDock = () => {
-  chrome.storage.local.set({
-    sensa_auditory_active: false
-  })
-}
-
-chrome.tabs.onActivated.addListener(() => {
-  deactivateAuditoryDock()
-})
-
-chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
-  if (changeInfo.status === "loading" && tab.url && !tab.url.startsWith("chrome://")) {
-    deactivateAuditoryDock()
-  }
-})
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // --- DEEPL TRANSLATOR ---
@@ -146,41 +131,75 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
-  // --- START INVISIBLE CAPTURE ---
-  if (message?.type === "START_CAPTURE") {
+  // --- START AUDITORY RADAR CAPTURE ---
+  if (message?.type === "START_RADAR_CAPTURE") {
+    sendResponse({ ok: true })
     ; (async () => {
       try {
-        chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => { })
-        await new Promise(r => setTimeout(r, 200))
-
         const targetTabId = await resolveTargetTabId(sender)
-        if (targetTabId === null) {
-          sendResponse({ ok: false, error: "No Tab ID (could not resolve active tab)" })
-          return
-        }
+        if (targetTabId === null) return
+
+        await chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => { })
+        await new Promise(resolve => setTimeout(resolve, 200))
 
         await ensureOffscreen()
 
         const streamId = await getStreamIdWithRetry(targetTabId)
 
-        // 🚨 THE FIX: Read chrome.storage here where it is safe, then pass deviceId!
-        chrome.storage.local.get(["sensa_auditory_settings"], (res) => {
-          const deviceId = res?.sensa_auditory_settings?.outputDevice || "default"
+        const storageRes = await chrome.storage.local.get(["sensa_auditory_settings"])
+        const deviceId = storageRes?.sensa_auditory_settings?.outputDevice || "default"
+
+        chrome.runtime.sendMessage({
+          type: "EXECUTE_OFFSCREEN_CAPTURE",
+          streamId,
+          targetLang: "EN",
+          targetTabId,
+          deviceId,
+          enableSTT: false
+        }).catch(() => { })
+      } catch (err) {
+        // Quietly ignore if activeTab wasn't invoked on this reload
+      }
+    })()
+    return false
+  }
+
+  // --- START INVISIBLE CAPTURE ---
+  if (message?.type === "START_CAPTURE") {
+    sendResponse({ ok: true })
+      ; (async () => {
+        let targetTabId: number | null = null
+        try {
+          targetTabId = await resolveTargetTabId(sender)
+          if (targetTabId === null) {
+            throw new Error("No Tab ID (could not resolve active tab)")
+          }
+
+          await chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => { })
+          await new Promise(resolve => setTimeout(resolve, 200))
+
+          await ensureOffscreen()
+
+          const streamId = await getStreamIdWithRetry(targetTabId)
+
+          const storageRes = await chrome.storage.local.get(["sensa_auditory_settings"])
+          const deviceId = storageRes?.sensa_auditory_settings?.outputDevice || "default"
 
           chrome.runtime.sendMessage({
             type: "EXECUTE_OFFSCREEN_CAPTURE",
             streamId,
             targetLang: message.targetLang,
             targetTabId,
-            deviceId // Passed safely to the offscreen document
+            deviceId,
+            enableSTT: true
           }).catch(() => { })
-          sendResponse({ ok: true })
-        })
-      } catch (err) {
-        sendResponse({ ok: false, error: String(err) })
-      }
-    })()
-    return true
+        } catch (err: any) {
+          if (targetTabId) {
+            chrome.tabs.sendMessage(targetTabId, { type: "CAPTION_ERROR", error: String(err?.message || err) }).catch(() => { })
+          }
+        }
+      })()
+    return false
   }
 
   // --- STOP CAPTURE ---

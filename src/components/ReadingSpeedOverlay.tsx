@@ -478,7 +478,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(cleanText, target, maxDistance)
 
         const applyCommand = (commandName: string, keywordsToConsume: string[], action: () => void) => {
-          if (Date.now() < ignoreSpeechUntil && commandName === lastCommandName) return
+          if (Date.now() < ignoreSpeechUntil) return
           ignoreSpeechUntil = Date.now() + 800
           lastCommandName = commandName
           consumedKeywords.push(...keywordsToConsume)
@@ -486,8 +486,9 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         }
 
         if (!isVoiceCommandActiveRef.current) {
-          if (check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start") || fuzzyCheck("sensa", 1)) {
-            applyCommand("sensa", ["sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake", "listen", "start"], () => {
+          if (Date.now() < ignoreSpeechUntil) return
+          if (check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake up", "hey sensa") || fuzzyCheck("sensa", 1)) {
+            applyCommand("sensa", ["sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake up", "hey sensa"], () => {
               playClickAudio("Voice commands activated")
               onToggleVoiceCommand?.()
             })
@@ -510,8 +511,8 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           return
         }
 
-        if (check("close", "cancel", "back", "exit", "dismiss", "hide") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1)) {
-          applyCommand("close", ["close", "cancel", "back", "exit", "dismiss", "hide"], () => closeOverlay())
+        if (check("close", "closed", "clothes", "cancel", "back", "exit", "quit", "dismiss", "hide", "duck") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1) || fuzzyCheck("quit", 1)) {
+          applyCommand("close", ["close", "closed", "clothes", "cancel", "back", "exit", "quit", "dismiss", "hide", "duck"], () => closeOverlay())
           return
         }
 

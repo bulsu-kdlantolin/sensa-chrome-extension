@@ -231,7 +231,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     const pending = pendingUtteranceRef.current
     if (pending) {
       pendingUtteranceRef.current = null
-      speakWithResolvedVoice(pending, () => {})
+      speakWithResolvedVoice(pending, () => { })
     }
   }, [voiceReady])
 
@@ -425,7 +425,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     if (!reminderTrigger) return
 
     const playReminder = () => {
-      speakWithResolvedVoice(commandReminderText, () => {})
+      speakWithResolvedVoice(commandReminderText, () => { })
     }
 
     if (reminderTrigger.skipped) {
@@ -600,9 +600,10 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
       className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] flex flex-col items-center justify-start font-sans relative overflow-hidden select-none transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-white' : 'bg-gray-50 text-gray-900'}`}
       onClick={handleSkipStep}
     >
-      
+
       {/* 🚨 CSS INJECTION FOR CINEMATIC ENTRANCE & BUTTON PROGRESS */}
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         @keyframes float-blue-1 {
           0%, 100% { transform: translate(0, 0) scale(1); }
           50% { transform: translate(20px, 30px) scale(1.1); }
@@ -641,7 +642,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
 
       {/* 🛡️ CONTENT WRAPPER */}
       <div className="relative z-10 flex flex-col items-center justify-start w-full h-full pt-6 pb-6 px-6">
-        
+
         {/* Header (No Logo, Perfectly Centered) */}
         <div className="flex flex-col items-center w-full mb-5">
           <h1 className="text-[34px] font-black tracking-tight leading-none mb-2.5 fade-in-1 text-center bg-gradient-to-r from-[#0A44FF] to-[#0099FF] bg-clip-text text-transparent px-2 pb-1 overflow-visible">

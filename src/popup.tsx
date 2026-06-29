@@ -124,7 +124,7 @@ export default function IndexPopup() {
 
 
   // 2. Safely update persistent JSON database
-  const updateProfile = (updates: Partial<SensaUserProfile>) : Promise<void> => {
+  const updateProfile = (updates: Partial<SensaUserProfile>): Promise<void> => {
     return new Promise((resolve) => {
       if (!userProfile) {
         // initialize if missing
@@ -198,21 +198,21 @@ export default function IndexPopup() {
   if (currentView === "LOADING" || !userProfile) {
     return <div className="w-[350px] h-[550px] bg-white flex items-center justify-center text-gray-800">Loading Data...</div>
   }
-  
+
   // MODE_SELECTION is ALWAYS first unless already completed the welcome flow
   if (currentView === "MODE_SELECTION") {
     return <ModeSelection theme="light" onSelectMode={handleSelectMode} />
   }
-  
+
   if (currentView === "WELCOME") {
     return userProfile.globalSettings.activeMode === "auditory"
       ? <AuditoryWelcomeOverlay theme="light" onGetStarted={handleGetStarted} />
       : <VisualWelcomeOverlay theme="light" onGetStarted={handleGetStarted} />
   }
-  
+
   // Dashboard is now an animating view manger. It calls popup.tsx for persistence
   if (currentView === "DASHBOARD") {
-    return <Dashboard 
+    return <Dashboard
       selectedMode={userProfile.globalSettings.activeMode}
       theme={currentTheme}
       onThemeChange={handleThemeChange} // Persistent theme handler
