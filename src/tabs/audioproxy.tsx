@@ -155,7 +155,7 @@ export default function AudioProxy() {
             if (intentionalStop) return
 
             log("5. Connecting WebSocket to cloud backend...")
-            socket = new WebSocket(STT_WS_URL)
+            socket = new WebSocket(`${STT_WS_URL}?targetLang=${encodeURIComponent(currentTargetLang)}`)
 
             socket.onopen = () => {
               log("6. WebSocket CONNECTED!")

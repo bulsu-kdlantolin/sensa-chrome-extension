@@ -9,15 +9,31 @@ interface TranscriptHistoryOverlayProps {
 
 export default function TranscriptHistoryOverlay({ isDark, captions, onClose }: TranscriptHistoryOverlayProps) {
   const [isMounted, setIsMounted] = useState(false)
+  const [isAtBottom, setIsAtBottom] = useState(true)
+  const isAtBottomRef = useRef(true)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current
+    const distanceToBottom = scrollHeight - scrollTop - clientHeight
+    const atBottom = distanceToBottom < 60
+    if (isAtBottomRef.current !== atBottom) {
+      isAtBottomRef.current = atBottom
+      setIsAtBottom(atBottom)
+    }
+  }
 
   useEffect(() => {
     setIsMounted(true)
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+    }
     return () => setIsMounted(false)
   }, [])
 
   useEffect(() => {
-    if (scrollContainerRef.current) {
+    if (scrollContainerRef.current && isAtBottomRef.current) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
     }
   }, [captions])
@@ -76,29 +92,47 @@ export default function TranscriptHistoryOverlay({ isDark, captions, onClose }: 
           </button>
         </div>
 
-        <div
-          ref={scrollContainerRef}
-          className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 scroll-smooth"
-        >
-          {captions.length === 0 ? (
-            <div className={`text-center py-10 italic ${secondaryText}`}>
-              No captions recorded yet.
-            </div>
-          ) : (
-            captions.map((b) => (
-              <div key={b.id} className={`p-4 rounded-[14px] ${isDark ? "bg-white/5 border border-white/10" : "bg-black/5 border border-black/5"} flex flex-col gap-2`}>
-                {b.original && (
-                  <div className={`text-[13px] font-medium opacity-75 ${textColor}`}>
-                    {b.original}
-                  </div>
-                )}
-                {b.translated && (
-                  <div className={`text-[15px] font-bold leading-snug ${textColor}`}>
-                    {b.translated}
-                  </div>
-                )}
+        <div className="relative flex-1 flex flex-col overflow-hidden">
+          <div
+            ref={scrollContainerRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto p-6 flex flex-col gap-4 scroll-smooth"
+          >
+            {captions.length === 0 ? (
+              <div className={`text-center py-10 italic ${secondaryText}`}>
+                No captions recorded yet.
               </div>
-            ))
+            ) : (
+              captions.map((b) => (
+                <div key={b.id} className={`p-4 rounded-[14px] ${isDark ? "bg-white/5 border border-white/10" : "bg-black/5 border border-black/5"} flex flex-col gap-2`}>
+                  {b.original && (
+                    <div className={`text-[13px] font-medium opacity-75 ${textColor}`}>
+                      {b.original}
+                    </div>
+                  )}
+                  {b.translated && (
+                    <div className={`text-[15px] font-bold leading-snug ${textColor}`}>
+                      {b.translated}
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {!isAtBottom && captions.length > 0 && (
+            <button
+              onClick={() => {
+                if (scrollContainerRef.current) {
+                  scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+                  isAtBottomRef.current = true
+                  setIsAtBottom(true)
+                }
+              }}
+              className="absolute bottom-4 left-1/2 -translate-x-1/2 py-2 px-4 rounded-full bg-[#FF7A2F] text-white text-xs font-semibold shadow-[0_4px_14px_rgba(255,122,47,0.4)] hover:bg-[#E86A25] transition-all flex items-center gap-1.5 z-10 animate-fade-in"
+            >
+              <span>↓ Scroll to bottom</span>
+            </button>
           )}
         </div>
 
