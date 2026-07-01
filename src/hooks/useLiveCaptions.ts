@@ -34,16 +34,21 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
     setCaptions([])
 
     let cancelled = false
+    let captureRunning = false
     const startCapture = (attempt = 1) => {
       chrome.runtime.sendMessage({ type: "START_CAPTURE", targetLang: targetLanguageRef.current }, (res) => {
         if (cancelled) return
         const combinedError = chrome.runtime.lastError?.message || (typeof res?.error === "string" ? res.error : "")
-        if (res?.ok) return
+        if (res?.ok) {
+          captureRunning = true
+          return
+        }
         
-        if (/receiving end does not exist|message port closed|No Tab ID|Failed to get stream ID|offscreen|already exists|active stream|Cannot capture/i.test(combinedError) && attempt < 5) {
+        if (/receiving end does not exist|message port closed|No Tab ID|Failed to get stream ID|offscreen|already exists|active stream|Cannot capture|invalid state/i.test(combinedError) && attempt < 5) {
           setTimeout(() => startCapture(attempt + 1), 250)
           return
         }
+        captureRunning = false
         if (/Extension has not been invoked|Chrome pages cannot be captured|activeTab|Failed to get stream ID|permission|not allowed|authorization/i.test(combinedError)) {
           setError("👆 Chrome requires authorization: please click the Sensa extension icon in your top Chrome toolbar once to enable live captions on this tab!")
           return
@@ -56,11 +61,13 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
     const handleMessage = (msg: any) => {
       if (msg.type === "CAPTION_ERROR") {
         const errStr = msg.error || "Failed to start capture."
-        if (/active stream|Cannot capture/i.test(errStr)) {
+        if (/active stream|Cannot capture|invalid state/i.test(errStr)) {
           startCapture()
         } else if (/Extension has not been invoked|Chrome pages cannot be captured|activeTab|Failed to get stream ID|permission|not allowed|authorization/i.test(errStr)) {
+          captureRunning = false
           setError("👆 Chrome requires authorization: please click the Sensa extension icon in your top Chrome toolbar once to enable live captions on this tab!")
         } else {
+          captureRunning = false
           setError(errStr)
         }
       }
@@ -90,14 +97,24 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
             }
           } 
           else if (msg.source === "translated") {
-            // Search FORWARDS so translations always attach to the correct sentence in the queue
+            let attached = false
             for (let i = 0; i < newCaptions.length; i++) {
-              if (newCaptions[i].isFinal && !newCaptions[i].translated) {
+              if (!newCaptions[i].translated) {
                 newCaptions[i] = {
                   ...newCaptions[i],
                   translated: msg.text
                 }
+                attached = true
                 break
+              }
+            }
+            if (!attached && newCaptions.length > 0) {
+              const lastIdx = newCaptions.length - 1
+              if (!newCaptions[lastIdx].isFinal || msg.isFinal) {
+                newCaptions[lastIdx] = {
+                  ...newCaptions[lastIdx],
+                  translated: msg.text
+                }
               }
             }
           }
@@ -107,7 +124,7 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
     }
 
     const handleVisibilityOrFocus = () => {
-      if ((document.visibilityState === "visible" || document.hasFocus()) && !cancelled) {
+      if ((document.visibilityState === "visible" || document.hasFocus()) && !cancelled && !captureRunning) {
         startCapture()
       }
     }

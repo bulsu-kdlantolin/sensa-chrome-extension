@@ -11,6 +11,7 @@ export default function AudioProxy() {
     let analyser: AnalyserNode | null = null
     let visualizerInterval: ReturnType<typeof setInterval> | null = null
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+    let interimTranslateTimer: ReturnType<typeof setTimeout> | null = null
     let activeStream: MediaStream | null = null
     let intentionalStop = false
 
@@ -22,6 +23,10 @@ export default function AudioProxy() {
         if (reconnectTimeout) {
           clearTimeout(reconnectTimeout)
           reconnectTimeout = null
+        }
+        if (interimTranslateTimer) {
+          clearTimeout(interimTranslateTimer)
+          interimTranslateTimer = null
         }
         if (visualizerInterval) {
           clearInterval(visualizerInterval)
@@ -157,6 +162,9 @@ export default function AudioProxy() {
             log("5. Connecting WebSocket to cloud backend...")
             socket = new WebSocket(`${STT_WS_URL}?targetLang=${encodeURIComponent(currentTargetLang)}`)
 
+            let lastTranslatedText = ""
+            let lastTranslateTime = 0
+
             socket.onopen = () => {
               log("6. WebSocket CONNECTED!")
               try {
@@ -204,9 +212,8 @@ export default function AudioProxy() {
                 const payload = JSON.parse(event.data)
                 if (payload.type === "TRANSCRIPT" && payload.text) {
                   const rawText = payload.text
-                  const isFinal = payload.isFinal // 🚨 Extract isFinal flag from Node payload
+                  const isFinal = payload.isFinal
 
-                  // 🚨 Forward the flag to the React UI for smooth scrolling
                   chrome.runtime.sendMessage({
                     type: "FORWARD_TO_TAB",
                     tabId: targetTabId,
@@ -218,10 +225,19 @@ export default function AudioProxy() {
                     }
                   })
 
-                  // 🚨 Restrict translation to final sentences only to save DeepL quota
-                  if (isFinal) {
+                  if (interimTranslateTimer) {
+                    clearTimeout(interimTranslateTimer)
+                    interimTranslateTimer = null
+                  }
+
+                  const triggerTranslation = (textToTranslate: string, markFinal: boolean) => {
+                    const trimmed = textToTranslate.trim()
+                    if (!trimmed || trimmed === lastTranslatedText) return
+                    lastTranslatedText = trimmed
+                    lastTranslateTime = Date.now()
+
                     chrome.runtime.sendMessage(
-                      { type: "TRANSLATE_TEXT", text: rawText, targetLang: currentTargetLang },
+                      { type: "TRANSLATE_TEXT", text: trimmed, targetLang: currentTargetLang },
                       (res) => {
                         if (res?.ok && res.translated) {
                           chrome.runtime.sendMessage({
@@ -231,12 +247,28 @@ export default function AudioProxy() {
                               type: "CAPTION_UPDATE",
                               text: res.translated,
                               source: "translated",
-                              isFinal: true
+                              isFinal: markFinal
                             }
-                          })
+                          }).catch(() => { })
                         }
                       }
                     )
+                  }
+
+                  // 🚨 Hybrid Smart-Debounce & Length Limit
+                  if (isFinal) {
+                    triggerTranslation(rawText, true)
+                  } else {
+                    const wordCount = rawText.trim().split(/\s+/).filter(Boolean).length
+                    const timeSinceLast = Date.now() - lastTranslateTime
+
+                    if (wordCount >= 12 && timeSinceLast >= 2000) {
+                      triggerTranslation(rawText, false)
+                    } else if (wordCount >= 8) {
+                      interimTranslateTimer = setTimeout(() => {
+                        triggerTranslation(rawText, false)
+                      }, 800)
+                    }
                   }
                 }
               } catch (err) { }

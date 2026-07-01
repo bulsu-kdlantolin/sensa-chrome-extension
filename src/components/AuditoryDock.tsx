@@ -146,9 +146,6 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
         if (audioCtx && audioCtx.state === 'suspended') {
           audioCtx.resume().catch(() => { })
         }
-        if (!isCaptionsActive) {
-          chrome.runtime.sendMessage({ type: "START_RADAR_CAPTURE" }).catch(() => { })
-        }
       }
     }
 
@@ -166,8 +163,10 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
       setTimeout(scanAndAttachMedia, 1000)
     }
 
-    if (isActive) {
+    if (isActive && !isCaptionsActive) {
       chrome.runtime.sendMessage({ type: "START_RADAR_CAPTURE" }).catch(() => { })
+    }
+    if (isActive) {
       document.addEventListener('visibilitychange', handleVisibilityOrFocus)
       window.addEventListener('focus', handleVisibilityOrFocus)
       window.addEventListener('yt-navigate-finish', handleShortsNavigation)

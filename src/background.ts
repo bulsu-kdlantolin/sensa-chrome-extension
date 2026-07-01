@@ -58,7 +58,7 @@ async function resolveTargetTabId(sender: chrome.runtime.MessageSender): Promise
   }
 }
 
-async function getStreamIdWithRetry(targetTabId: number, attempts = 4): Promise<string> {
+async function getStreamIdWithRetry(targetTabId: number, attempts = 6): Promise<string> {
   let lastError = "Failed to get stream ID"
 
   for (let i = 0; i < attempts; i++) {
@@ -78,7 +78,8 @@ async function getStreamIdWithRetry(targetTabId: number, attempts = 4): Promise<
       return streamId
     }
 
-    if (lastError.includes("active stream") || lastError.includes("Cannot capture") || lastError.toLowerCase().includes("invalid state")) {
+    const lowerErr = lastError.toLowerCase()
+    if (lowerErr.includes("active stream") || lowerErr.includes("cannot capture") || lowerErr.includes("invalid state")) {
       await chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => { })
       await new Promise((resolve) => setTimeout(resolve, 300))
       continue
