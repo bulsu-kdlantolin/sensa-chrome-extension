@@ -94,7 +94,7 @@ async function getStreamIdWithRetry(targetTabId: number, attempts = 6): Promise<
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // --- DEEPL TRANSLATOR ---
+  // --- TRANSLATION PROXY (backend-first, with direct DeepL fallback) ---
   if (message?.type === "TRANSLATE_TEXT") {
     ; (async () => {
       try {
@@ -102,9 +102,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const targetLang = typeof message?.targetLang === "string" ? message.targetLang : "EN"
         if (!text.trim()) return sendResponse({ ok: true, translated: "" })
 
+        // Try backend /translate endpoint first (keeps API keys server-side)
+        try {
+          const backendRes = await fetch(`${RENDER_BACKEND_URL}translate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text, targetLang })
+          })
+          if (backendRes.ok) {
+            const backendPayload = await backendRes.json()
+            if (backendPayload?.ok && typeof backendPayload.translated === "string") {
+              return sendResponse({ ok: true, translated: backendPayload.translated })
+            }
+          }
+        } catch (_) { /* backend unavailable, fall through to direct DeepL */ }
+
+        // Fallback: call DeepL directly using local .env key
         const deeplKey = process.env.PLASMO_PUBLIC_DEEPL_API_KEY
         if (!deeplKey) {
-          return sendResponse({ ok: false, error: "missing DeepL API key in environment" })
+          return sendResponse({ ok: false, error: "Translation service unavailable" })
         }
 
         const params = new URLSearchParams()
