@@ -165,7 +165,7 @@ export default function FloatingDockManager() {
   const [isModeSelectionVoiceActive, setIsModeSelectionVoiceActive] = useState(false)
   const [visualInputDeviceId, setVisualInputDeviceId] = useState("default")
   const [isVisualAutoscrollEnabled, setIsVisualAutoscrollEnabled] = useState(true)
-  const [isHighlightMouseScreenReaderEnabled, setIsHighlightMouseScreenReaderEnabled] = useState(false)
+  const [isHighlightMouseScreenReaderEnabled, setIsHighlightMouseScreenReaderEnabled] = useState(true)
   const [isImageAltReaderEnabled, setIsImageAltReaderEnabled] = useState(true)
 
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -316,6 +316,9 @@ export default function FloatingDockManager() {
       }
       if (typeof res.sensa_visual_highlight_mouse_screen_reader === "boolean") {
         setIsHighlightMouseScreenReaderEnabled(res.sensa_visual_highlight_mouse_screen_reader)
+      } else {
+        setIsHighlightMouseScreenReaderEnabled(true)
+        chrome.storage.local.set({ sensa_visual_highlight_mouse_screen_reader: true })
       }
       if (typeof res.sensa_visual_image_alt_reader_enabled === "boolean") {
         setIsImageAltReaderEnabled(res.sensa_visual_image_alt_reader_enabled)

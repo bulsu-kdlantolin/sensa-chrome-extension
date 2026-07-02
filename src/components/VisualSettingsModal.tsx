@@ -121,7 +121,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [highlightColor, setHighlightColor] = useState(DEFAULT_HIGHLIGHT_COLOR)
   const [isAutoscrollEnabled, setIsAutoscrollEnabled] = useState(true)
-  const [isHighlightMouseScreenReaderEnabled, setIsHighlightMouseScreenReaderEnabled] = useState(false)
+  const [isHighlightMouseScreenReaderEnabled, setIsHighlightMouseScreenReaderEnabled] = useState(true)
   const [isImageAltReaderEnabled, setIsImageAltReaderEnabled] = useState(true)
   const [magnifierSize, setMagnifierSize] = useState(240)
   const [magnifierZoom, setMagnifierZoom] = useState(2.0)
@@ -511,7 +511,12 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       if (typeof res.sensa_visual_sound_effects_enabled === "boolean") setIsSoundEffectsEnabled(res.sensa_visual_sound_effects_enabled)
       if (typeof res.sensa_visual_voice_uri === "string") setSelectedVoiceURI(res.sensa_visual_voice_uri)
       if (typeof res.sensa_visual_autoscroll_enabled === "boolean") setIsAutoscrollEnabled(res.sensa_visual_autoscroll_enabled)
-      if (typeof res.sensa_visual_highlight_mouse_screen_reader === "boolean") setIsHighlightMouseScreenReaderEnabled(res.sensa_visual_highlight_mouse_screen_reader)
+      if (typeof res.sensa_visual_highlight_mouse_screen_reader === "boolean") {
+        setIsHighlightMouseScreenReaderEnabled(res.sensa_visual_highlight_mouse_screen_reader)
+      } else {
+        setIsHighlightMouseScreenReaderEnabled(true)
+        chrome.storage.local.set({ sensa_visual_highlight_mouse_screen_reader: true })
+      }
       if (typeof res.sensa_visual_image_alt_reader_enabled === "boolean") setIsImageAltReaderEnabled(res.sensa_visual_image_alt_reader_enabled)
       if (typeof res.sensa_visual_magnifier_size === "number") setMagnifierSize(res.sensa_visual_magnifier_size)
       if (typeof res.sensa_visual_magnifier_zoom === "number") setMagnifierZoom(res.sensa_visual_magnifier_zoom)

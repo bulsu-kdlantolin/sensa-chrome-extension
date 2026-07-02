@@ -14,14 +14,12 @@ const LANGUAGE_OPTIONS = [
   { code: "EN-GB", label: "English (British)" },
   { code: "ES", label: "Spanish" },
   { code: "ES-419", label: "Spanish (Latin American)" },
-  { code: "ZH", label: "Chinese (unspecified)" },
   { code: "ZH-HANS", label: "Chinese (Simplified)" },
   { code: "ZH-HANT", label: "Chinese (Traditional)" },
   { code: "HI", label: "Hindi" },
   { code: "AR", label: "Arabic" },
   { code: "FR", label: "French" },
   { code: "FR-CA", label: "French (Canadian)" },
-  { code: "PT", label: "Portuguese (unspecified)" },
   { code: "PT-BR", label: "Portuguese (Brazilian)" },
   { code: "PT-PT", label: "Portuguese (European)" },
   { code: "RU", label: "Russian" },
@@ -310,9 +308,6 @@ export default function CaptionLanguageOverlay({
                   }`}
                 >
                   <span className="font-bold text-[15px]">{language.label}</span>
-                  <span className={`text-[12px] font-bold tracking-wider ${isSelected ? "text-white/80" : secondaryText}`}>
-                    {language.code}
-                  </span>
                 </button>
               )
             })}
