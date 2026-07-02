@@ -203,6 +203,24 @@ export default function AudioProxy() {
               }
             }
 
+            let lastInterimTime = 0
+            let lastInterimWordCount = 0
+            let pendingInterim: string | null = null
+            let interimTimer: ReturnType<typeof setTimeout> | null = null
+
+            const forwardCaption = (text: string, isFinal: boolean) => {
+              chrome.runtime.sendMessage({
+                type: "FORWARD_TO_TAB",
+                tabId: targetTabId,
+                payload: {
+                  type: "CAPTION_UPDATE",
+                  text,
+                  source: "original",
+                  isFinal
+                }
+              })
+            }
+
             socket.onmessage = (event) => {
               try {
                 const payload = JSON.parse(event.data)
@@ -210,43 +228,60 @@ export default function AudioProxy() {
                   const rawText = payload.text
                   const isFinal = payload.isFinal
 
-                  // Only display confirmed/final words — no interim flickering
-                  if (!isFinal) return
+                  if (isFinal) {
+                    // Final: render instantly, cancel any pending interim
+                    if (interimTimer) { clearTimeout(interimTimer); interimTimer = null }
+                    pendingInterim = null
+                    lastInterimWordCount = 0
+                    forwardCaption(rawText, true)
 
-                  chrome.runtime.sendMessage({
-                    type: "FORWARD_TO_TAB",
-                    tabId: targetTabId,
-                    payload: {
-                      type: "CAPTION_UPDATE",
-                      text: rawText,
-                      source: "original",
-                      isFinal: true
-                    }
-                  })
+                    // Translate finalized sentence
+                    const trimmed = rawText.trim()
+                    if (trimmed && trimmed !== lastTranslatedText) {
+                      lastTranslatedText = trimmed
+                      lastTranslateTime = Date.now()
 
-                  // Translate every finalized sentence
-                  const trimmed = rawText.trim()
-                  if (trimmed && trimmed !== lastTranslatedText) {
-                    lastTranslatedText = trimmed
-                    lastTranslateTime = Date.now()
-
-                    chrome.runtime.sendMessage(
-                      { type: "TRANSLATE_TEXT", text: trimmed, targetLang: currentTargetLang },
-                      (res) => {
-                        if (res?.ok && res.translated) {
-                          chrome.runtime.sendMessage({
-                            type: "FORWARD_TO_TAB",
-                            tabId: targetTabId,
-                            payload: {
-                              type: "CAPTION_UPDATE",
-                              text: res.translated,
-                              source: "translated",
-                              isFinal: true
-                            }
-                          }).catch(() => { })
+                      chrome.runtime.sendMessage(
+                        { type: "TRANSLATE_TEXT", text: trimmed, targetLang: currentTargetLang },
+                        (res) => {
+                          if (res?.ok && res.translated) {
+                            chrome.runtime.sendMessage({
+                              type: "FORWARD_TO_TAB",
+                              tabId: targetTabId,
+                              payload: {
+                                type: "CAPTION_UPDATE",
+                                text: res.translated,
+                                source: "translated",
+                                isFinal: true
+                              }
+                            }).catch(() => { })
+                          }
                         }
-                      }
-                    )
+                      )
+                    }
+                  } else {
+                    // Interim: only update when new words appear, max 2x/sec
+                    const wordCount = rawText.trim().split(/\s+/).filter(Boolean).length
+                    if (wordCount <= lastInterimWordCount) return // skip cosmetic-only corrections
+
+                    pendingInterim = rawText
+                    const now = Date.now()
+                    const elapsed = now - lastInterimTime
+
+                    if (elapsed >= 500) {
+                      lastInterimTime = now
+                      lastInterimWordCount = wordCount
+                      forwardCaption(rawText, false)
+                    } else if (!interimTimer) {
+                      interimTimer = setTimeout(() => {
+                        interimTimer = null
+                        if (pendingInterim) {
+                          lastInterimTime = Date.now()
+                          lastInterimWordCount = pendingInterim.trim().split(/\s+/).filter(Boolean).length
+                          forwardCaption(pendingInterim, false)
+                        }
+                      }, 500 - elapsed)
+                    }
                   }
                 }
               } catch (err) { }
