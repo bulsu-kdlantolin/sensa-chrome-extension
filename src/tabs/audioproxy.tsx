@@ -11,7 +11,6 @@ export default function AudioProxy() {
     let analyser: AnalyserNode | null = null
     let visualizerInterval: ReturnType<typeof setInterval> | null = null
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
-    let interimTranslateTimer: ReturnType<typeof setTimeout> | null = null
     let activeStream: MediaStream | null = null
     let intentionalStop = false
 
@@ -24,10 +23,7 @@ export default function AudioProxy() {
           clearTimeout(reconnectTimeout)
           reconnectTimeout = null
         }
-        if (interimTranslateTimer) {
-          clearTimeout(interimTranslateTimer)
-          interimTranslateTimer = null
-        }
+
         if (visualizerInterval) {
           clearInterval(visualizerInterval)
           visualizerInterval = null
@@ -207,10 +203,6 @@ export default function AudioProxy() {
               }
             }
 
-            let lastInterimForwardTime = 0
-            let pendingInterimText = ""
-            let interimForwardTimer: ReturnType<typeof setTimeout> | null = null
-
             socket.onmessage = (event) => {
               try {
                 const payload = JSON.parse(event.data)
@@ -218,68 +210,23 @@ export default function AudioProxy() {
                   const rawText = payload.text
                   const isFinal = payload.isFinal
 
-                  // Throttle interim updates to max once every 250ms for smooth reading
-                  if (isFinal) {
-                    // Final results always render immediately
-                    if (interimForwardTimer) {
-                      clearTimeout(interimForwardTimer)
-                      interimForwardTimer = null
+                  // Only display confirmed/final words — no interim flickering
+                  if (!isFinal) return
+
+                  chrome.runtime.sendMessage({
+                    type: "FORWARD_TO_TAB",
+                    tabId: targetTabId,
+                    payload: {
+                      type: "CAPTION_UPDATE",
+                      text: rawText,
+                      source: "original",
+                      isFinal: true
                     }
-                    pendingInterimText = ""
-                    chrome.runtime.sendMessage({
-                      type: "FORWARD_TO_TAB",
-                      tabId: targetTabId,
-                      payload: {
-                        type: "CAPTION_UPDATE",
-                        text: rawText,
-                        source: "original",
-                        isFinal: true
-                      }
-                    })
-                  } else {
-                    // Interim: throttle to prevent rapid repaints
-                    pendingInterimText = rawText
-                    const now = Date.now()
-                    const elapsed = now - lastInterimForwardTime
+                  })
 
-                    if (elapsed >= 250) {
-                      lastInterimForwardTime = now
-                      chrome.runtime.sendMessage({
-                        type: "FORWARD_TO_TAB",
-                        tabId: targetTabId,
-                        payload: {
-                          type: "CAPTION_UPDATE",
-                          text: rawText,
-                          source: "original",
-                          isFinal: false
-                        }
-                      })
-                    } else if (!interimForwardTimer) {
-                      interimForwardTimer = setTimeout(() => {
-                        interimForwardTimer = null
-                        lastInterimForwardTime = Date.now()
-                        chrome.runtime.sendMessage({
-                          type: "FORWARD_TO_TAB",
-                          tabId: targetTabId,
-                          payload: {
-                            type: "CAPTION_UPDATE",
-                            text: pendingInterimText,
-                            source: "original",
-                            isFinal: false
-                          }
-                        })
-                      }, 250 - elapsed)
-                    }
-                  }
-
-                  if (interimTranslateTimer) {
-                    clearTimeout(interimTranslateTimer)
-                    interimTranslateTimer = null
-                  }
-
-                  const triggerTranslation = (textToTranslate: string, markFinal: boolean) => {
-                    const trimmed = textToTranslate.trim()
-                    if (!trimmed || trimmed === lastTranslatedText) return
+                  // Translate every finalized sentence
+                  const trimmed = rawText.trim()
+                  if (trimmed && trimmed !== lastTranslatedText) {
                     lastTranslatedText = trimmed
                     lastTranslateTime = Date.now()
 
@@ -294,28 +241,12 @@ export default function AudioProxy() {
                               type: "CAPTION_UPDATE",
                               text: res.translated,
                               source: "translated",
-                              isFinal: markFinal
+                              isFinal: true
                             }
                           }).catch(() => { })
                         }
                       }
                     )
-                  }
-
-                  // 🚨 Hybrid Smart-Debounce & Length Limit
-                  if (isFinal) {
-                    triggerTranslation(rawText, true)
-                  } else {
-                    const wordCount = rawText.trim().split(/\s+/).filter(Boolean).length
-                    const timeSinceLast = Date.now() - lastTranslateTime
-
-                    if (wordCount >= 12 && timeSinceLast >= 2000) {
-                      triggerTranslation(rawText, false)
-                    } else if (wordCount >= 8) {
-                      interimTranslateTimer = setTimeout(() => {
-                        triggerTranslation(rawText, false)
-                      }, 800)
-                    }
                   }
                 }
               } catch (err) { }
