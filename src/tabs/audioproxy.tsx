@@ -207,6 +207,10 @@ export default function AudioProxy() {
               }
             }
 
+            let lastInterimForwardTime = 0
+            let pendingInterimText = ""
+            let interimForwardTimer: ReturnType<typeof setTimeout> | null = null
+
             socket.onmessage = (event) => {
               try {
                 const payload = JSON.parse(event.data)
@@ -214,16 +218,59 @@ export default function AudioProxy() {
                   const rawText = payload.text
                   const isFinal = payload.isFinal
 
-                  chrome.runtime.sendMessage({
-                    type: "FORWARD_TO_TAB",
-                    tabId: targetTabId,
-                    payload: {
-                      type: "CAPTION_UPDATE",
-                      text: rawText,
-                      source: "original",
-                      isFinal: isFinal
+                  // Throttle interim updates to max once every 250ms for smooth reading
+                  if (isFinal) {
+                    // Final results always render immediately
+                    if (interimForwardTimer) {
+                      clearTimeout(interimForwardTimer)
+                      interimForwardTimer = null
                     }
-                  })
+                    pendingInterimText = ""
+                    chrome.runtime.sendMessage({
+                      type: "FORWARD_TO_TAB",
+                      tabId: targetTabId,
+                      payload: {
+                        type: "CAPTION_UPDATE",
+                        text: rawText,
+                        source: "original",
+                        isFinal: true
+                      }
+                    })
+                  } else {
+                    // Interim: throttle to prevent rapid repaints
+                    pendingInterimText = rawText
+                    const now = Date.now()
+                    const elapsed = now - lastInterimForwardTime
+
+                    if (elapsed >= 250) {
+                      lastInterimForwardTime = now
+                      chrome.runtime.sendMessage({
+                        type: "FORWARD_TO_TAB",
+                        tabId: targetTabId,
+                        payload: {
+                          type: "CAPTION_UPDATE",
+                          text: rawText,
+                          source: "original",
+                          isFinal: false
+                        }
+                      })
+                    } else if (!interimForwardTimer) {
+                      interimForwardTimer = setTimeout(() => {
+                        interimForwardTimer = null
+                        lastInterimForwardTime = Date.now()
+                        chrome.runtime.sendMessage({
+                          type: "FORWARD_TO_TAB",
+                          tabId: targetTabId,
+                          payload: {
+                            type: "CAPTION_UPDATE",
+                            text: pendingInterimText,
+                            source: "original",
+                            isFinal: false
+                          }
+                        })
+                      }, 250 - elapsed)
+                    }
+                  }
 
                   if (interimTranslateTimer) {
                     clearTimeout(interimTranslateTimer)
