@@ -601,9 +601,11 @@ export default function VisualDock({
   useEffect(() => {
     let loopTimer: number | null = null
 
+    const isSpeechBusy = () => window.speechSynthesis.speaking || window.speechSynthesis.pending
+
     const checkReminder = () => {
       const cbs = callbacksRef.current
-      if (cbs.isPlaying || cbs.isVoiceCommandsSuspended || document.visibilityState !== "visible") {
+      if (cbs.isPlaying || cbs.isVoiceCommandsSuspended || document.visibilityState !== "visible" || isSpeechBusy()) {
         loopTimer = window.setTimeout(checkReminder, 1000)
         return
       }
@@ -615,7 +617,7 @@ export default function VisualDock({
 
       chrome.storage.local.get(["sensa_last_voice_reminder_time"], (res) => {
         const cbsAsync = callbacksRef.current
-        if (cbsAsync.isPlaying || cbsAsync.isVoiceCommandsSuspended) {
+        if (cbsAsync.isPlaying || cbsAsync.isVoiceCommandsSuspended || isSpeechBusy()) {
           loopTimer = window.setTimeout(checkReminder, 1000)
           return
         }
@@ -651,7 +653,7 @@ export default function VisualDock({
       hasPlayedInitialReminderRef.current = true
       initialTimeout = window.setTimeout(() => {
         const cbs = callbacksRef.current
-        if (!cbs.isPlaying && !cbs.isVoiceCommandsSuspended && document.visibilityState === "visible" && Date.now() - lastUISpeechTimeRef.current >= lastUISpeechDurationRef.current) {
+        if (!cbs.isPlaying && !cbs.isVoiceCommandsSuspended && document.visibilityState === "visible" && Date.now() - lastUISpeechTimeRef.current >= lastUISpeechDurationRef.current && !isSpeechBusy()) {
           chrome.storage.local.set({ sensa_last_voice_reminder_time: Date.now() })
           if (cbs.isVoiceCommandActive) {
             cbs.playClickAudio("You can say 'commands' when you want to know the list of commands for the visual dock.")

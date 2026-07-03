@@ -8,21 +8,30 @@ export interface CaptionBlock {
   isFinal: boolean
 }
 
-export function useLiveCaptions(isActive: boolean, targetLanguage: string, showOriginalText: boolean, isCaptionsDisplayed: boolean = true) {
+export function useLiveCaptions(isActive: boolean, targetLanguage: string, showOriginalText: boolean, isCaptionsDisplayed: boolean = true, sourceLanguage: string = "en") {
   const [captions, setCaptions] = useState<CaptionBlock[]>([])
   const [error, setError] = useState<string | null>(null)
   
   const targetLanguageRef = useRef(targetLanguage)
+  const sourceLanguageRef = useRef(sourceLanguage)
   const isCaptionsDisplayedRef = useRef(isCaptionsDisplayed)
   
   useEffect(() => { if (!isCaptionsDisplayed) setCaptions([]) }, [isCaptionsDisplayed])
   useEffect(() => { targetLanguageRef.current = targetLanguage }, [targetLanguage])
+  useEffect(() => { sourceLanguageRef.current = sourceLanguage }, [sourceLanguage])
   useEffect(() => { isCaptionsDisplayedRef.current = isCaptionsDisplayed }, [isCaptionsDisplayed])
 
   useEffect(() => {
     if (!isActive) return
+    setCaptions([])
     chrome.runtime.sendMessage({ type: "UPDATE_CAPTION_LANGUAGE", targetLang: targetLanguage })
   }, [targetLanguage, isActive])
+
+  useEffect(() => {
+    if (!isActive) return
+    setCaptions([])
+    chrome.runtime.sendMessage({ type: "UPDATE_SOURCE_LANGUAGE", sourceLang: sourceLanguage })
+  }, [sourceLanguage, isActive])
 
   useEffect(() => {
     if (!isActive) {
@@ -36,7 +45,7 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
     let cancelled = false
     let captureRunning = false
     const startCapture = (attempt = 1) => {
-      chrome.runtime.sendMessage({ type: "START_CAPTURE", targetLang: targetLanguageRef.current }, (res) => {
+      chrome.runtime.sendMessage({ type: "START_CAPTURE", targetLang: targetLanguageRef.current, sourceLang: sourceLanguageRef.current }, (res) => {
         if (cancelled) return
         const combinedError = chrome.runtime.lastError?.message || (typeof res?.error === "string" ? res.error : "")
         if (res?.ok) {

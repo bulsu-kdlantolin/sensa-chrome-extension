@@ -368,8 +368,10 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     let loopTimer: number | null = null
     let lastReminderTime = Date.now()
 
+    const isSpeechBusy = () => window.speechSynthesis.speaking || window.speechSynthesis.pending
+
     const checkReminder = () => {
-      if (document.visibilityState !== "visible") {
+      if (document.visibilityState !== "visible" || isSpeechBusy()) {
         loopTimer = window.setTimeout(checkReminder, 1000)
         return
       }
@@ -383,7 +385,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
       if (now - lastReminderTime >= 60000) {
         lastReminderTime = now
-        if (isVoiceGuideEnabledRef.current) {
+        if (isVoiceGuideEnabledRef.current && !isSpeechBusy()) {
           speakSettingsGuide("You can say commands to hear the list of available actions.")
         }
       }

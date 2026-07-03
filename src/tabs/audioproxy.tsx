@@ -15,10 +15,18 @@ export default function AudioProxy() {
     let intentionalStop = false
 
     let currentTargetLang = "EN"
+    let currentSourceLang = "en"
+    let reconnectWebSocketFn: (() => void) | null = null
+    let debounceLangTimeout: ReturnType<typeof setTimeout> | null = null
 
     const stopCapture = () => {
       intentionalStop = true
+      reconnectWebSocketFn = null
       try {
+        if (debounceLangTimeout) {
+          clearTimeout(debounceLangTimeout)
+          debounceLangTimeout = null
+        }
         if (reconnectTimeout) {
           clearTimeout(reconnectTimeout)
           reconnectTimeout = null
@@ -63,8 +71,9 @@ export default function AudioProxy() {
       }
 
       if (msg.type === "EXECUTE_OFFSCREEN_CAPTURE") {
-        const { streamId, targetLang, targetTabId, deviceId } = msg
+        const { streamId, targetLang, sourceLang, targetTabId, deviceId } = msg
         currentTargetLang = targetLang || "EN"
+        currentSourceLang = sourceLang || "en"
 
         const log = (message: string) => {
           chrome.runtime.sendMessage({
@@ -77,6 +86,7 @@ export default function AudioProxy() {
         try {
           log("1. Starting offscreen capture sequence...")
           stopCapture()
+          intentionalStop = false
 
           log("2. Requesting getUserMedia from Chrome...")
           const stream = await navigator.mediaDevices.getUserMedia({
@@ -97,8 +107,6 @@ export default function AudioProxy() {
           } else {
             log("-> Using default system audio output.")
           }
-
-          intentionalStop = false
 
           if (!audioCtx) {
             log("-> Building Audio Graph...")
@@ -156,7 +164,7 @@ export default function AudioProxy() {
             if (intentionalStop) return
 
             log("5. Connecting WebSocket to cloud backend...")
-            socket = new WebSocket(`${STT_WS_URL}?targetLang=${encodeURIComponent(currentTargetLang)}`)
+            socket = new WebSocket(`${STT_WS_URL}?targetLang=${encodeURIComponent(currentTargetLang)}&sourceLang=${encodeURIComponent(currentSourceLang)}`)
 
             let lastTranslatedText = ""
             let lastTranslateTime = 0
@@ -165,6 +173,13 @@ export default function AudioProxy() {
               log("6. WebSocket CONNECTED!")
               try {
                 if (!audioCtx) return
+                if (processor) {
+                  try { processor.disconnect(); processor.onaudioprocess = null; } catch (e) {}
+                  processor = null
+                }
+                if (audioCtx.state === 'suspended') {
+                  audioCtx.resume().catch(() => {})
+                }
                 processor = audioCtx.createScriptProcessor(4096, 1, 1)
                 source.connect(processor)
                 const silentGain = audioCtx.createGain()
@@ -288,6 +303,31 @@ export default function AudioProxy() {
             }
           }
 
+          reconnectWebSocketFn = () => {
+            if (intentionalStop) return
+            log(`🔄 Reconnecting WebSocket with sourceLang=${currentSourceLang}, targetLang=${currentTargetLang}...`)
+            if (reconnectTimeout) {
+              clearTimeout(reconnectTimeout)
+              reconnectTimeout = null
+            }
+            if (processor) {
+              try {
+                processor.disconnect()
+                processor.onaudioprocess = null
+              } catch (e) {}
+              processor = null
+            }
+            if (socket) {
+              socket.onclose = null
+              socket.close()
+              socket = null
+            }
+            if (audioCtx && audioCtx.state === 'suspended') {
+              audioCtx.resume().catch(() => {})
+            }
+            connectWebSocket()
+          }
+
           connectWebSocket()
         } catch (err: any) {
           log(`❌ CRITICAL OFFSCREEN ERROR: ${err.message}`)
@@ -299,8 +339,29 @@ export default function AudioProxy() {
         }
       }
 
+      const triggerDebouncedReconnect = () => {
+        if (debounceLangTimeout) clearTimeout(debounceLangTimeout);
+        debounceLangTimeout = setTimeout(() => {
+          if (reconnectWebSocketFn && !intentionalStop) {
+            reconnectWebSocketFn();
+          }
+        }, 150);
+      };
+
       if (msg.type === "UPDATE_CAPTION_LANGUAGE_OFFSCREEN") {
-        currentTargetLang = msg.targetLang || "EN"
+        const newTarget = msg.targetLang || "EN";
+        if (newTarget !== currentTargetLang) {
+          currentTargetLang = newTarget;
+          triggerDebouncedReconnect();
+        }
+      }
+
+      if (msg.type === "UPDATE_SOURCE_LANGUAGE_OFFSCREEN") {
+        const newSource = msg.sourceLang || "en";
+        if (newSource !== currentSourceLang) {
+          currentSourceLang = newSource;
+          triggerDebouncedReconnect();
+        }
       }
     }
 

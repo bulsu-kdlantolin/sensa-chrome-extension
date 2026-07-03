@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useLayoutEffect } from "react"
+import { SOURCE_LANGUAGE_OPTIONS } from "./CaptionLanguageOverlay"
 
 interface CaptionOffset { x: number; y: number }
 
@@ -17,14 +18,18 @@ interface LiveCaptionBoxProps {
   bgColor: string
   fontFamily?: string
   showOriginalText?: boolean
+  sourceLanguage?: string
+  targetLanguage?: string
 }
 
 // 🚨 Industry Standard "Rule of Two"
 const MAX_VISIBLE_BLOCKS = 2 
 
 export default function LiveCaptionBox({
-  captions, error, fontSize, textColor, bgColor, fontFamily, showOriginalText = true
+  captions, error, fontSize, textColor, bgColor, fontFamily, showOriginalText = true, sourceLanguage = "en", targetLanguage = "EN"
 }: LiveCaptionBoxProps) {
+  const sourceLangMatch = SOURCE_LANGUAGE_OPTIONS.find((item) => item.code.toLowerCase() === (sourceLanguage || "en").toLowerCase())
+  const sourceLangLabel = sourceLangMatch?.label || "English"
   const [offset, setOffset] = useState<CaptionOffset>({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const dragStartRef = useRef({ x: 0, y: 0 })
@@ -38,23 +43,16 @@ export default function LiveCaptionBox({
   // --- NON-ENGLISH DETECTION ---
   const [showLangWarning, setShowLangWarning] = useState(false)
   const lastCaptionTimeRef = useRef<number>(Date.now())
-  const langWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    // Reset warning and timer whenever new captions arrive
-    if (captions.length > 0) {
-      lastCaptionTimeRef.current = Date.now()
-      setShowLangWarning(false)
-      if (langWarningTimerRef.current) {
-        clearTimeout(langWarningTimerRef.current)
-        langWarningTimerRef.current = null
-      }
-    }
-  }, [captions])
+    // Reset warning and timer whenever new captions arrive or any language setting changes
+    lastCaptionTimeRef.current = Date.now()
+    setShowLangWarning(false)
+  }, [captions, sourceLanguage, targetLanguage])
 
   useEffect(() => {
     // Listen for audio frequency updates — if audio is playing but no captions arrive
-    // for 8+ seconds, it likely means non-English speech is being spoken
+    // for 8+ seconds, it likely means speech in a different language is being spoken
     const handleFrequencyCheck = (msg: any) => {
       if (msg.type !== "AUDIO_FREQUENCY_UPDATE") return
       const speechEnergy = msg.speechEnergy || 0
@@ -69,16 +67,6 @@ export default function LiveCaptionBox({
     }
     chrome.runtime.onMessage.addListener(handleFrequencyCheck)
     return () => chrome.runtime.onMessage.removeListener(handleFrequencyCheck)
-  }, [showLangWarning])
-
-  // Auto-dismiss warning after 12 seconds
-  useEffect(() => {
-    if (showLangWarning) {
-      langWarningTimerRef.current = setTimeout(() => setShowLangWarning(false), 12000)
-      return () => {
-        if (langWarningTimerRef.current) clearTimeout(langWarningTimerRef.current)
-      }
-    }
   }, [showLangWarning])
 
   // --- DRAG LOGIC ---
@@ -173,6 +161,7 @@ export default function LiveCaptionBox({
         lineHeight: 1.25,
         // 🚨 THE FIX: Dim older original text while keeping current original text slightly soft
         color: textColor,
+        fontSize: `${Math.max(12, fontSize * 0.75)}px`,
         opacity: isLatest ? (b.isFinal ? 0.75 : 0.45) : 0.4,
         fontStyle: b.isFinal ? "normal" : "italic",
         fontWeight: 500,
@@ -206,18 +195,28 @@ export default function LiveCaptionBox({
     <div style={{
       display: "inline-flex",
       alignItems: "center",
-      gap: "5px",
-      padding: "3px 8px",
-      borderRadius: "6px",
-      backgroundColor: "rgba(255,255,255,0.08)",
-      fontSize: "0.72em",
-      fontWeight: 500,
-      opacity: 0.5,
+      gap: `${Math.max(6, fontSize * 0.2)}px`,
+      padding: `${Math.max(4, fontSize * 0.12)}px ${Math.max(10, fontSize * 0.3)}px`,
+      borderRadius: "8px",
+      backgroundColor: "rgba(255, 122, 47, 0.15)",
+      border: "1px solid rgba(255, 122, 47, 0.35)",
+      fontSize: `${Math.max(11, fontSize * 0.55)}px`,
+      fontWeight: 600,
+      color: "#FF9F0A",
       letterSpacing: "0.02em",
       marginTop: "2px",
       alignSelf: "center",
     }}>
-      <span style={{ fontSize: "0.85em" }}>🌐</span> English audio only
+      <span style={{
+        width: `${Math.max(7, fontSize * 0.25)}px`,
+        height: `${Math.max(7, fontSize * 0.25)}px`,
+        borderRadius: "50%",
+        backgroundColor: "#FF7A2F",
+        boxShadow: "0 0 8px #FF7A2F",
+        display: "inline-block",
+        flexShrink: 0
+      }} />
+      <span>{sourceLangLabel} audio</span>
     </div>
   )
 
@@ -226,19 +225,19 @@ export default function LiveCaptionBox({
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      gap: "6px",
-      padding: "5px 12px",
+      gap: `${Math.max(6, fontSize * 0.2)}px`,
+      padding: `${Math.max(5, fontSize * 0.15)}px ${Math.max(12, fontSize * 0.35)}px`,
       borderRadius: "8px",
       backgroundColor: "rgba(251, 191, 36, 0.12)",
       border: "1px solid rgba(251, 191, 36, 0.25)",
-      fontSize: `${Math.max(11, fontSize * 0.7)}px`,
+      fontSize: `${Math.max(12, fontSize * 0.65)}px`,
       fontWeight: 500,
       color: "#FCD34D",
       textAlign: "center" as const,
       animation: "sensa-lang-fade-in 400ms ease",
     }}>
-      <span>⚠️</span>
-      <span>Non-English speech detected — live captions currently support <strong>English audio</strong> only</span>
+      <span style={{ fontSize: "1.15em" }}>⚠️</span>
+      <span>Speech detected — live captions are currently listening for <strong>{sourceLangLabel} audio</strong></span>
     </div>
   ) : null
 
@@ -263,6 +262,7 @@ export default function LiveCaptionBox({
           borderRadius: "14px",
           backgroundColor: bgColor,
           color: textColor,
+          fontSize: `${fontSize}px`,
           fontFamily: fontFamily || "system-ui, Arial, sans-serif",
           boxShadow: "0 10px 25px rgba(0,0,0,0.25)",
           userSelect: "none",
@@ -284,10 +284,10 @@ export default function LiveCaptionBox({
         onTouchStart={handleTouchStart}
       >
         {error ? (
-          <div style={{ color: "#FCA5A5", textAlign: "center", fontSize: "0.9em", fontWeight: 500 }}>{error}</div>
+          <div style={{ color: "#FCA5A5", textAlign: "center", fontSize: `${Math.max(14, fontSize * 0.8)}px`, fontWeight: 500, padding: "4px 0" }}>{error}</div>
         ) : displayBlocks.length === 0 ? (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px", padding: "4px 0" }}>
-            <div style={{ opacity: 0.6, textAlign: "center", fontSize: "0.9em", fontWeight: 500, fontStyle: "italic" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: `${Math.max(4, fontSize * 0.15)}px`, padding: "4px 0" }}>
+            <div style={{ opacity: 0.7, textAlign: "center", fontSize: `${Math.max(14, fontSize * 0.8)}px`, fontWeight: 500, fontStyle: "italic" }}>
               Listening for speech...
             </div>
             {langBadge}

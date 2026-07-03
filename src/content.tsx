@@ -154,6 +154,7 @@ export default function FloatingDockManager() {
   const [isCaptionTransparencyOpen, setIsCaptionTransparencyOpen] = useState(false)
   const [auditorySettings, setAuditorySettings] = useState<AuditorySettingsState>(DEFAULT_AUDITORY_SETTINGS)
   const [captionLanguage, setCaptionLanguage] = useState("en-US")
+  const [sourceLanguage, setSourceLanguage] = useState("en")
   const [textSize, setTextSize] = useState(32)
   const [captionTransparency, setCaptionTransparency] = useState(75)
   const [isFocusMode, setIsFocusMode] = useState(false)
@@ -242,7 +243,8 @@ export default function FloatingDockManager() {
     isAuditoryModeActive && isCaptionsActive,
     targetLanguage,
     auditorySettings.showOriginalText,
-    isCaptionsActive  // Pass the UI toggle state so captions clear when turned off
+    isCaptionsActive,  // Pass the UI toggle state so captions clear when turned off
+    sourceLanguage
   )
 
   useEffect(() => {
@@ -289,11 +291,12 @@ export default function FloatingDockManager() {
 
   // --- THE BRIDGE ---
   useEffect(() => {
-    chrome.storage.local.get(["sensa_visual_active", "sensa_auditory_active", "sensa_user_profile", "sensa_visual_reading_speed", "sensa_visual_highlight_color", "sensa_visual_input_device_id", "sensa_visual_autoscroll_enabled", "sensa_visual_highlight_mouse_screen_reader", "sensa_visual_image_alt_reader_enabled", "sensa_auditory_caption_language", "sensa_auditory_text_size", "sensa_auditory_caption_transparency", "sensa_auditory_focus_mode", "sensa_auditory_settings", "sensa_voice_command_active"], (res) => {
+    chrome.storage.local.get(["sensa_visual_active", "sensa_auditory_active", "sensa_user_profile", "sensa_visual_reading_speed", "sensa_visual_highlight_color", "sensa_visual_input_device_id", "sensa_visual_autoscroll_enabled", "sensa_visual_highlight_mouse_screen_reader", "sensa_visual_image_alt_reader_enabled", "sensa_auditory_caption_language", "sensa_source_lang", "sensa_auditory_text_size", "sensa_auditory_caption_transparency", "sensa_auditory_focus_mode", "sensa_auditory_settings", "sensa_voice_command_active"], (res) => {
       const storedMode = res.sensa_visual_active ? "visual" : res.sensa_auditory_active ? "auditory" : null
       setActiveMode(storedMode)
       if (res.sensa_user_profile?.globalSettings?.theme === "dark") setUserThemePref(true)
       if (typeof res.sensa_auditory_caption_language === "string") setCaptionLanguage(res.sensa_auditory_caption_language)
+      if (typeof res.sensa_source_lang === "string" && res.sensa_source_lang !== "AUTO") setSourceLanguage(res.sensa_source_lang)
       if (typeof res.sensa_auditory_text_size === "number") setTextSize(res.sensa_auditory_text_size)
       if (typeof res.sensa_auditory_caption_transparency === "number") setCaptionTransparency(res.sensa_auditory_caption_transparency)
       if (typeof res.sensa_auditory_focus_mode === "boolean") setIsFocusMode(res.sensa_auditory_focus_mode)
@@ -449,6 +452,9 @@ export default function FloatingDockManager() {
       }
       if (changes.sensa_auditory_caption_language !== undefined && typeof changes.sensa_auditory_caption_language.newValue === "string") {
         setCaptionLanguage(changes.sensa_auditory_caption_language.newValue)
+      }
+      if (changes.sensa_source_lang !== undefined && typeof changes.sensa_source_lang.newValue === "string" && changes.sensa_source_lang.newValue !== "AUTO") {
+        setSourceLanguage(changes.sensa_source_lang.newValue)
       }
       if (changes.sensa_auditory_text_size !== undefined && typeof changes.sensa_auditory_text_size.newValue === "number") {
         setTextSize(changes.sensa_auditory_text_size.newValue)
@@ -703,6 +709,8 @@ export default function FloatingDockManager() {
           )}
           fontFamily={auditorySettings.fontFamily || DEFAULT_AUDITORY_SETTINGS.fontFamily}
           showOriginalText={auditorySettings.showOriginalText}
+          sourceLanguage={sourceLanguage}
+          targetLanguage={targetLanguage}
         />
       )}
 
@@ -762,9 +770,14 @@ export default function FloatingDockManager() {
           <CaptionLanguageOverlay
             isDark={isDark}
             initialLanguage={captionLanguage}
+            initialSourceLanguage={sourceLanguage}
             onLanguageChange={(language) => {
               setCaptionLanguage(language)
-              chrome.storage.local.set({ sensa_auditory_caption_language: language })
+              chrome.storage.local.set({ sensa_auditory_caption_language: language, sensa_target_lang: language })
+            }}
+            onSourceLanguageChange={(language) => {
+              setSourceLanguage(language)
+              chrome.storage.local.set({ sensa_source_lang: language })
             }}
             onClose={() => setIsCaptionLanguageOpen(false)}
           />

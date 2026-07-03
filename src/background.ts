@@ -206,6 +206,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             type: "EXECUTE_OFFSCREEN_CAPTURE",
             streamId,
             targetLang: message.targetLang,
+            sourceLang: message.sourceLang,
             targetTabId,
             deviceId,
             enableSTT: true
@@ -236,6 +237,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.runtime.sendMessage({
       type: "UPDATE_CAPTION_LANGUAGE_OFFSCREEN",
       targetLang: message.targetLang
+    }).catch(() => { })
+    sendResponse({ ok: true })
+    return false
+  }
+
+  if (message?.type === "UPDATE_SOURCE_LANGUAGE") {
+    chrome.runtime.sendMessage({
+      type: "UPDATE_SOURCE_LANGUAGE_OFFSCREEN",
+      sourceLang: message.sourceLang
     }).catch(() => { })
     sendResponse({ ok: true })
     return false

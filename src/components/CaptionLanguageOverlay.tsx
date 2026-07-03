@@ -134,13 +134,60 @@ const LANGUAGE_OPTIONS = [
   { code: "PRS", label: "Dari" }
 ]
 
+// Deepgram Nova-2 supported speech recognition languages
+export const SOURCE_LANGUAGE_OPTIONS = [
+  { code: "en", label: "English" },
+  { code: "ko", label: "Korean" },
+  { code: "ja", label: "Japanese" },
+  { code: "zh", label: "Chinese" },
+  { code: "es", label: "Spanish" },
+  { code: "fr", label: "French" },
+  { code: "de", label: "German" },
+  { code: "pt", label: "Portuguese" },
+  { code: "ru", label: "Russian" },
+  { code: "it", label: "Italian" },
+  { code: "hi", label: "Hindi" },
+  { code: "nl", label: "Dutch" },
+  { code: "tr", label: "Turkish" },
+  { code: "id", label: "Indonesian" },
+  { code: "vi", label: "Vietnamese" },
+  { code: "th", label: "Thai" },
+  { code: "pl", label: "Polish" },
+  { code: "uk", label: "Ukrainian" },
+  { code: "sv", label: "Swedish" },
+  { code: "no", label: "Norwegian" },
+  { code: "da", label: "Danish" },
+  { code: "fi", label: "Finnish" },
+  { code: "cs", label: "Czech" },
+  { code: "ro", label: "Romanian" },
+  { code: "el", label: "Greek" },
+  { code: "hu", label: "Hungarian" },
+  { code: "ar", label: "Arabic" },
+  { code: "he", label: "Hebrew" },
+  { code: "ms", label: "Malay" },
+  { code: "tl", label: "Tagalog (Filipino)" }
+]
+
+interface CaptionLanguageOverlayProps {
+  isDark: boolean
+  onClose: () => void
+  initialLanguage?: string
+  initialSourceLanguage?: string
+  onLanguageChange?: (language: string) => void
+  onSourceLanguageChange?: (language: string) => void
+}
+
 export default function CaptionLanguageOverlay({
   isDark,
   onClose,
   initialLanguage = "EN-US",
-  onLanguageChange
+  initialSourceLanguage = "en",
+  onLanguageChange,
+  onSourceLanguageChange
 }: CaptionLanguageOverlayProps) {
+  const [activeTab, setActiveTab] = useState<"target" | "source">("source")
   const [selectedLanguage, setSelectedLanguage] = useState(initialLanguage)
+  const [selectedSourceLanguage, setSelectedSourceLanguage] = useState(initialSourceLanguage)
   const [searchTerm, setSearchTerm] = useState("")
 
   // Dragging & Animation State
@@ -163,13 +210,25 @@ export default function CaptionLanguageOverlay({
   }, [initialLanguage])
 
   useEffect(() => {
+    setSelectedSourceLanguage(initialSourceLanguage)
+  }, [initialSourceLanguage])
+
+  useEffect(() => {
     offsetRef.current = offset
   }, [offset])
 
   useEffect(() => {
-    chrome.storage.local.get(["sensa_caption_language_overlay_offset"], (result) => {
+    chrome.storage.local.get(["sensa_caption_language_overlay_offset", "sensa_source_lang", "sensa_target_lang", "sensa_auditory_caption_language"], (result) => {
       if (result.sensa_caption_language_overlay_offset) {
         setOffset(result.sensa_caption_language_overlay_offset)
+      }
+      if (result.sensa_source_lang && typeof result.sensa_source_lang === "string" && result.sensa_source_lang !== "AUTO") {
+        setSelectedSourceLanguage(result.sensa_source_lang)
+      }
+      if (result.sensa_target_lang && typeof result.sensa_target_lang === "string") {
+        setSelectedLanguage(result.sensa_target_lang)
+      } else if (result.sensa_auditory_caption_language && typeof result.sensa_auditory_caption_language === "string") {
+        setSelectedLanguage(result.sensa_auditory_caption_language)
       }
       setInitialOffsetLoaded(true)
     })
@@ -207,18 +266,21 @@ export default function CaptionLanguageOverlay({
     offsetStartRef.current = { x: offsetRef.current.x, y: offsetRef.current.y }
   }
 
+  const currentOptions = activeTab === "target" ? LANGUAGE_OPTIONS : SOURCE_LANGUAGE_OPTIONS
+  const currentSelected = activeTab === "target" ? selectedLanguage : selectedSourceLanguage
+
   const filteredLanguages = useMemo(() => {
     const needle = searchTerm.trim().toLowerCase()
-    if (!needle) return LANGUAGE_OPTIONS
-    return LANGUAGE_OPTIONS.filter((item) => {
+    if (!needle) return currentOptions
+    return currentOptions.filter((item) => {
       return item.label.toLowerCase().includes(needle) || item.code.toLowerCase().includes(needle)
     })
-  }, [searchTerm])
+  }, [searchTerm, currentOptions])
 
   const activeLabel = useMemo(() => {
-    const match = LANGUAGE_OPTIONS.find((item) => item.code === selectedLanguage)
-    return match?.label ?? selectedLanguage
-  }, [selectedLanguage])
+    const match = currentOptions.find((item) => item.code === currentSelected)
+    return match?.label ?? currentSelected
+  }, [currentSelected, currentOptions])
 
   const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.target === event.currentTarget) {
@@ -236,7 +298,9 @@ export default function CaptionLanguageOverlay({
 
   return (
     <div 
-      onClick={handleBackdropClick} 
+      onClick={handleBackdropClick}
+      onKeyDown={(e) => e.stopPropagation()}
+      onKeyUp={(e) => e.stopPropagation()}
       className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/60 backdrop-blur-md font-sans px-4 transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
       role="dialog"
       aria-modal="true"
@@ -253,9 +317,44 @@ export default function CaptionLanguageOverlay({
         {/* Visual Drag Handle */}
         <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-gray-400/30 pointer-events-none" />
 
-        <h2 className="mt-1 text-[24px] leading-tight font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A]">Language</h2>
-        <p className={`mt-2 text-[13px] leading-relaxed mb-6 ${secondaryText}`}>
-          Current: <span className={textColor}>{activeLabel}</span>
+        <h2 className="mt-1 text-[24px] leading-tight font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A]">Language Settings</h2>
+        
+        {/* Animated Tab Switcher */}
+        <div className={`relative mt-4 mb-4 flex rounded-xl p-1 border shadow-inner ${isDark ? "bg-[#1C1C20] border-white/10" : "bg-gray-100/90 border-gray-200"}`}>
+          {/* Animated Sliding Pill Indicator */}
+          <div
+            className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A] shadow-[0_2px_8px_rgba(255,122,47,0.35)] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]"
+            style={{
+              left: activeTab === "source" ? "4px" : "calc(50%)"
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={() => { setActiveTab("source"); setSearchTerm(""); }}
+            className={`relative z-10 flex-1 py-2 text-[14px] font-bold rounded-lg transition-colors duration-200 flex items-center justify-center gap-2 focus-visible:outline-none active:scale-[0.98] ${
+              activeTab === "source" ? "text-white" : `text-gray-400 hover:${textColor}`
+            }`}
+          >
+            <span className="text-[15px] transition-transform duration-300 hover:scale-110">🎙️</span>
+            <span>Source Audio</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => { setActiveTab("target"); setSearchTerm(""); }}
+            className={`relative z-10 flex-1 py-2 text-[14px] font-bold rounded-lg transition-colors duration-200 flex items-center justify-center gap-2 focus-visible:outline-none active:scale-[0.98] ${
+              activeTab === "target" ? "text-white" : `text-gray-400 hover:${textColor}`
+            }`}
+          >
+            <span className="text-[15px] transition-transform duration-300 hover:scale-110">🌐</span>
+            <span>Translate To</span>
+          </button>
+        </div>
+
+        <p className={`text-[13px] leading-relaxed mb-5 transition-all duration-200 ${secondaryText}`}>
+          {activeTab === "source" ? "Spoken language detected in the video/audio:" : "Language for translation subtitles:"}{" "}
+          <span className={`${textColor} font-bold`}>{activeLabel}</span>
         </p>
 
         <button
@@ -273,7 +372,7 @@ export default function CaptionLanguageOverlay({
         </button>
 
         {/* 🚨 God-Tier Search Input */}
-        <div className="relative mb-6">
+        <div className="relative mb-5">
           <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-400">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
               <circle cx="11" cy="11" r="8" />
@@ -283,23 +382,32 @@ export default function CaptionLanguageOverlay({
           <input
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search 123 languages..."
-            className={`w-full ${inputBg} border-2 ${inputBorder} ${textColor} rounded-[16px] text-[16px] font-medium h-[48px] pl-12 pr-4 focus:outline-none focus:border-[#FF7A2F] focus:ring-4 focus:ring-[#FF7A2F]/20 transition-all placeholder:text-gray-500`}
+            onKeyDown={(e) => e.stopPropagation()}
+            onKeyUp={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            placeholder={activeTab === "source" ? "Search 30 speech audio languages..." : "Search 123 translation languages..."}
+            className={`w-full ${inputBg} border-2 ${inputBorder} ${textColor} rounded-[16px] text-[15px] font-medium h-[46px] pl-12 pr-4 focus:outline-none focus:border-[#FF7A2F] focus:ring-4 focus:ring-[#FF7A2F]/20 transition-all placeholder:text-gray-500`}
           />
         </div>
 
         {/* 🚨 Scrollable List Container */}
         <div className={`border-2 rounded-[20px] overflow-hidden ${isDark ? "border-gray-800 bg-[#151515]" : "border-gray-200 bg-gray-50"}`}>
-          <div className="max-h-[280px] overflow-y-auto custom-scrollbar">
+          <div className="max-h-[250px] overflow-y-auto custom-scrollbar">
             {filteredLanguages.map((language) => {
-              const isSelected = language.code === selectedLanguage
+              const isSelected = language.code === currentSelected
               return (
                 <button
                   key={language.code}
                   type="button"
-                  onClick={() => setSelectedLanguage(language.code)}
+                  onClick={() => {
+                    if (activeTab === "target") {
+                      setSelectedLanguage(language.code)
+                    } else {
+                      setSelectedSourceLanguage(language.code)
+                    }
+                  }}
                   aria-selected={isSelected}
-                  className={`w-full text-left min-h-[48px] px-5 py-3 transition-colors flex items-center justify-between border-b last:border-0 ${isDark ? "border-gray-800" : "border-gray-200"} focus-visible:outline-none focus-visible:bg-[#FF7A2F]/20 ${
+                  className={`w-full text-left min-h-[46px] px-5 py-2.5 transition-colors flex items-center justify-between border-b last:border-0 ${isDark ? "border-gray-800" : "border-gray-200"} focus-visible:outline-none focus-visible:bg-[#FF7A2F]/20 ${
                     isSelected
                       ? "bg-[#FF7A2F] text-white"
                       : isDark
@@ -333,14 +441,22 @@ export default function CaptionLanguageOverlay({
           </button>
           <button
             onClick={() => {
-              // Persist auto-detect source and selected target
-              chrome.storage.local.set({ sensa_source_lang: "AUTO", sensa_target_lang: selectedLanguage, sensa_auditory_caption_language: selectedLanguage })
-              // Inform background/offscreen immediately so translations use the new target
+              // Persist source and target languages
+              chrome.storage.local.set({ 
+                sensa_source_lang: selectedSourceLanguage, 
+                sensa_target_lang: selectedLanguage, 
+                sensa_auditory_caption_language: selectedLanguage 
+              })
+              // Inform background/offscreen immediately so live capture uses both new target and source languages
               try {
                 const tgt = (selectedLanguage.split("-")[0] || selectedLanguage).toUpperCase()
                 chrome.runtime.sendMessage({ type: "UPDATE_CAPTION_LANGUAGE", targetLang: tgt })
               } catch (e) {}
+              try {
+                chrome.runtime.sendMessage({ type: "UPDATE_SOURCE_LANGUAGE", sourceLang: selectedSourceLanguage })
+              } catch (e) {}
               onLanguageChange?.(selectedLanguage)
+              onSourceLanguageChange?.(selectedSourceLanguage)
               setIsMounted(false)
               setTimeout(onClose, 300)
             }}
