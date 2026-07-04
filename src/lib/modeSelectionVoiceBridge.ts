@@ -14,6 +14,12 @@ let watchdogTimer: number | null = null
 let lastAudioTimestamp = 0
 let recognitionRunning = false
 
+// Confirmation cooldown: require the same command to be detected twice
+// within a short window before applying, to prevent false positives from
+// ambient noise or TTS echo.
+let pendingCommand: "visual" | "auditory" | null = null
+let pendingCommandTimestamp = 0
+
 const getSpeechRecognitionCtor = () =>
   (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
@@ -280,7 +286,7 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     }
 
     let chosenCommand: "visual" | "auditory" | null = null
-    const threshold = 2
+    const threshold = 4
 
     if (visualScore >= threshold && visualScore > auditoryScore) {
       chosenCommand = "visual"
@@ -289,13 +295,36 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     } else if (visualScore >= threshold && auditoryScore >= threshold) {
       tabLog(`[Sensa Mode Selection Tab Voice Bridge] Conflict detected (visual: ${visualScore}, auditory: ${auditoryScore}). Clearing buffer.`)
       globalBuffer = ""
+      pendingCommand = null
+      pendingCommandTimestamp = 0
     }
 
     tabLog(`[Sensa Mode Selection Tab Voice Bridge] Score results -> Visual: ${visualScore}, Auditory: ${auditoryScore}, chosenCommand: ${chosenCommand}`)
 
     if (chosenCommand) {
-      globalBuffer = "" 
-      applyModeSelection(chosenCommand)
+      const now = Date.now()
+      const CONFIRMATION_WINDOW_MS = 3000
+
+      if (pendingCommand === chosenCommand && (now - pendingCommandTimestamp) <= CONFIRMATION_WINDOW_MS) {
+        // Same command detected twice within the confirmation window — apply it
+        tabLog(`[Sensa Mode Selection Tab Voice Bridge] Command "${chosenCommand}" confirmed (detected twice within ${now - pendingCommandTimestamp}ms). Applying.`)
+        pendingCommand = null
+        pendingCommandTimestamp = 0
+        globalBuffer = ""
+        applyModeSelection(chosenCommand)
+      } else if (pendingCommand === chosenCommand && (now - pendingCommandTimestamp) > CONFIRMATION_WINDOW_MS) {
+        // Same command but the previous detection expired — restart the window
+        tabLog(`[Sensa Mode Selection Tab Voice Bridge] Previous "${chosenCommand}" detection expired (${now - pendingCommandTimestamp}ms ago). Resetting confirmation window.`)
+        pendingCommand = chosenCommand
+        pendingCommandTimestamp = now
+        globalBuffer = ""
+      } else {
+        // First detection of this command, or different command — start confirmation window
+        tabLog(`[Sensa Mode Selection Tab Voice Bridge] Command "${chosenCommand}" detected (first time or changed). Waiting for confirmation...`)
+        pendingCommand = chosenCommand
+        pendingCommandTimestamp = now
+        globalBuffer = ""
+      }
     }
   }
 
@@ -426,6 +455,8 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
   ignoreSpeechUntil = 0
   globalBuffer = ""
   recognitionRunning = false
+  pendingCommand = null
+  pendingCommandTimestamp = 0
 
   await new Promise<void>((resolve) => {
     chrome.storage.local.set({ sensa_mode_selection_listening: true }, () => resolve())
@@ -453,6 +484,8 @@ export function stopModeSelectionVoiceListener() {
   consumedString = ""
   currentResultIndex = 0
   recognitionRunning = false
+  pendingCommand = null
+  pendingCommandTimestamp = 0
   clearWatchdog()
   teardownRecognition()
   chrome.storage.local.set({ sensa_mode_selection_listening: false })

@@ -81,7 +81,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 
   const titleText = "Welcome to Sensa"
-  const descriptionText = "A Chrome extension assisting sensory-impaired users with specialized accessibility tools and features."
+  const descriptionText = "A Chrome extension assisting visual and auditory impaired users with specialized accessibility tools and features."
   const subtitleText = "Select your primary accessibility mode"
   const descriptionWords = useMemo(() => descriptionText.split(" "), [descriptionText])
   const subtitleWords = useMemo(() => subtitleText.split(" "), [subtitleText])
@@ -702,19 +702,19 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
 
       <div className="relative z-10 w-full flex flex-col items-center">
 
-        <div className="flex flex-col items-center gap-1 mb-1 transform-gpu">
+        <div className="flex flex-col items-center gap-2.5 mb-1.5 transform-gpu">
           <img
             src={sensaLogo}
             alt="Sensa Logo"
-            className="w-[98px] h-[98px] object-contain drop-shadow-md animate-logo-light"
+            className="w-[98px] h-[98px] object-contain drop-shadow-md animate-logo-light mt-1 -mb-3"
           />
           <h1 className="text-[30px] font-black tracking-tight leading-tight animate-pop bg-gradient-to-r from-[#0A44FF] to-[#FF7A2F] bg-clip-text text-transparent pb-0.5" style={{ animationDelay: "0.05s" }}>
             Welcome to Sensa
           </h1>
-          <p className={`text-[13px] font-medium text-center leading-relaxed tracking-wide mb-1 animate-pop ${isDark ? 'text-gray-300/95' : 'text-gray-600/95'}`} style={{ animationDelay: "0.1s" }}>
+          <p className={`text-[13px] font-medium text-center leading-relaxed tracking-wide my-1.5 animate-pop ${isDark ? 'text-gray-300/95' : 'text-gray-600/95'}`} style={{ animationDelay: "0.1s" }}>
             {typedDescription}
           </p>
-          <p className={`font-bold text-center leading-snug mb-3.5 animate-pop text-[14.5px] tracking-tight ${isDark ? 'text-gray-400/90' : 'text-gray-500/90'}`} style={{ animationDelay: "0.16s" }}>
+          <p className={`font-bold text-center leading-snug animate-pop text-[14.5px] tracking-tight ${isDark ? 'text-gray-400/90' : 'text-gray-500/90'}`} style={{ animationDelay: "0.16s" }}>
             {typedSubtitle}
           </p>
         </div>
