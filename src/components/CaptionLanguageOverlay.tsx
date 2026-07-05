@@ -282,8 +282,10 @@ export default function CaptionLanguageOverlay({
     return match?.label ?? currentSelected
   }, [currentSelected, currentOptions])
 
+  const isBackdropMouseDownRef = useRef(false)
   const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
+    if (event.target === event.currentTarget && isBackdropMouseDownRef.current) {
+      isBackdropMouseDownRef.current = false
       setIsMounted(false)
       setTimeout(onClose, 300)
     }
@@ -297,7 +299,14 @@ export default function CaptionLanguageOverlay({
   const inputBorder = isDark ? "border-gray-700" : "border-gray-200"
 
   return (
-    <div 
+    <div
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          isBackdropMouseDownRef.current = true
+        } else {
+          isBackdropMouseDownRef.current = false
+        }
+      }}
       onClick={handleBackdropClick}
       onKeyDown={(e) => e.stopPropagation()}
       onKeyUp={(e) => e.stopPropagation()}

@@ -219,8 +219,10 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
     offsetStartRef.current = { x: offsetRef.current.x, y: offsetRef.current.y }
   }
 
+  const isBackdropMouseDownRef = useRef(false)
   const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
+    if (event.target === event.currentTarget && isBackdropMouseDownRef.current) {
+      isBackdropMouseDownRef.current = false
       setIsMounted(false)
       setTimeout(onClose, 300)
     }
@@ -244,6 +246,13 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
 
   return (
     <div 
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          isBackdropMouseDownRef.current = true
+        } else {
+          isBackdropMouseDownRef.current = false
+        }
+      }}
       onClick={handleBackdropClick} 
       className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/30 backdrop-blur-sm font-sans px-4 transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
       role="dialog"

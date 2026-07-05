@@ -1010,8 +1010,10 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     playClickAudio("Settings reset to default")
   }
 
+  const isBackdropMouseDownRef = useRef(false)
   const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
+    if (event.target === event.currentTarget && isBackdropMouseDownRef.current) {
+      isBackdropMouseDownRef.current = false
       playClickSfx()
       setIsMounted(false)
       setTimeout(onClose, 300)
@@ -1043,6 +1045,13 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
   return (
     <div
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          isBackdropMouseDownRef.current = true
+        } else {
+          isBackdropMouseDownRef.current = false
+        }
+      }}
       onClick={handleBackdropClick}
       className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/30 backdrop-blur-sm font-sans transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
       role="dialog"

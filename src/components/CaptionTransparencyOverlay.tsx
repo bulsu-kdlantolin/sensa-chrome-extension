@@ -81,8 +81,10 @@ export default function CaptionTransparencyOverlay({
     }
   }, [])
 
+  const isBackdropMouseDownRef = useRef(false)
   const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
+    if (event.target === event.currentTarget && isBackdropMouseDownRef.current) {
+      isBackdropMouseDownRef.current = false
       setIsMounted(false)
       setTimeout(onClose, 300)
     }
@@ -119,8 +121,15 @@ export default function CaptionTransparencyOverlay({
     : "text-gray-950 border-black/10 shadow-[0_16px_40px_rgba(0,0,0,0.10)]"
 
   return (
-    <div 
-      onClick={handleBackdropClick} 
+    <div
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          isBackdropMouseDownRef.current = true
+        } else {
+          isBackdropMouseDownRef.current = false
+        }
+      }}
+      onClick={handleBackdropClick}
       className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/45 backdrop-blur-sm font-sans px-4 transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
       role="dialog"
       aria-modal="true"

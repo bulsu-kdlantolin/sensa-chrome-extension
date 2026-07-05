@@ -333,8 +333,10 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
 
   const formattedSpeed = speed.toFixed(2).replace(/\.00$/, '')
 
+  const isBackdropMouseDownRef = useRef(false)
   const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
+    if (event.target === event.currentTarget && isBackdropMouseDownRef.current) {
+      isBackdropMouseDownRef.current = false
       setIsMounted(false)
       playClickSfx()
       wrappedPlayClickAudio("Closing speed settings")
@@ -594,6 +596,13 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
 
   return (
     <div
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) {
+          isBackdropMouseDownRef.current = true
+        } else {
+          isBackdropMouseDownRef.current = false
+        }
+      }}
       onClick={handleBackdropClick}
       className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/30 backdrop-blur-sm font-sans transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
       aria-modal="true"
