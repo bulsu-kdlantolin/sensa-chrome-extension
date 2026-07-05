@@ -244,7 +244,8 @@ export default function FloatingDockManager() {
     targetLanguage,
     auditorySettings.showOriginalText,
     isCaptionsActive,  // Pass the UI toggle state so captions clear when turned off
-    sourceLanguage
+    sourceLanguage,
+    isPopupOpen        // Pass isPopupOpen so clicking the toolbar icon instantly triggers capture!
   )
 
   useEffect(() => {

@@ -8,7 +8,7 @@ export interface CaptionBlock {
   isFinal: boolean
 }
 
-export function useLiveCaptions(isActive: boolean, targetLanguage: string, showOriginalText: boolean, isCaptionsDisplayed: boolean = true, sourceLanguage: string = "en") {
+export function useLiveCaptions(isActive: boolean, targetLanguage: string, showOriginalText: boolean, isCaptionsDisplayed: boolean = true, sourceLanguage: string = "en", isPopupOpen: boolean = false) {
   const [captions, setCaptions] = useState<CaptionBlock[]>([])
   const [error, setError] = useState<string | null>(null)
   
@@ -20,6 +20,29 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
   useEffect(() => { targetLanguageRef.current = targetLanguage }, [targetLanguage])
   useEffect(() => { sourceLanguageRef.current = sourceLanguage }, [sourceLanguage])
   useEffect(() => { isCaptionsDisplayedRef.current = isCaptionsDisplayed }, [isCaptionsDisplayed])
+
+  // 🚀 INSTANT RETRY ON POPUP OPEN: When the user clicks the Sensa extension icon in the top Chrome toolbar after getting an authorization error,
+  // Chrome grants activeTab permission. Since focus moves to the popup, window.onfocus doesn't fire on the webpage.
+  // We watch isPopupOpen directly and instantly retry capture so captions start immediately without needing to refresh or reactivate!
+  useEffect(() => {
+    if (isActive && isPopupOpen) {
+      setError(null)
+      chrome.runtime.sendMessage({
+        type: "START_CAPTURE",
+        targetLang: targetLanguageRef.current,
+        sourceLang: sourceLanguageRef.current
+      }, (res) => {
+        const combinedError = chrome.runtime.lastError?.message || (typeof res?.error === "string" ? res.error : "")
+        if (!res?.ok && combinedError) {
+          if (/Extension has not been invoked|Chrome pages cannot be captured|activeTab|Failed to get stream ID|permission|not allowed|authorization/i.test(combinedError)) {
+            setError("👆 Chrome requires authorization: please click the Sensa extension icon in your top Chrome toolbar once to enable live captions on this tab!")
+          } else {
+            setError(combinedError || "Failed to start capture.")
+          }
+        }
+      })
+    }
+  }, [isPopupOpen, isActive])
 
   useEffect(() => {
     if (!isActive) return
