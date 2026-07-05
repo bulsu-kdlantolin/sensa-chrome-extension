@@ -1,3 +1,16 @@
+/**
+ * @file AuditoryWelcomeOverlay.tsx
+ * @description Onboarding introduction modal displayed when Auditory Mode is first selected, highlighting key features like Live Captions and Audio Visualizer.
+ *
+ * Architectural Overview:
+ * 1. Accessibility Introduction:
+ *    - Presents structured feature descriptions for deaf and hard-of-hearing users with high-contrast theme support (`theme === "dark"`).
+ *    - Automatically cancels any lingering TTS speech utterances on mount (`speechSynthesis.cancel`) to ensure a clean auditory environment.
+ *
+ * 2. Responsive Animation Layout:
+ *    - Employs hardware-accelerated CSS keyframe animations (`float-orange-1`, `pop-in`) for smooth, premium onboarding presentations.
+ */
+
 import { useEffect } from "react"
 
 interface WelcomeProps {
@@ -15,7 +28,7 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
   return (
     <div className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] flex flex-col items-center justify-start font-sans relative overflow-hidden select-none transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-white' : 'bg-gray-50 text-gray-900'}`}>
 
-      {/* 🚨 CSS INJECTION FOR CINEMATIC ENTRANCE & AMBIENT ORANGE ORBS */}
+      {/* Keyframe animation stylesheet for floating ambient background graphics */}
       <style dangerouslySetInnerHTML={{
         __html: `
         @keyframes float-orange-1 {
@@ -47,11 +60,11 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
         .pop-in-3 { animation: pop-in 0.7s cubic-bezier(0.23,1,0.32,1) 0.6s forwards; opacity: 0; }
       `}} />
 
-      {/* 🌌 AMBIENT ORANGE BACKGROUND ENGINE */}
+      {/* Ambient background lighting effects */}
       <div className={`absolute -bottom-16 -right-16 w-64 h-64 rounded-full mix-blend-multiply filter blur-[60px] animate-float-orange-1 pointer-events-none transform-gpu ${isDark ? 'bg-[#FF7A2F]/30' : 'bg-[#FF7A2F]/20'}`} />
       <div className={`absolute -top-16 -left-16 w-64 h-64 rounded-full mix-blend-multiply filter blur-[60px] animate-float-orange-2 pointer-events-none transform-gpu ${isDark ? 'bg-[#FF7A2F]/15' : 'bg-[#FF7A2F]/10'}`} />
 
-      {/* 🛡️ CONTENT WRAPPER */}
+      {/* Main content layout container */}
       <div className="relative z-10 flex flex-col items-center justify-start w-full h-full pt-6 pb-6 px-6">
 
         {/* Header (No Logo, Perfectly Centered) */}
@@ -64,7 +77,7 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
           </p>
         </div>
 
-        {/* 🦻 FEATURE HIGHLIGHT CARDS */}
+        {/* Feature introduction cards */}
         <div className="w-full fade-in-3 mb-auto">
           <div className="grid grid-cols-1 gap-2 w-full overflow-visible py-1 content-start">
 
@@ -136,10 +149,10 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
               </div>
             </div>
 
-          </div>
+            </div>
         </div>
 
-        {/* 🚀 SENSA ORANGE INSTANT BUTTON (No Timer) */}
+        {/* Primary onboarding action button */}
         <div className="w-full h-[56px] shrink-0 mt-auto">
           <button
             onClick={onGetStarted}

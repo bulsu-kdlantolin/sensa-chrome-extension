@@ -1,3 +1,20 @@
+/**
+ * @file VisualSettingsModal.tsx
+ * @description Configuration modal for Visual Mode, managing TTS voice selection, reading speed, highlight styling, and custom voice commands.
+ *
+ * Architectural Overview:
+ * 1. Screen Reader Customization:
+ *    - Manages TTS reading speed (`sensa_visual_reading_speed`), sentence highlight color (`sensa_visual_highlight_color`), and automatic vertical scrolling (`sensa_visual_autoscroll`).
+ *    - Enumerates available system speech voices (`window.speechSynthesis.getVoices`) with search/filter capabilities.
+ *
+ * 2. Voice Command Customization:
+ *    - Allows users to define custom trigger phrases for activating/deactivating modes and controlling speech navigation (`sensa_custom_voice_commands`).
+ *
+ * 3. Sensory Feedback & Persistence:
+ *    - Controls sound effects (`sensa_visual_sound_effects_enabled`) and voice guide announcements (`sensa_visual_voice_guide_enabled`).
+ *    - Persists all settings to Chrome local storage and syncs across active tabs.
+ */
+
 import React, { useState, useEffect, useRef } from "react"
 import ColorPickerPopup from "./ColorPickerPopup"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"

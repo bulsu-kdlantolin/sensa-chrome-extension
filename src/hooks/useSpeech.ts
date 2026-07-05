@@ -1,3 +1,20 @@
+/**
+ * @file useSpeech.ts
+ * @description Core screen reading text-to-speech (TTS) engine and sentence highlight visualizer for Visual Mode.
+ *
+ * Architectural Overview:
+ * 1. DOM Text Extraction (`extractReadableContent`):
+ *    - Traverses the document (`main`, `article`, or `body`), filtering out hidden elements and navigation headers (`EXCLUDED_ANCESTOR_SELECTOR`).
+ *    - Splits text into speakable sentence ranges (`splitSentenceRanges`) while respecting common abbreviations (`COMMON_ABBREVIATIONS`) like "U.S.", "Dr.", "e.g." so sentences aren't split prematurely.
+ *
+ * 2. Speech Normalization (`normalizeSpeechSlice`):
+ *    - Pre-processes text before sending to `window.speechSynthesis` (e.g., expanding "No. 5" to "number 5") while maintaining character mapping back to the original DOM text for accurate word boundary highlighting.
+ *
+ * 3. Highlight Overlay & Auto-scroll (`renderSegmentOverlay`):
+ *    - Creates an absolute-positioned overlay div matching the `getClientRects()` of the currently spoken sentence range.
+ *    - Smoothly auto-scrolls the browser window to keep the active sentence vertically centered.
+ */
+
 import { useCallback, useEffect, useRef, useState } from "react";
 
 const READABLE_SELECTOR = "h1, h2, h3, h4, h5, h6, p, li, blockquote, pre";

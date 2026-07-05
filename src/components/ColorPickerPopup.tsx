@@ -1,3 +1,17 @@
+/**
+ * @file ColorPickerPopup.tsx
+ * @description Interactive HSV/RGB color picker modal used across settings panels for custom theme styling.
+ *
+ * Architectural Overview:
+ * 1. Color Space Manipulation:
+ *    - Implements bidirectional conversion between HSV (Hue, Saturation, Value), RGB, and Hexadecimal representations.
+ *    - Renders a 2D saturation/value canvas and a 1D hue slider for intuitive visual selection.
+ *
+ * 2. Interaction & Drag Protection:
+ *    - Supports mouse and touch dragging across color surfaces without prematurely closing parent modals when lifting outside boundaries.
+ *    - Persists custom viewport positioning (`sensa_color_picker_offset`) to Chrome local storage.
+ */
+
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 interface ColorPickerPopupProps {

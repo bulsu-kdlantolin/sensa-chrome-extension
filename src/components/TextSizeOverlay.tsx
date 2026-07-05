@@ -1,3 +1,16 @@
+/**
+ * @file TextSizeOverlay.tsx
+ * @description Interactive modal overlay for adjusting the typography scale and font size of live subtitles in Auditory Mode.
+ *
+ * Architectural Overview:
+ * 1. Typography Customization & Scaling:
+ *    - Controls live subtitle font size (`sensa_caption_font_size`), clamping values between 12px and 72px for optimal readability across various video player sizes.
+ *    - Synchronizes continuous range slider inputs and direct numerical text box entries with Chrome local storage.
+ *
+ * 2. Draggable Modal Viewport:
+ *    - Implements mouse drag positioning (`sensa_text_size_offset`) to allow users to reposition the styling panel without obstructing subtitle viewing areas.
+ */
+
 import React, { useEffect, useRef, useState } from "react"
 
 interface TextSizeOverlayProps {

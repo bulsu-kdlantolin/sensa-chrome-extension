@@ -1,3 +1,17 @@
+/**
+ * @file modeSelectionVoiceBridge.ts
+ * @description Web Speech API (`SpeechRecognition`) bridge executed within host page content scripts to enable hands-free voice onboarding mode selection ("visual mode" vs "auditory mode").
+ *
+ * Architectural Overview:
+ * 1. Robust Speech Recognition Engine:
+ *    - Uses continuous, interim-result `SpeechRecognition` with audio activity tracking (`onaudiostart`) and an automated watchdog timer (`startWatchdog`) to recover from silent browser timeouts or backgrounding freezes.
+ *    - Primes microphone permissions (`primeMicrophone`) while explicitly disabling `echoCancellation` to prevent TTS narration echo from clipping user vocal inputs.
+ *
+ * 2. Fuzzy Matching & Confirmation Window:
+ *    - Implements Levenshtein distance and N-gram scoring (`fuzzyMatch`) to reliably detect commands even with accents or partial recognition errors (e.g., "bisual", "vision", "hearing").
+ *    - Enforces a 3000ms confirmation window requiring the same command to be detected twice before applying, preventing ambient noise false positives.
+ */
+
 import { DEFAULT_PROFILE, type SensaUserProfile } from "./storage"
 
 type ModeSelectionVoiceMode = "visual" | "auditory"

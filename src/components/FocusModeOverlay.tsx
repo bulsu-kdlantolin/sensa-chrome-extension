@@ -1,3 +1,16 @@
+/**
+ * @file FocusModeOverlay.tsx
+ * @description Dynamic screen-dimming overlay that automatically detects active video players and caption boxes, cutting out transparent SVG masks around them to eliminate visual distractions.
+ *
+ * Architectural Overview:
+ * 1. High-Performance DOM Tracking:
+ *    - Uses a continuous `requestAnimationFrame` loop to track bounding bounding client rectangles of playing video elements (`getLargestPlayingVideoRect`) and live subtitle containers (`getVisibleCaptionRect`).
+ *    - Manipulates SVG mask coordinates directly via React refs (`mainRectRef`, `captionRectRef`) to achieve zero-latency 60fps tracking without triggering React component re-renders during page scrolling.
+ *
+ * 2. 1:1 Pixel Mapping:
+ *    - Renders a full-viewport SVG without a `viewBox` attribute so that DOM coordinate calculations map 1:1 to screen pixels without scaling distortion or deadspace.
+ */
+
 import { useEffect, useId, useRef } from "react"
 
 interface FocusModeOverlayProps {
@@ -75,7 +88,7 @@ const getVisibleCaptionRect = (vh: number): Rect | null => {
 export default function FocusModeOverlay({ intensity = 0.7 }: FocusModeOverlayProps) {
   const maskId = useId().replace(/:/g, "")
   
-  // 🚨 THE FIX: Use Refs to manipulate the SVG directly, bypassing React's scroll lag!
+  // Direct DOM Manipulation: Manipulate SVG mask attributes via refs inside requestAnimationFrame to eliminate React state re-render lag during rapid scrolling
   const mainRectRef = useRef<SVGRectElement>(null)
   const captionRectRef = useRef<SVGRectElement>(null)
 
@@ -99,7 +112,7 @@ export default function FocusModeOverlay({ intensity = 0.7 }: FocusModeOverlayPr
         }
       }
 
-      // 🚨 Instantly update the DOM. No setState lag!
+      // Synchronously update mask coordinates in real-time
       if (mainRectRef.current) {
         if (videoRect) {
           mainRectRef.current.setAttribute("x", videoRect.x.toString())
@@ -139,7 +152,7 @@ export default function FocusModeOverlay({ intensity = 0.7 }: FocusModeOverlayPr
       className="fixed inset-0 z-[99998] pointer-events-none block"
       width="100%"
       height="100%"
-      // 🚨 THE FIX: Removed viewBox. Coordinates now perfectly map to screen pixels. No Deadspace!
+      // Omit viewBox so SVG coordinate space maps 1:1 to browser viewport pixels without scaling distortion
       aria-hidden
     >
       <defs>

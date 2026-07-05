@@ -1,3 +1,21 @@
+/**
+ * @file VisualDock.tsx
+ * @description Visual accommodation dock providing screen reading controls, voice command recognition, screen magnification, and sensory settings.
+ *
+ * Architectural Overview:
+ * 1. Voice Command Recognition & Fuzzy Matching:
+ *    - Implements Levenshtein distance calculation (`getLevenshteinDistance`) and n-gram sliding window matching (`fuzzyMatch`).
+ *    - Allows robust recognition of spoken commands (e.g., "next", "previous", "play", "pause", "faster", "slower") even under slight mispronunciation or speech recognition noise.
+ *
+ * 2. Voice Command Visualizer (`GodTierMicIcon`):
+ *    - Captures user microphone input via `getUserMedia` and Web Audio API `AnalyserNode`.
+ *    - Animates visualizer bars based on root-mean-square (RMS) speech energy to provide immediate feedback when user speech is detected.
+ *
+ * 3. Screen Magnifier Overlay (`ScreenMagnifierOverlay`):
+ *    - Renders a floating circular lens that clones and scales the underlying page DOM and `<canvas>` elements.
+ *    - Automatically hides when hovering over Sensa UI panels to prevent obstructing controls.
+ */
+
 import React, { useEffect, useRef, useState, useCallback } from "react"
 import ReactDOM from "react-dom"
 import { Tooltip } from "./Tooltip"
@@ -5,6 +23,9 @@ import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
 const DEFAULT_WAKE_WORD = "Sensa"
 
+/**
+ * Computes the Levenshtein edit distance between two strings.
+ */
 const getLevenshteinDistance = (a: string, b: string): number => {
   const tmp: number[][] = []
   for (let i = 0; i <= a.length; i++) {
@@ -25,6 +46,10 @@ const getLevenshteinDistance = (a: string, b: string): number => {
   return tmp[a.length][b.length]
 }
 
+/**
+ * Performs fuzzy string matching using n-gram sliding windows and Levenshtein distance.
+ * Prevents false positive matching between antonyms like "activate" and "deactivate".
+ */
 const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
   if (target === "activate" && text.includes("deactivate")) return false
   if (target === "deactivate" && text === "activate") return false
@@ -51,6 +76,9 @@ const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
   return false
 }
 
+/**
+ * Normalizes speech recognition text by stripping punctuation, converting antonym phrasing, and filtering filler words.
+ */
 const normalizeInput = (rawText: string): string => {
   let text = rawText.toLowerCase()
   text = text.replace(/[^a-z0-9\s]/gi, " ")
@@ -62,6 +90,9 @@ const normalizeInput = (rawText: string): string => {
   return tokens.join(" ")
 }
 
+/**
+ * Animated microphone visualizer icon responsive to live user speech energy.
+ */
 const GodTierMicIcon = ({ isActive, onSoundDetected }: { isActive: boolean, onSoundDetected?: () => void }) => {
   const barsRef = useRef<(HTMLDivElement | null)[]>([])
   const currentHeights = useRef([4, 6, 8, 6, 4])
@@ -235,23 +266,43 @@ const GodTierMicIcon = ({ isActive, onSoundDetected }: { isActive: boolean, onSo
   )
 }
 
+/**
+ * Props for the VisualDock component.
+ */
 interface VisualDockProps {
+  /** Whether dark mode theme is currently active */
   isDark: boolean
+  /** Whether the dock is collapsed into a compact toolbar */
   isMinimized: boolean
+  /** Current screen reading speed multiplier */
   readingSpeed: number
+  /** Whether screen reading audio is currently playing */
   isPlaying: boolean
+  /** Whether screen reading audio is currently paused */
   isPaused: boolean
+  /** Whether voice command recognition is actively listening */
   isVoiceCommandActive: boolean
+  /** Whether reading can be restarted from the beginning of the article/selection */
   canRestart: boolean
+  /** Callback to toggle play/pause state */
   onTogglePlay: () => void
+  /** Callback to toggle voice command recognition */
   onToggleVoiceCommand: () => void
+  /** Callback to jump to next paragraph/section */
   onNext: () => void
+  /** Callback to jump to previous paragraph/section */
   onPrev: () => void
+  /** Callback to restart reading from beginning */
   onRestart: () => void
+  /** Callback to toggle dock minimization */
   onMinimizeToggle: () => void
+  /** Callback to open reading speed adjustment overlay */
   onOpenReadingSpeed: (viaVoice?: boolean) => void
+  /** Callback to open comprehensive Visual Settings modal */
   onOpenSettings: (viaVoice?: boolean) => void
+  /** Callback to close and exit Visual Mode */
   onClose: () => void
+  /** Whether voice command listening is temporarily suspended (e.g., during TTS speech output) */
   isVoiceCommandsSuspended?: boolean
 }
 
@@ -262,6 +313,9 @@ if (typeof window !== "undefined") {
   }, { passive: true })
 }
 
+/**
+ * Checks if mouse coordinates intersect any Sensa shadow DOM panels or extension UI elements.
+ */
 function checkIsOverPanelRect(clientX: number, clientY: number): boolean {
   if (typeof document === "undefined") return false
   const hosts = document.querySelectorAll("plasmo-csui")
@@ -279,6 +333,9 @@ function checkIsOverPanelRect(clientX: number, clientY: number): boolean {
   return false
 }
 
+/**
+ * Screen magnification portal overlay rendering a zoomed snapshot lens over user cursor coordinates.
+ */
 function ScreenMagnifierOverlay({ isDark, onClose }: { isDark: boolean; onClose: () => void }) {
   const [lensSize, setLensSize] = useState(240)
   const [zoomLevel, setZoomLevel] = useState(2.0)
@@ -430,6 +487,9 @@ function ScreenMagnifierOverlay({ isDark, onClose }: { isDark: boolean; onClose:
   )
 }
 
+/**
+ * Main floating toolbar component for Visual Mode.
+ */
 export default function VisualDock({
   isDark,
   isMinimized,

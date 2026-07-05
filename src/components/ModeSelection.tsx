@@ -1,3 +1,17 @@
+/**
+ * @file ModeSelection.tsx
+ * @description Primary onboarding screen allowing users to select between Visual Mode and Auditory Mode.
+ *
+ * Architectural Overview:
+ * 1. Accessibility First:
+ *    - Designed for both blind/low-vision users (Visual Mode) and deaf/hard-of-hearing users (Auditory Mode).
+ *    - Supports speech recognition selection via fuzzy matching ("visual", "auditory", "option one", "option two") alongside standard mouse/keyboard navigation.
+ *
+ * 2. Sensory Guidance:
+ *    - Automatically announces screen instructions via TTS when opened, guiding new users without visual reliance.
+ *    - Integrates with `useUIHoverAudio` for auditory feedback during selection.
+ */
+
 import { useEffect, useMemo, useRef, useState } from "react"
 import sensaLogo from "data-base64:../../assets/sensa-logo.png"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"

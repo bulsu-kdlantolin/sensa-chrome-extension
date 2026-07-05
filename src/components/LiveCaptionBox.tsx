@@ -1,3 +1,21 @@
+/**
+ * @file LiveCaptionBox.tsx
+ * @description Floating, draggable live subtitle container displaying real-time speech-to-text transcriptions and translations.
+ *
+ * Architectural Overview:
+ * 1. Subtitle Synchronization & Rendering:
+ *    - Maps incoming `CaptionBlock` items 1-to-1 with zero latency.
+ *    - Limits viewport rendering to a maximum of 2 visible blocks (`MAX_VISIBLE_BLOCKS`) to prevent obscuring underlying page content.
+ *    - Distinguishes between interim streaming text (italicized) and finalized sentences (normal font style).
+ *
+ * 2. Draggable Overlay Positioning:
+ *    - Supports mouse and touch drag interactions, persisting custom viewport coordinates (`sensa_live_caption_offset`) to Chrome local storage.
+ *
+ * 3. Language Mismatch Detection:
+ *    - Monitors audio frequency energy (`AUDIO_FREQUENCY_UPDATE`) against caption arrival timestamps.
+ *    - If continuous speech energy is detected for >8 seconds without transcription results, it displays a non-intrusive warning banner alerting the user that the wrong source language may be selected.
+ */
+
 import React, { useEffect, useRef, useState, useLayoutEffect } from "react"
 import { SOURCE_LANGUAGE_OPTIONS } from "./CaptionLanguageOverlay"
 
@@ -22,7 +40,7 @@ interface LiveCaptionBoxProps {
   targetLanguage?: string
 }
 
-// 🚨 Industry Standard "Rule of Two"
+// Limit visible subtitle blocks to maintain visual clarity without overcrowding the viewport
 const MAX_VISIBLE_BLOCKS = 2 
 
 export default function LiveCaptionBox({
@@ -35,7 +53,7 @@ export default function LiveCaptionBox({
   const dragStartRef = useRef({ x: 0, y: 0 })
   const offsetRef = useRef(offset)
 
-  // 🚨 THE FIX: Stripped down to exactly what the API gives us. No artificial timers.
+  // Maintain direct mapping of transcription blocks to ensure zero-latency subtitle updates
   const [displayBlocks, setDisplayBlocks] = useState<CaptionBlock[]>([])
   const blockHeights = useRef(new Map<string, number>())
   const blockRefs = useRef(new Map<string, HTMLDivElement | null>())
@@ -121,7 +139,7 @@ export default function LiveCaptionBox({
   useEffect(() => {
     if (!captions) return
 
-    // 🚨 THE FIX: Pure 1-to-1 mapping. Zero latency.
+    // Synchronize display blocks 1-to-1 with incoming transcription updates
     setDisplayBlocks((prev) => {
       const nextMap = new Map(prev.map(b => [b.id, { ...b }]))
       
@@ -159,7 +177,7 @@ export default function LiveCaptionBox({
         width: "100%", 
         whiteSpace: "pre-wrap", 
         lineHeight: 1.25,
-        // 🚨 THE FIX: Dim older original text while keeping current original text slightly soft
+        // Dim historical original text while keeping the active utterance legible
         color: textColor,
         fontSize: `${Math.max(12, fontSize * 0.75)}px`,
         opacity: isLatest ? (b.isFinal ? 0.75 : 0.45) : 0.4,
@@ -176,7 +194,7 @@ export default function LiveCaptionBox({
     if (!b.translated) return null
     return (
       <div style={{ 
-        // 🚨 THE FIX: Translated text always stays solid and bright across all caption blocks
+        // Maintain high opacity and visual prominence for translated target text
         opacity: b.isFinal ? 1 : 0.7,
         fontStyle: b.isFinal ? "normal" : "italic",
         transition: "opacity 300ms ease, font-style 150ms ease", 

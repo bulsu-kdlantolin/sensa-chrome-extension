@@ -1,3 +1,20 @@
+/**
+ * @file AuditorySettingsModal.tsx
+ * @description Configuration modal for Auditory Mode, managing subtitle font typography, color customization, and noise alerts.
+ *
+ * Architectural Overview:
+ * 1. Typography & Google Fonts Integration:
+ *    - Fetches the full catalog of Google Web Fonts dynamically via `PLASMO_PUBLIC_GOOGLE_FONTS_API_KEY`.
+ *    - Injects `<link>` stylesheet tags into document head on font selection (`loadGoogleFont`) and falls back to system fonts (`FALLBACK_FONTS`) offline.
+ *
+ * 2. Visual Customization & Persistence:
+ *    - Synchronizes subtitle typography, text color, and background color with Chrome local storage (`sensa_auditory_settings`).
+ *    - Supports draggable window positioning (`sensa_auditory_settings_offset`).
+ *
+ * 3. Environmental Alerts:
+ *    - Toggles loud noise visual/auditory alert notifications (`sensa_loud_noise_alerts`).
+ */
+
 import React, { useEffect, useState, useRef } from "react"
 import ColorPickerPopup from "./ColorPickerPopup"
 
@@ -228,7 +245,7 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
     }
   }
 
-  // 🚨 THEME VARIABLES (Orange/Auditory Themed) - opaque surfaces
+  // Theme style tokens (Auditory Mode orange color scheme)
   const modalBg = isDark ? "bg-[#141416] border-white/10" : "bg-white border-black/5"
   const textColor = isDark ? "text-gray-100" : "text-gray-900"
   const labelColor = isDark ? "text-gray-200" : "text-gray-700"

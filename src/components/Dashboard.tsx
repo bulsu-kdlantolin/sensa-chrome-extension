@@ -1,3 +1,20 @@
+/**
+ * @file Dashboard.tsx
+ * @description Primary extension dashboard interface providing tabbed navigation between Visual Mode and Auditory Mode.
+ *
+ * Architectural Overview:
+ * 1. Interface Orchestration:
+ *    - Manages top-level theme switching (light/dark) and view mode toggling (`visual` vs `auditory`).
+ *    - Implements smooth CSS opacity crossfades between `VisualMode` and `AuditoryMode` without re-mounting components.
+ *
+ * 2. Connectivity & Health Monitoring:
+ *    - Probes external endpoints (Google Fonts API, network connectivity) and content script health (`sensa-health-check`) every 15 seconds.
+ *    - Renders a live marquee label (`WebsiteLabel`) for long domain names and an animated radar ping indicating extension connection health.
+ *
+ * 3. Sensory Feedback:
+ *    - Announces interface state on open via `useUIHoverAudio`, tailored for blind/low-vision users.
+ */
+
 import { useState, useEffect, useRef } from "react"
 import sensaLogo from "data-base64:../../assets/sensa-logo.png"
 import VisualMode from "./VisualMode"
@@ -324,7 +341,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
   return (
     <div className={`w-[350px] h-[550px] flex flex-col font-sans relative overflow-hidden ${syncColors} ${isDark ? 'bg-[#1C1C1E] text-gray-200' : 'bg-gray-50 text-black'}`}>
 
-      {/* --- 🚨 REFINED NAVBAR --- */}
+      {/* Top navigation bar and theme toggle */}
       <div className="flex items-center justify-between px-5 pt-3.5 pb-1 z-20">
         <div className="flex items-center gap-2.5">
           <img src={sensaLogo} alt="Sensa Logo" className="w-[58px] h-[58px] object-contain drop-shadow-sm shrink-0" />
@@ -368,7 +385,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
         ) : null}
       </div>
 
-      {/* --- DYNAMIC MODE SWITCHER PILL --- */}
+      {/* Mode selector pill allowing animated swapping between Visual and Auditory modes */}
       <div className="px-5 flex justify-center mb-5 z-20 mt-3">
         <div
           className={`relative flex w-full h-[52px] rounded-full p-1.5 transition-colors duration-500
@@ -410,7 +427,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
         </div>
       </div>
 
-      {/* --- PURE OPACITY CROSSFADE --- */}
+      {/* Viewport crossfade animation switching between Visual and Auditory interfaces */}
       <div className="flex-1 w-full relative z-10 [&>div>div]:!bg-transparent">
         <div className={`absolute inset-0 w-full h-full flex will-change-opacity transition-opacity duration-500 ease-in-out ${!isAuditory ? 'opacity-100 pointer-events-auto z-10' : 'opacity-0 pointer-events-none z-0'}`}>
           <VisualMode isActiveView={!isAuditory} />
@@ -420,7 +437,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
         </div>
       </div>
 
-      {/* --- 🚨 UPGRADED FOOTER (Extension Status & Radar Ping) --- */}
+      {/* Bottom status bar displaying target website connectivity and extension health */}
       <div className="px-5 mt-auto pb-5 z-20 flex flex-col gap-3 items-center">
 
         {/* CSS Injection for the Status Radar Ping */}
@@ -464,7 +481,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
             tabIndex={!isAuditory ? 0 : -1}
             {...(!isAuditory ? getHoverHandlers(extensionHoverText) : {})}
           >
-            {/* 🚨 FIXED COPYWRITING: "Extension Status" */}
+            {/* Extension health status indicator */}
             <span className={`text-[10px] font-black uppercase tracking-widest whitespace-nowrap ${syncColors} ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Extension Status
             </span>
@@ -473,7 +490,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
                 {extensionStatus === "online" ? "Connected" : "Offline"}
               </span>
 
-              {/* 🚨 THE RADAR PING INDICATOR */}
+              {/* Animated status pulse indicator */}
               <div className="relative flex items-center justify-center w-2.5 h-2.5">
                 {/* Expanding Outer Ring */}
                 <span className={`absolute inline-flex w-full h-full rounded-full animate-radar-ping ${extensionStatus === "online" ? (isDark ? 'bg-green-400' : 'bg-green-500') : 'bg-red-500'}`}></span>

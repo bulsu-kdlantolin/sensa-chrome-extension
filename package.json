@@ -1,8 +1,8 @@
 {
   "name": "sensa-chrome-extension",
-  "displayName": "Sensa chrome extension",
-  "version": "0.0.1",
-  "description": "A basic Plasmo extension.",
+  "displayName": "Sensa - Accessibility & Sensory Assistant",
+  "version": "1.0.0",
+  "description": "An advanced dual-mode accessibility extension offering live AI subtitles, translation, text-to-speech reading enhancements, and sensory customization.",
   "author": "Sensa",
   "scripts": {
     "dev": "plasmo dev",

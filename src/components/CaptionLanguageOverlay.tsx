@@ -1,3 +1,17 @@
+/**
+ * @file CaptionLanguageOverlay.tsx
+ * @description Interactive modal overlay for selecting source audio language (Deepgram Nova-3) and target translation language (DeepL).
+ *
+ * Architectural Overview:
+ * 1. Internationalization Support:
+ *    - Exports `SOURCE_LANGUAGE_OPTIONS` supporting 45+ languages transcribed via Deepgram's Nova-3 AI model.
+ *    - Exports `LANGUAGE_OPTIONS` supporting 120+ translation target locales powered by DeepL API.
+ *
+ * 2. User Experience & Navigation:
+ *    - Provides real-time search filtering across language codes and full names.
+ *    - Persists selections to Chrome local storage (`sensa_caption_language` / `sensa_source_language`) and supports draggable viewport positioning.
+ */
+
 import React, { useEffect, useMemo, useRef, useState } from "react"
 
 interface CaptionLanguageOverlayProps {

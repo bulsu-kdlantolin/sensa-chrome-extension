@@ -1,8 +1,25 @@
+/**
+ * @file background.ts
+ * @description Background Service Worker governing background processes, audio proxying, and API integrations for Sensa.
+ *
+ * Architectural Overview:
+ * 1. Offscreen Audio Proxy (`audioproxy.html`):
+ *    - Manifest V3 Service Workers cannot directly access DOM media APIs or play/record audio streams.
+ *    - When `START_CAPTURE` or `START_RADAR_CAPTURE` is invoked, this service worker creates an offscreen document (`audioproxy.html`).
+ *    - It retrieves a media stream ID via `chrome.tabCapture.getMediaStreamId()` and forwards it to the offscreen document to connect to the WebSocket backend.
+ *
+ * 2. Message Routing & Fallbacks:
+ *    - Routes transcription packets (`FORWARD_TO_TAB`) from the offscreen document back to the active tab's content script.
+ *    - Implements retry logic with exponential backoff for tab capture stream acquisition.
+ *
+ * 3. Secure API Proxies:
+ *    - `TRANSLATE_TEXT`: Proxies translation requests through the Render backend first, falling back to direct DeepL API calls.
+ *    - `FETCH_GOOGLE_FONTS`: Fetches font lists server-side to bypass strict Content Security Policies (CSP) on sites like YouTube.
+ */
+
 declare var process: any;
 
-// ==========================================
-// ⚡ HIDDEN WAKE-UP PING FOR RENDER BACKEND
-// ==========================================
+// Hidden wake-up ping for Render backend (prevents cold start delays)
 const RENDER_BACKEND_URL = "https://sensa-chrome-extension-backend.onrender.com/"
 const pingBackend = () => {
   fetch(RENDER_BACKEND_URL).catch(() => { })

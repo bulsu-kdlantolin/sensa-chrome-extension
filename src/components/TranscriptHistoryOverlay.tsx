@@ -1,3 +1,16 @@
+/**
+ * @file TranscriptHistoryOverlay.tsx
+ * @description Slide-out sidebar modal for viewing chronological live caption logs and exporting transcription archives.
+ *
+ * Architectural Overview:
+ * 1. Log Management & Scroll Lock:
+ *    - Renders historical subtitle blocks (`CaptionBlock`) containing both original source transcriptions and translated target texts.
+ *    - Implements intelligent scroll-lock physics (`isAtBottomRef`), automatically pinning the viewport to new incoming captions unless the user scrolls up to review earlier dialogue.
+ *
+ * 2. Archive Export Engine:
+ *    - Converts caption history into formatted plain-text archives (`.txt`) and initiates client-side file downloads via `URL.createObjectURL`.
+ */
+
 import React, { useEffect, useRef, useState } from "react"
 import type { CaptionBlock } from "../hooks/useLiveCaptions"
 

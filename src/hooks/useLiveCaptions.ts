@@ -1,13 +1,41 @@
+/**
+ * @file useLiveCaptions.ts
+ * @description Core React hook governing real-time speech-to-text transcription and translation for Sensa.
+ * 
+ * Architectural Overview:
+ * 1. Communicates with Chrome Extension Background Script (`background.ts`) via runtime messages (`START_CAPTURE`, `STOP_CAPTURE`).
+ * 2. Background script opens an offscreen document or tab capture stream, routing audio via WebSocket to the Sensa Backend (`sensa-backend`).
+ * 3. Backend streams audio to Deepgram (speech-to-text) and DeepL (translation), returning `CAPTION_UPDATE` messages.
+ * 4. This hook merges interim and final transcription blocks, pairing original text with translated subtitles in real-time.
+ */
+
 import { useEffect, useRef, useState } from "react"
 
-// 🚨 Define the stacked data structure
+/**
+ * Represents a single subtitle block displayed in the UI or transcript history.
+ */
 export interface CaptionBlock {
+  /** Unique identifier for keying in React lists */
   id: string
+  /** The transcribed text in the source language (e.g., English) */
   original: string
+  /** The translated text in the target language (e.g., Spanish) */
   translated: string
+  /** Whether the speech engine has finalized this utterance (true) or is still streaming interim results (false) */
   isFinal: boolean
 }
 
+/**
+ * Manages live captioning state, language updates, automatic error recovery, and message listeners.
+ *
+ * @param isActive - Whether live captioning is currently enabled by the user or mode.
+ * @param targetLanguage - The language code to translate subtitles into (e.g., "ES", "TL").
+ * @param showOriginalText - Whether to display both original and translated text simultaneously.
+ * @param isCaptionsDisplayed - UI toggle governing whether captions should be rendered on screen.
+ * @param sourceLanguage - The spoken language code being captured (e.g., "en", "fil").
+ * @param isPopupOpen - State indicating if the Sensa extension popup is open; used for instant retry after activeTab authorization.
+ * @returns Object containing the current array of `captions` and any authorization/connection `error` string.
+ */
 export function useLiveCaptions(isActive: boolean, targetLanguage: string, showOriginalText: boolean, isCaptionsDisplayed: boolean = true, sourceLanguage: string = "en", isPopupOpen: boolean = false) {
   const [captions, setCaptions] = useState<CaptionBlock[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -21,9 +49,7 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
   useEffect(() => { sourceLanguageRef.current = sourceLanguage }, [sourceLanguage])
   useEffect(() => { isCaptionsDisplayedRef.current = isCaptionsDisplayed }, [isCaptionsDisplayed])
 
-  // 🚀 INSTANT RETRY ON POPUP OPEN: When the user clicks the Sensa extension icon in the top Chrome toolbar after getting an authorization error,
-  // Chrome grants activeTab permission. Since focus moves to the popup, window.onfocus doesn't fire on the webpage.
-  // We watch isPopupOpen directly and instantly retry capture so captions start immediately without needing to refresh or reactivate!
+  // Automatically retry capture when the extension popup opens, utilizing the newly granted activeTab permission
   useEffect(() => {
     if (isActive && isPopupOpen) {
       setError(null)
@@ -108,7 +134,7 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
       }
       if (msg.type === "CAPTION_UPDATE" && msg.text && isCaptionsDisplayedRef.current) {
         setCaptions((prev) => {
-          // Shallow clone the array to prevent React state mutation glitches while maintaining high performance!
+          // Clone array to prevent state mutation
           const newCaptions = [...prev]
 
           if (msg.source === "original") {

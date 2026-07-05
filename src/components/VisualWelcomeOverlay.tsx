@@ -1,3 +1,16 @@
+/**
+ * @file VisualWelcomeOverlay.tsx
+ * @description Onboarding introduction modal displayed when Visual Mode is first selected, providing typewriter narration, speech synthesis introduction, and interactive feature highlights.
+ *
+ * Architectural Overview:
+ * 1. Sequential Audio-Visual Onboarding:
+ *    - Orchestrates a timed sequence where TTS narration (`speechSynthesis`) reads the title, description, and feature list while synchronizing a visual typewriter effect (`typedWordCount`).
+ *    - Integrates with `useUIHoverAudio` and Web Audio API synthesizer (`playPopSfx`, `playTypingSfx`) to provide auditory feedback for visually impaired users.
+ *
+ * 2. Hands-Free Voice Entry:
+ *    - Communicates with `welcomeVoiceBridge` via Chrome storage and runtime messaging (`sensa-welcome-voice`) to allow users to say "Get Started" to advance without clicking.
+ */
+
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
@@ -601,7 +614,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
       onClick={handleSkipStep}
     >
 
-      {/* 🚨 CSS INJECTION FOR CINEMATIC ENTRANCE & BUTTON PROGRESS */}
+      {/* Keyframe animation stylesheet for floating ambient background graphics and reveals */}
       <style dangerouslySetInnerHTML={{
         __html: `
         @keyframes float-blue-1 {
@@ -636,11 +649,11 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
         .fade-in-4 { animation: fade-in-up 0.8s cubic-bezier(0.23,1,0.32,1) 0.4s forwards; opacity: 0; }
       `}} />
 
-      {/* 🌌 AMBIENT BLUE BACKGROUND ENGINE */}
+      {/* Ambient background lighting effects */}
       <div className={`absolute -top-16 -left-16 w-64 h-64 rounded-full mix-blend-multiply filter blur-[60px] animate-float-blue-1 pointer-events-none transform-gpu ${isDark ? 'bg-[#0A44FF]/30' : 'bg-[#0A44FF]/20'}`} />
       <div className={`absolute -bottom-16 -right-16 w-64 h-64 rounded-full mix-blend-multiply filter blur-[60px] animate-float-blue-2 pointer-events-none transform-gpu ${isDark ? 'bg-[#0A44FF]/15' : 'bg-[#0A44FF]/10'}`} />
 
-      {/* 🛡️ CONTENT WRAPPER */}
+      {/* Main content layout container */}
       <div className="relative z-10 flex flex-col items-center justify-start w-full h-full pt-6 pb-6 px-6">
 
         {/* Header (No Logo, Perfectly Centered) */}
@@ -653,7 +666,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
           </p>
         </div>
 
-        {/* 👁️ FEATURE HIGHLIGHT CARDS */}
+        {/* Feature introduction cards with hover audio previews */}
         <div className="w-full fade-in-3 mb-auto">
           <div className="grid grid-cols-1 gap-3.5 w-full overflow-visible py-1 content-start">
             {features.slice(0, visibleFeatureCount).map((feature) => (
@@ -682,7 +695,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
           </div>
         </div>
 
-        {/* 🚀 SENSA BLUE PROGRESS BUTTON */}
+        {/* Primary onboarding action button with speech feedback */}
         <div className={`w-full h-[56px] shrink-0 mt-auto transition-all duration-500 ${showButton ? 'opacity-100 pointer-events-auto fade-in-4' : 'opacity-0 pointer-events-none'}`}>
           <button
             onClick={handleManualProceed}

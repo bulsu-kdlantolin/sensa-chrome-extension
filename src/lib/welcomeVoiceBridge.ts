@@ -1,3 +1,16 @@
+/**
+ * @file welcomeVoiceBridge.ts
+ * @description Web Speech API (`SpeechRecognition`) bridge executed within host page content scripts to enable hands-free voice confirmation on the initial extension welcome screen.
+ *
+ * Architectural Overview:
+ * 1. Onboarding Confirmation Monitoring:
+ *    - Listens for a broad vocabulary of affirmative entry phrases ("get started", "proceed", "enter", "start", "okay", "yes", "confirm").
+ *    - Synchronizes state changes with Chrome local storage (`sensa_welcome_proceed_trigger`) to advance the user to the mode selection screen.
+ *
+ * 2. Phonetic Collision Recovery:
+ *    - Implements Levenshtein distance matching to handle common speech-to-text transcription errors (e.g., "inter" or "center" instead of "enter", "entire" instead of "entry").
+ */
+
 import { DEFAULT_PROFILE, type SensaUserProfile } from "./storage"
 
 let recognition: SpeechRecognition | null = null

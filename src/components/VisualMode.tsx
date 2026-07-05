@@ -1,3 +1,19 @@
+/**
+ * @file VisualMode.tsx
+ * @description Main popup interface for toggling Visual Mode, rendering interactive audio soundwaves and sensory speech feedback.
+ *
+ * Architectural Overview:
+ * 1. Audio Synthesis Feedback:
+ *    - Uses Web Audio API (`AudioContext`) oscillators and gain ramps to generate sensory sound effects for hover, activation, and deactivation.
+ *
+ * 2. Voice Bridge Orchestration:
+ *    - Sends runtime messages (`sensa-visual-mode-voice`) to active webpage content scripts to start or stop speech recognition bridges.
+ *
+ * 3. State Synchronization:
+ *    - Syncs activation state bi-directionally with `chrome.storage.local` (`sensa_visual_active`).
+ *    - Automatically closes the popup when activated via voice command (`sensa_visual_activated_via_voice`).
+ */
+
 import { useState, useEffect, useRef } from "react"
 
 interface VisualModeProps {
@@ -227,7 +243,7 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
     return `We are now in the Visual Mode interface. Target website: ${websiteLabel}. Extension status: ${statusLabel}.`
   }
 
-  // --- THE TWO-WAY BRIDGE ---
+  // State synchronization between Chrome local storage and mode activation
   useEffect(() => {
     chrome.storage.local.get(["sensa_visual_active"], (res) => {
       setIsListening(!!res.sensa_visual_active)
@@ -380,10 +396,10 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 
   return (
-    // 🚨 BUG EXTERMINATION: Changed overflow-hidden to overflow-visible so the glow doesn't get clipped!
+    // Allow overflow visibility to prevent clipping of animated button glow effects
     <div className="flex-1 flex flex-col items-center justify-center px-6 w-full h-full bg-transparent select-none relative overflow-visible">
       
-      {/* 🚨 ISOLATED CSS INJECTION */}
+      {/* Component-scoped CSS keyframe animations */}
       <style dangerouslySetInnerHTML={{ __html: `
         @keyframes visual-soundwave {
           0%, 100% { transform: scaleY(0.5); opacity: 0.5; }
@@ -399,7 +415,7 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
         .animate-visual-wave-3 { animation: visual-soundwave 0.8s ease-in-out infinite 0.4s; }
         .animate-visual-wave-4 { animation: visual-soundwave 0.8s ease-in-out infinite 0.6s; }
         
-        /* 🚨 PERFECT SYNC: Glow is now exactly 1.6s (exactly 2x the 0.8s wave cycle) */
+        /* Synchronize glow duration to exactly double the 0.8s wave animation cycle */
         .animate-visual-pulse-glow { animation: visual-pulse-glow 1.6s ease-in-out infinite backwards; }
       `}} />
 

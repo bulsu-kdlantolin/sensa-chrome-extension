@@ -1,23 +1,33 @@
-// 1. Define the shape of your JSON Database profile
+/**
+ * @file storage.ts
+ * @description Core data models and schema definitions for persistent Chrome local storage profile state.
+ *
+ * Architectural Overview:
+ * 1. Unified State Schema (`SensaUserProfile`):
+ *    - Consolidates global preferences (`hasSeenWelcome`, `activeMode`, `theme`), Visual Mode TTS settings, and Auditory Mode subtitle preferences into a single type-safe interface.
+ *
+ * 2. Zero-Config Defaults (`DEFAULT_PROFILE`):
+ *    - Provides fallback initial state for clean installations or schema migrations.
+ */
+
+// Core TypeScript interface defining the persistent JSON profile structure stored in chrome.storage.local
 export interface SensaUserProfile {
   globalSettings: {
     hasSeenWelcome: boolean;
     activeMode: "visual" | "auditory" | null;
-    theme: "light" | "dark"; // New persistent setting
+    theme: "light" | "dark";
   };
   visualState: {
     ttsEnabled: boolean;
     readingSpeed: number;
-    // ... Phase 2 settings pending
   };
   auditoryState: {
     captionsEnabled: boolean;
     targetLanguage: string;
-    // ... Phase 3 settings pending
   };
 }
 
-// 2. Define the exact default profile for new users
+// Default state configuration instantiated for first-time extension onboarding
 export const DEFAULT_PROFILE: SensaUserProfile = {
   globalSettings: {
     hasSeenWelcome: false,

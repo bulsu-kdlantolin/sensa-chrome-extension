@@ -1,3 +1,18 @@
+/**
+ * @file popup.tsx
+ * @description Main Chrome Extension popup window rendered when clicking the Sensa icon in the browser toolbar.
+ *
+ * Architectural Overview:
+ * 1. Onboarding & Mode Routing:
+ *    - Checks `sensa_user_profile` in `chrome.storage.local`.
+ *    - If onboarding is incomplete, routes through Mode Selection (`ModeSelection`) and Welcome flows (`VisualWelcomeOverlay` / `AuditoryWelcomeOverlay`).
+ *    - Once configured, routes directly to the active Dashboard (`Dashboard`).
+ *
+ * 2. Active Tab Authorization:
+ *    - Opening this popup automatically grants `activeTab` permission for the currently active tab.
+ *    - This permission allows content scripts and live captioning to capture tab media and inject Shadow DOM UI without requiring manual page refreshes.
+ */
+
 import { useState, useEffect } from "react"
 import "./style.css"
 import ModeSelection from "./components/ModeSelection"
@@ -7,6 +22,9 @@ import Dashboard from "./components/Dashboard"
 import type { SensaUserProfile } from "./lib/storage"
 import { DEFAULT_PROFILE } from "./lib/storage"
 
+/**
+ * Root component for the extension popup window.
+ */
 export default function IndexPopup() {
   const [currentView, setCurrentView] = useState<"LOADING" | "MODE_SELECTION" | "WELCOME" | "DASHBOARD">("LOADING")
   const [userProfile, setUserProfile] = useState<SensaUserProfile | null>(null)
@@ -194,7 +212,7 @@ export default function IndexPopup() {
     })
   }
 
-  // --- THE ROUTER ---
+  // View routing based on user profile state and onboarding completion
   if (currentView === "LOADING" || !userProfile) {
     return <div className="w-[350px] h-[550px] bg-white flex items-center justify-center text-gray-800">Loading Data...</div>
   }

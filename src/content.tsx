@@ -1,9 +1,27 @@
+/**
+ * @file content.tsx
+ * @description Main Content Script UI (CSUI) entry point for the Sensa Chrome Extension, powered by Plasmo.
+ *
+ * Architectural Overview:
+ * 1. Shadow DOM Isolation:
+ *    - Injects a Shadow DOM root (`plasmo-csui`) into every host web page (`<all_urls>`).
+ *    - Prevents host webpage stylesheets from overriding Sensa UI styles and vice-versa.
+ *
+ * 2. Mode Orchestration:
+ *    - Manages top-level state for Visual Mode, Auditory Mode, Welcome Overlay, and Mode Selection.
+ *    - Mounts floating docks (`VisualDock`, `AuditoryDock`), live subtitles (`LiveCaptionBox`), and modals/overlays within the Shadow DOM.
+ *
+ * 3. Audio & Voice Bridging:
+ *    - Injects `audioInterceptorScript` into the host page context to capture Web Audio API frequency packets for games.
+ *    - Orchestrates speech recognition bridges (`visualModeVoiceBridge`, `modeSelectionVoiceBridge`) and live captioning (`useLiveCaptions`).
+ */
+
 import cssText from "data-text:~style.css"
 import type { PlasmoCSConfig } from "plasmo"
 import { useState, useRef, useEffect } from "react"
 import VisualDock from "./components/VisualDock"
 import AuditoryDock from "./components/AuditoryDock"
-import VisualSettingsModal from "./components/VisualSettingsModal" // NEW IMPORT
+import VisualSettingsModal from "./components/VisualSettingsModal"
 import AuditorySettingsModal from "./components/AuditorySettingsModal"
 import TranscriptHistoryOverlay from "./components/TranscriptHistoryOverlay"
 import ReadingSpeedOverlay from "./components/ReadingSpeedOverlay"
@@ -30,9 +48,7 @@ import {
 
 import { audioInterceptorScript } from "./audioInterceptor"
 
-// ==========================================
-// 🎮 INJECT WEB AUDIO API INTERCEPTOR
-// ==========================================
+// Inject Web Audio API interceptor for game audio frequency tracking
 const injectAudioInterceptor = () => {
   const script = document.createElement('script')
   script.textContent = audioInterceptorScript
@@ -50,9 +66,7 @@ if (document.readyState === 'loading') {
   injectAudioInterceptor()
 }
 
-// ==========================================
-// ⚡ HIDDEN WAKE-UP PING FOR RENDER BACKEND
-// ==========================================
+// Hidden wake-up ping for Render backend (prevents cold start delays)
 try {
   const lastPing = sessionStorage.getItem("sensa_backend_ping")
   if (!lastPing || Date.now() - Number(lastPing) > 5 * 60 * 1000) {

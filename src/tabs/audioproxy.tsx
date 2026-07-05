@@ -1,7 +1,29 @@
+/**
+ * @file audioproxy.tsx
+ * @description Offscreen document responsible for tab audio capturing, playback, FFT analysis, and WebSocket streaming.
+ *
+ * Architectural Overview:
+ * 1. Why an Offscreen Document?
+ *    - In Manifest V3, Service Workers cannot access DOM audio APIs (`AudioContext`, `<audio>`, `MediaStream`).
+ *    - This offscreen document is spawned by `background.ts` to host the Web Audio API processing pipeline.
+ *
+ * 2. Media Capture & Playback:
+ *    - Receives `EXECUTE_OFFSCREEN_CAPTURE` containing a `streamId` from `chrome.tabCapture.getMediaStreamId()`.
+ *    - Connects the stream to an `<audio>` element so the user continues to hear tab audio without interruption.
+ *
+ * 3. Speech-to-Text WebSocket Streaming:
+ *    - When STT is enabled, extracts 16kHz mono linear16 PCM audio buffers using `ScriptProcessorNode`.
+ *    - Streams raw PCM packets over WebSocket (`wss://sensa-chrome-extension-backend.onrender.com`) to Deepgram / DeepL.
+ *    - Forwards returned transcription packets back to `background.ts` -> active tab via `FORWARD_TO_TAB`.
+ */
+
 import { useEffect } from "react"
 
 const STT_WS_URL = "wss://sensa-chrome-extension-backend.onrender.com"
 
+/**
+ * Offscreen audio proxy component. Runs invisibly in the background.
+ */
 export default function AudioProxy() {
   useEffect(() => {
     let socket: WebSocket | null = null

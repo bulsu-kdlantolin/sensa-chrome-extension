@@ -1,3 +1,16 @@
+/**
+ * @file visualModeVoiceBridge.ts
+ * @description Web Speech API (`SpeechRecognition`) bridge executed within host page content scripts to allow hands-free voice control over Visual Mode activation and deactivation.
+ *
+ * Architectural Overview:
+ * 1. Continuous Command Monitoring:
+ *    - Listens continuously for activation cues ("visual mode", "start") and deactivation cues ("deactivate visual mode", "stop", "turn off").
+ *    - Synchronizes state changes with Chrome local storage (`sensa_visual_active` / `sensa_auditory_active`) and triggers TTS audio confirmations (`speakFeedbackInTab`).
+ *
+ * 2. Levenshtein Fuzzy Scoring:
+ *    - Resolves vocal ambiguities and phonetic collisions between "activate" and "deactivate" using weighted word frequency scoring and N-gram distance checking.
+ */
+
 let recognition: SpeechRecognition | null = null
 let isActive = false
 let restartTimer: number | null = null

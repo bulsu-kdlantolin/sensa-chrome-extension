@@ -1,3 +1,16 @@
+/**
+ * @file AuditoryMode.tsx
+ * @description Main popup interface for toggling Auditory Mode (live subtitles and environmental sound detection).
+ *
+ * Architectural Overview:
+ * 1. Mode Activation & Storage Sync:
+ *    - Syncs activation state bi-directionally with `chrome.storage.local` (`sensa_auditory_active`).
+ *    - Automatically deactivates `sensa_visual_active` when Auditory Mode is enabled to maintain mutual exclusivity.
+ *
+ * 2. Visual Animation System:
+ *    - Renders pulsing CSS arc animations (`auditory-arc`) and outer button glow effects (`auditory-pulse-glow`) to visually represent live audio capture.
+ */
+
 import { useState, useEffect } from "react"
 
 interface AuditoryModeProps {

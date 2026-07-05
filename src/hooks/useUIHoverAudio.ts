@@ -1,3 +1,21 @@
+/**
+ * @file useUIHoverAudio.ts
+ * @description React hook managing sensory spoken auditory feedback for UI element hovers and clicks.
+ *
+ * Architectural Overview:
+ * 1. Priority Queuing & Preemption:
+ *    - Click announcements (`playClickAudio`) represent intentional user actions and immediately preempt/cancel any ongoing hover announcements.
+ *    - Hover announcements (`playHoverAudio`) wait for non-hover speech (such as screen reader TTS reading) to finish before speaking.
+ *
+ * 2. Debouncing & Visibility Guard:
+ *    - Implements a 150ms debounce timeout on hover to prevent audio spam when moving the mouse rapidly across interactive UI elements.
+ *    - Ignores hover events occurring immediately after tab switching (<600ms) to prevent unwanted speech bursts.
+ *
+ * 3. Dynamic Voice Resolution:
+ *    - Resolves the user's preferred TTS voice (`sensa_visual_voice_uri` / `sensa_visual_voice_name`) from Chrome local storage.
+ *    - Includes retry logic and `voiceschanged` listener fallback for browser environments where speech voices load asynchronously.
+ */
+
 import { useCallback, useEffect, useRef } from "react"
 
 export function useUIHoverAudio() {

@@ -1,3 +1,16 @@
+/**
+ * @file CaptionTransparencyOverlay.tsx
+ * @description Interactive modal overlay for adjusting the background opacity of live subtitles in Auditory Mode.
+ *
+ * Architectural Overview:
+ * 1. Opacity Customization & Persistence:
+ *    - Manages live subtitle container transparency (`sensa_caption_transparency`), syncing real-time slider adjustments with Chrome local storage.
+ *    - Provides discrete quick-select preset values (25%, 50%, 75%, 100%) alongside a continuous range slider.
+ *
+ * 2. Draggable Modal Viewport:
+ *    - Supports mouse drag positioning (`sensa_transparency_offset`) to allow users to move the configuration panel without obscuring active subtitles.
+ */
+
 import React, { useEffect, useRef, useState } from "react"
 
 interface CaptionTransparencyOverlayProps {

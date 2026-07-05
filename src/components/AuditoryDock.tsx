@@ -1,10 +1,29 @@
+/**
+ * @file AuditoryDock.tsx
+ * @description Auditory accommodation dock providing real-time audio visualization, live speech-to-text captions, and sensory settings.
+ *
+ * Architectural Overview:
+ * 1. Audio Capture & Visualizer (`SiteAudioSystem`):
+ *    - Connects directly to page `<audio>` and `<video>` HTML5 elements via `.captureStream()`.
+ *    - Also listens for Web Audio API frequency packets sent by the injected `audioInterceptorScript` (for HTML5 games or Web Audio sites).
+ *    - Performs FFT analysis to render smooth, framerate-independent audio visualizer bars.
+ *
+ * 2. Loud Noise Spike Detection:
+ *    - Monitors raw instantaneous audio energy (independent of visualizer smoothing).
+ *    - When sudden audio spikes occur (ratio > 2.0x baseline), it triggers a non-intrusive screen-edge flash overlay to alert deaf or hard-of-hearing users.
+ *
+ * 3. Dock UI & Overlays:
+ *    - Renders a floating glassmorphism dock with controls for toggling live captions, opening transcript history, focus mode, and adjusting text size/transparency.
+ */
+
 import React, { useEffect, useRef, useState } from "react"
 import { Tooltip as SharedTooltip } from "./Tooltip"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 
-// ============================================================================
-// 🎯 SITE-ONLY DUAL ENGINE: Unfiltered Transient + Game Audio Interceptor
-// ============================================================================
+/**
+ * Real-time site audio visualizer and loud noise spike detection engine.
+ * Connects to HTML5 media elements and Web Audio API streams.
+ */
 const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boolean, isDark: boolean, isCaptionsActive?: boolean }) => {
   const barsRef = useRef<(HTMLDivElement | null)[]>([])
   const currentHeights = useRef([4, 6, 8, 6, 4])
@@ -259,9 +278,7 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
         const visualizerEnergy = smoothedEnergyRef.current
         const hasAudio = visualizerEnergy >= ENERGY_GATE
 
-        // ── Loud Noise Spike Detection ────────────────────────────
-        // Independent of visualizer smoothing. Uses raw energy directly
-        // so it reacts instantly to sudden spikes in the audio stream.
+        // Loud Noise Spike Detection (uses raw energy directly to react instantly to sudden spikes)
         if (loudNoiseEnabledRef.current) {
           if (rawEnergy > 0.01) {
             if (slowEnergyRef.current < 0.01) {
@@ -362,7 +379,7 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
           }
         })
 
-        // ── Screen-Edge Flash Rendering ─────────────────────────
+        // Screen-edge flash rendering for loud noise alerts
         const fi = flashIntensityRef.current
         if (fi > 0.01) {
           const flashColor = activeTheme === 'red'
@@ -427,25 +444,41 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
   )
 }
 
-// ============================================================================
-// MAIN AUDITORY DOCK COMPONENT (Premium Theme Integration)
-// ============================================================================
+/**
+ * Props for the AuditoryDock component.
+ */
 interface AuditoryDockProps {
+  /** Whether dark mode theme is currently active */
   isDark: boolean
+  /** Whether the dock is collapsed into a compact toolbar */
   isMinimized: boolean
+  /** Whether real-time speech-to-text subtitles are currently streaming */
   isCaptionsActive: boolean
+  /** Callback to toggle live captions on or off */
   onToggleCaptions: () => void
+  /** Callback to toggle dock minimization */
   onMinimizeToggle: () => void
+  /** Callback to open the target translation language selector */
   onOpenCaptionLanguage: () => void
+  /** Callback to open the full transcript history drawer */
   onOpenTranscriptHistory: () => void
+  /** Callback to open subtitle text size adjustment overlay */
   onOpenTextSize: () => void
+  /** Callback to open subtitle background transparency overlay */
   onOpenCaptionTransparency: () => void
+  /** Whether sensory Focus Mode (dimming surrounding page content) is enabled */
   isFocusMode: boolean
+  /** Callback to toggle Focus Mode */
   onToggleFocusMode: () => void
+  /** Callback to open the comprehensive Auditory Settings modal */
   onOpenSettings: () => void
+  /** Callback to completely close and exit Auditory Mode */
   onClose: () => void
 }
 
+/**
+ * Main floating toolbar component for Auditory Mode.
+ */
 export default function AuditoryDock({
   isDark,
   isMinimized,
@@ -499,12 +532,10 @@ export default function AuditoryDock({
       data-sensa-auditory-dock
     >
 
-      {/* ========================================================= */}
-      {/* 🔝 TOP SECTION: VISUALIZER & CAPTIONS */}
-      {/* ========================================================= */}
+      {/* Visualizer & Captions */}
       <div className={`relative flex flex-col items-center rounded-[28px] p-2 gap-1.5 shrink-0 z-30 transition-all duration-300 ${glassPanelClass}`}>
 
-        {/* ISOLATED GLOW LAYER */}
+        {/* Glow layer */}
         <div
           className="sensa-dock-pill absolute inset-0 rounded-[28px] pointer-events-none transition-colors duration-150"
           style={{
@@ -552,9 +583,7 @@ export default function AuditoryDock({
         </button>
       </div>
 
-      {/* ========================================================= */}
-      {/* ↔️ MIDDLE SECTION: SETTINGS */}
-      {/* ========================================================= */}
+      {/* Settings */}
       <div
         className={`grid w-full transform-gpu backface-hidden will-change-[grid-template-rows] ${springTransition} ${isMinimized ? "grid-rows-[0fr] mt-0" : "grid-rows-[1fr] mt-3"
           }`}
@@ -566,7 +595,7 @@ export default function AuditoryDock({
               : "opacity-100 scale-100 translate-y-0 pointer-events-auto"
               }`}
           >
-            {/* ISOLATED GLOW LAYER */}
+            {/* Glow layer */}
             <div
               className="sensa-dock-pill absolute inset-0 rounded-[28px] pointer-events-none transition-colors duration-150"
               style={{
@@ -663,12 +692,10 @@ export default function AuditoryDock({
         </div>
       </div>
 
-      {/* ========================================================= */}
-      {/* 🔽 BOTTOM SECTION: WINDOW CONTROLS */}
-      {/* ========================================================= */}
+      {/* Window Controls */}
       <div className={`relative flex flex-col items-center rounded-[28px] p-2 gap-1.5 shrink-0 mt-3 z-20 transition-all duration-300 transform-gpu backface-hidden ${controlPanelClass}`}>
 
-        {/* ISOLATED GLOW LAYER */}
+        {/* Glow layer */}
         <div
           className="sensa-dock-pill absolute inset-0 rounded-[28px] pointer-events-none transition-colors duration-150"
           style={{

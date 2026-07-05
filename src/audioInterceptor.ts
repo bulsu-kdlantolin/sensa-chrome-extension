@@ -1,4 +1,19 @@
-// This script gets injected into the page context to intercept game audio
+/**
+ * @file audioInterceptor.ts
+ * @description Injected script string that monkey-patches `window.AudioContext` and `window.webkitAudioContext` in the host webpage context.
+ *
+ * Architectural Overview:
+ * 1. Why is this needed?
+ *    - HTML5 games and Web Audio API applications generate synthesized audio directly in JS without HTML `<audio>` tags.
+ *    - Content scripts cannot directly access JS variables or audio nodes created by the host page due to Chrome extension world isolation.
+ *
+ * 2. How it works:
+ *    - Injected into the host page DOM (`<script>`) by `content.tsx` before page scripts load.
+ *    - Wraps `AudioContext` constructors, inserting a splitter gain node and an `AnalyserNode` before the destination.
+ *    - Continually extracts FFT frequency bin data and streams it across the world boundary via `window.postMessage('SENSA_GAME_AUDIO_FREQUENCY')`.
+ *    - `content.tsx` listens for these messages and feeds them to `SiteAudioSystem` in `AuditoryDock.tsx`.
+ */
+
 export const audioInterceptorScript = `
 (function() {
   const interceptedContexts = new Set();

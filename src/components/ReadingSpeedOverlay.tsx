@@ -1,3 +1,16 @@
+/**
+ * @file ReadingSpeedOverlay.tsx
+ * @description Interactive modal overlay for configuring text-to-speech (TTS) narration rate in Visual Mode.
+ *
+ * Architectural Overview:
+ * 1. Narration Rate Customization:
+ *    - Manages TTS reading speed (`sensa_visual_reading_speed`), offering quick-select multiplier buttons (0.5x, 1.0x, 1.25x, 1.5x, 2.0x) and a continuous range slider.
+ *    - Triggers auditory preview samples on speed adjustments so visually impaired users can immediately gauge pacing.
+ *
+ * 2. Voice Command Integration:
+ *    - Incorporates Levenshtein distance fuzzy matching to allow hands-free voice control over speed adjustments ("faster", "slower", "normal speed", "set speed to one point five").
+ */
+
 import React, { useEffect, useRef, useState, useCallback } from "react"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 

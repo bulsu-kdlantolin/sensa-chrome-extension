@@ -1,3 +1,15 @@
+/**
+ * @file Tooltip.tsx
+ * @description Reusable high-contrast tooltip component used across VisualDock and AuditoryDock to provide contextual accessibility labels for interactive buttons.
+ *
+ * Architectural Overview:
+ * 1. Adaptive Theming & Styling:
+ *    - Automatically resolves surface colors, borders, and typography according to active mode (`isAuditory`), theme (`isDark`), and alert state (`isRed`).
+ *
+ * 2. Hardware-Accelerated Animations:
+ *    - Employs cubic-bezier transition curves (`ease-[cubic-bezier(0.16,1,0.3,1)]`) for smooth, non-disruptive hover reveals.
+ */
+
 import React from "react"
 
 interface TooltipProps {
@@ -8,17 +20,17 @@ interface TooltipProps {
 }
 
 export const Tooltip = ({ label, isDark, isRed, isAuditory }: TooltipProps) => {
-  // 1. POSITIONING: Anchored left, right next to the button.
+  // Layout & Positioning: Anchored horizontally adjacent to dock control buttons
   const layout = "absolute right-full mr-3 top-1/2 -translate-y-1/2 z-50 pointer-events-none"
   
-  // 2. PHYSICS: Matches the dock's premium iOS-style bezier curve.
+  // Animation Physics: Utilizes cubic-bezier transitions matching the parent dock hover curves
   const animation = "opacity-0 invisible -translate-x-2 group-hover:opacity-100 group-hover:visible group-hover:translate-x-0 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
   
-  // 3. TYPOGRAPHY: Shared tooltip sizing for both dock styles.
+  // Typography & Box Model: Standardized padding and font weight across themes
   let typography = "px-5 py-2.5 rounded-lg text-[15px] font-semibold tracking-wide whitespace-nowrap shadow-lg border"
   let arrowSize = "absolute top-1/2 -right-[7px] -translate-y-1/2 border-y-[7px] border-y-transparent border-l-[7px] border-r-0"
 
-  // 4. PREMIUM THEME LOGIC
+  // Theme Tokens: Resolves color palettes for alert states, dark mode, and visual/auditory modes
   let colors = ""
   let arrowColor = ""
 
@@ -38,7 +50,7 @@ export const Tooltip = ({ label, isDark, isRed, isAuditory }: TooltipProps) => {
     arrowColor = "border-l-white"
   }
 
-  // Keep the same size across visual/auditory themes; dark stays consistent too.
+  // Keep consistent box sizing across visual/auditory themes and alert states
   if (isRed) {
     typography = "px-5 py-2.5 rounded-lg text-[15px] font-semibold tracking-wide whitespace-nowrap shadow-lg border"
   }
@@ -48,7 +60,7 @@ export const Tooltip = ({ label, isDark, isRed, isAuditory }: TooltipProps) => {
       <div className={`relative ${typography} ${colors}`}>
         {label}
         
-        {/* The physical pointer arrow pointing at the button */}
+        {/* Directional indicator arrow matching parent surface color */}
         <div 
           className={`${arrowSize} ${arrowColor}`} 
         />
