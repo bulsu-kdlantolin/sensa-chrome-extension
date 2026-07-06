@@ -28,11 +28,7 @@ let watchdogTimer: number | null = null
 let lastAudioTimestamp = 0
 let recognitionRunning = false
 
-// Confirmation cooldown: require the same command to be detected twice
-// within a short window before applying, to prevent false positives from
-// ambient noise or TTS echo.
-let pendingCommand: "visual" | "auditory" | null = null
-let pendingCommandTimestamp = 0
+
 
 const getSpeechRecognitionCtor = () =>
   (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -202,11 +198,13 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     tabLog("[Sensa Tab Voice Bridge] Recognition started successfully")
   }
 
-  // Track audio activity for the watchdog (use addEventListener since onaudiostart
-  // isn't in the TypeScript SpeechRecognition type definition)
-  ;(instance as any).onaudiostart = () => {
-    lastAudioTimestamp = Date.now()
-  }
+  // Track audio activity for the watchdog
+  ;(instance as any).onaudiostart = () => { lastAudioTimestamp = Date.now() }
+  ;(instance as any).onaudioend = () => { lastAudioTimestamp = Date.now() }
+  ;(instance as any).onsoundstart = () => { lastAudioTimestamp = Date.now() }
+  ;(instance as any).onsoundend = () => { lastAudioTimestamp = Date.now() }
+  ;(instance as any).onspeechstart = () => { lastAudioTimestamp = Date.now() }
+  ;(instance as any).onspeechend = () => { lastAudioTimestamp = Date.now() }
 
   instance.onresult = (event: SpeechRecognitionEvent) => {
     lastAudioTimestamp = Date.now()
@@ -244,6 +242,26 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
 
     tabLog(`[Sensa Mode Selection Tab Voice Bridge] Heard transcript: "${normalizedTranscript}" (Raw: "${rawTranscript}")`)
 
+    // Ignore TTS narration echoes picked up by the microphone when echoCancellation is disabled
+    if (
+      normalizedTranscript.includes("support low vision") ||
+      normalizedTranscript.includes("screen magnifier") ||
+      normalizedTranscript.includes("guided reading") ||
+      normalizedTranscript.includes("support hearing loss") ||
+      normalizedTranscript.includes("multilingual captions") ||
+      normalizedTranscript.includes("audio visualizer") ||
+      normalizedTranscript.includes("noise alerts") ||
+      normalizedTranscript.includes("you can say") ||
+      normalizedTranscript.includes("primary accessibility mode") ||
+      normalizedTranscript.includes("assisting visual and auditory") ||
+      normalizedTranscript.includes("specialized accessibility") ||
+      normalizedTranscript.includes("welcome to sensa")
+    ) {
+      tabLog(`[Sensa Mode Selection Tab Voice Bridge] Ignoring TTS narration echo: "${normalizedTranscript}"`)
+      globalBuffer = ""
+      return
+    }
+
     const count = (w: string) => {
       const regex = new RegExp(`\\b${w}\\b`, "g")
       return (normalizedTranscript.match(regex) || []).length
@@ -255,16 +273,35 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     // Visual Score Cues
     visualScore += count("visual mode") * 5
     visualScore += count("vision mode") * 5
-    visualScore += count("visual") * 3
-    visualScore += count("vision") * 3
     visualScore += count("visual mod") * 4
-    visualScore += count("bisual") * 3
+    visualScore += count("visual") * 4
+    visualScore += count("vision") * 4
+    visualScore += count("bisual") * 4
+    visualScore += count("option one") * 5
+    visualScore += count("option 1") * 5
+    visualScore += count("first option") * 5
+    visualScore += count("number one") * 5
+    visualScore += count("number 1") * 5
+    visualScore += count("first one") * 5
+    visualScore += count("first") * 3
+    visualScore += count("one") * 3
+    visualScore += count("1") * 3
 
     if (visualScore === 0) {
-      if (fuzzyMatch(normalizedTranscript, "visual mode", 2) || fuzzyMatch(normalizedTranscript, "vision mode", 2)) {
+      if (
+        fuzzyMatch(normalizedTranscript, "visual mode", 2) ||
+        fuzzyMatch(normalizedTranscript, "vision mode", 2) ||
+        fuzzyMatch(normalizedTranscript, "option one", 2) ||
+        fuzzyMatch(normalizedTranscript, "first option", 2)
+      ) {
         visualScore += 4
-      } else if (fuzzyMatch(normalizedTranscript, "visual", 1) || fuzzyMatch(normalizedTranscript, "vision", 1) || fuzzyMatch(normalizedTranscript, "bisual", 1)) {
-        visualScore += 2
+      } else if (
+        fuzzyMatch(normalizedTranscript, "visual", 1) ||
+        fuzzyMatch(normalizedTranscript, "vision", 1) ||
+        fuzzyMatch(normalizedTranscript, "bisual", 1) ||
+        fuzzyMatch(normalizedTranscript, "first", 1)
+      ) {
+        visualScore += 3
       }
     }
 
@@ -272,35 +309,46 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     auditoryScore += count("auditory mode") * 5
     auditoryScore += count("audio mode") * 5
     auditoryScore += count("sound mode") * 5
-    auditoryScore += count("auditory") * 3
-    auditoryScore += count("audio") * 3
-    auditoryScore += count("auditor") * 3
-
-    auditoryScore += count("auditori") * 3
     auditoryScore += count("hearing mode") * 5
-    auditoryScore += count("hearing") * 3
+    auditoryScore += count("auditory") * 4
+    auditoryScore += count("audio") * 4
+    auditoryScore += count("hearing") * 4
+    auditoryScore += count("auditor") * 4
+    auditoryScore += count("auditori") * 4
+    auditoryScore += count("option two") * 5
+    auditoryScore += count("option 2") * 5
+    auditoryScore += count("second option") * 5
+    auditoryScore += count("number two") * 5
+    auditoryScore += count("number 2") * 5
+    auditoryScore += count("second one") * 5
+    auditoryScore += count("second") * 3
+    auditoryScore += count("two") * 3
+    auditoryScore += count("2") * 3
 
     if (auditoryScore === 0) {
       if (
-        fuzzyMatch(normalizedTranscript, "auditory mode", 2) || 
+        fuzzyMatch(normalizedTranscript, "auditory mode", 2) ||
         fuzzyMatch(normalizedTranscript, "audio mode", 2) ||
         fuzzyMatch(normalizedTranscript, "sound mode", 2) ||
-        fuzzyMatch(normalizedTranscript, "hearing mode", 2)
+        fuzzyMatch(normalizedTranscript, "hearing mode", 2) ||
+        fuzzyMatch(normalizedTranscript, "option two", 2) ||
+        fuzzyMatch(normalizedTranscript, "second option", 2)
       ) {
         auditoryScore += 4
       } else if (
-        fuzzyMatch(normalizedTranscript, "auditory", 1) || 
+        fuzzyMatch(normalizedTranscript, "auditory", 1) ||
         fuzzyMatch(normalizedTranscript, "audio", 1) ||
         fuzzyMatch(normalizedTranscript, "auditor", 1) ||
         fuzzyMatch(normalizedTranscript, "auditori", 1) ||
-        fuzzyMatch(normalizedTranscript, "hearing", 1)
+        fuzzyMatch(normalizedTranscript, "hearing", 1) ||
+        fuzzyMatch(normalizedTranscript, "second", 1)
       ) {
-        auditoryScore += 2
+        auditoryScore += 3
       }
     }
 
     let chosenCommand: "visual" | "auditory" | null = null
-    const threshold = 4
+    const threshold = 3
 
     if (visualScore >= threshold && visualScore > auditoryScore) {
       chosenCommand = "visual"
@@ -309,36 +357,14 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     } else if (visualScore >= threshold && auditoryScore >= threshold) {
       tabLog(`[Sensa Mode Selection Tab Voice Bridge] Conflict detected (visual: ${visualScore}, auditory: ${auditoryScore}). Clearing buffer.`)
       globalBuffer = ""
-      pendingCommand = null
-      pendingCommandTimestamp = 0
     }
 
     tabLog(`[Sensa Mode Selection Tab Voice Bridge] Score results -> Visual: ${visualScore}, Auditory: ${auditoryScore}, chosenCommand: ${chosenCommand}`)
 
     if (chosenCommand) {
-      const now = Date.now()
-      const CONFIRMATION_WINDOW_MS = 3000
-
-      if (pendingCommand === chosenCommand && (now - pendingCommandTimestamp) <= CONFIRMATION_WINDOW_MS) {
-        // Same command detected twice within the confirmation window — apply it
-        tabLog(`[Sensa Mode Selection Tab Voice Bridge] Command "${chosenCommand}" confirmed (detected twice within ${now - pendingCommandTimestamp}ms). Applying.`)
-        pendingCommand = null
-        pendingCommandTimestamp = 0
-        globalBuffer = ""
-        applyModeSelection(chosenCommand)
-      } else if (pendingCommand === chosenCommand && (now - pendingCommandTimestamp) > CONFIRMATION_WINDOW_MS) {
-        // Same command but the previous detection expired — restart the window
-        tabLog(`[Sensa Mode Selection Tab Voice Bridge] Previous "${chosenCommand}" detection expired (${now - pendingCommandTimestamp}ms ago). Resetting confirmation window.`)
-        pendingCommand = chosenCommand
-        pendingCommandTimestamp = now
-        globalBuffer = ""
-      } else {
-        // First detection of this command, or different command — start confirmation window
-        tabLog(`[Sensa Mode Selection Tab Voice Bridge] Command "${chosenCommand}" detected (first time or changed). Waiting for confirmation...`)
-        pendingCommand = chosenCommand
-        pendingCommandTimestamp = now
-        globalBuffer = ""
-      }
+      tabLog(`[Sensa Mode Selection Tab Voice Bridge] Command "${chosenCommand}" detected. Applying immediately.`)
+      globalBuffer = ""
+      applyModeSelection(chosenCommand)
     }
   }
 
@@ -469,8 +495,6 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
   ignoreSpeechUntil = 0
   globalBuffer = ""
   recognitionRunning = false
-  pendingCommand = null
-  pendingCommandTimestamp = 0
 
   await new Promise<void>((resolve) => {
     chrome.storage.local.set({ sensa_mode_selection_listening: true }, () => resolve())
@@ -498,8 +522,6 @@ export function stopModeSelectionVoiceListener() {
   consumedString = ""
   currentResultIndex = 0
   recognitionRunning = false
-  pendingCommand = null
-  pendingCommandTimestamp = 0
   clearWatchdog()
   teardownRecognition()
   chrome.storage.local.set({ sensa_mode_selection_listening: false })
