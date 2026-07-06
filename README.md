@@ -211,5 +211,5 @@ This codebase adheres to rigorous software engineering and documentation standar
 ---
 
 ## 📄 License & Acknowledgments
-* Built by the **Sensa Research & Development Team**.
+* Built by **BSIT 4H-G1 Group 2 — Bulacan State University (BulSU)**.
 * Powered by [Plasmo](https://docs.plasmo.com/), [Deepgram](https://deepgram.com/), and [DeepL](https://www.deepl.com/).
