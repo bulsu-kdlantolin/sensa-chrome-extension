@@ -23,6 +23,7 @@ interface TextSizeOverlayProps {
 export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onSizeChange }: TextSizeOverlayProps) {
   const [fontSize, setFontSize] = useState(initialSize)
   const [sizeInput, setSizeInput] = useState(String(initialSize))
+  const [isInputFocused, setIsInputFocused] = useState(false)
   
   // Dragging & Animation State
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
@@ -34,7 +35,10 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
   const dragStartRef = useRef({ x: 0, y: 0 })
   const offsetStartRef = useRef({ x: 0, y: 0 })
 
-  const clampSize = (value: number) => Math.min(72, Math.max(12, value))
+  const MIN_SIZE = 12
+  const MAX_SIZE = 100
+
+  const clampSize = (value: number) => Math.min(MAX_SIZE, Math.max(MIN_SIZE, value))
 
   const commitSize = (value: number) => {
     const normalized = clampSize(value)
@@ -50,9 +54,11 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
   }, [])
 
   useEffect(() => {
-    setFontSize(initialSize)
-    setSizeInput(String(initialSize))
-  }, [initialSize])
+    if (!isInputFocused) {
+      setFontSize(initialSize)
+      setSizeInput(String(initialSize))
+    }
+  }, [initialSize, isInputFocused])
 
   useEffect(() => {
     offsetRef.current = offset
@@ -112,17 +118,21 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
   const increase = () => commitSize(fontSize + 2)
 
   const handleInputChange = (value: string) => {
-    if (!/^\d{0,2}$/.test(value)) return
-    if (value !== "" && Number.parseInt(value, 10) > 72) return
+    if (!/^\d{0,3}$/.test(value)) return
 
     setSizeInput(value)
     if (value === "") return
-    commitSize(Number.parseInt(value, 10))
+
+    const num = Number.parseInt(value, 10)
+    if (!isNaN(num) && num >= MIN_SIZE && num <= MAX_SIZE) {
+      setFontSize(num)
+      onSizeChange?.(num)
+    }
   }
 
   const normalizeInput = () => {
     if (sizeInput === "") {
-      commitSize(12)
+      commitSize(MIN_SIZE)
       return
     }
     commitSize(Number.parseInt(sizeInput, 10))
@@ -157,6 +167,9 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
         }
       }}
       onClick={handleBackdropClick}
+      onKeyDown={(e) => e.stopPropagation()}
+      onKeyUp={(e) => e.stopPropagation()}
+      onKeyPress={(e) => e.stopPropagation()}
       className={`fixed inset-0 z-[999999] flex items-center justify-center bg-black/45 backdrop-blur-sm font-sans px-4 transition-opacity duration-300 ${isMounted ? 'opacity-100' : 'opacity-0'}`}
       role="dialog"
       aria-modal="true"
@@ -212,39 +225,51 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
         </div>
 
         {/* 🚨 Hyper-Tactile Controls */}
-        <div className="flex items-center justify-center gap-4 mb-6">
-          <button
-            onClick={decrease}
-            aria-label="Decrease font size"
-            className="w-[44px] h-[44px] rounded-full bg-[#FF7A2F] hover:bg-[#E86A25] hover:shadow-[0_4px_20px_rgba(255,122,47,0.5)] hover:-translate-y-0.5 text-white flex items-center justify-center transition-all duration-200 active:scale-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 shadow-[0_2px_12px_rgba(255,122,47,0.3)] shrink-0"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[22px] h-[22px]">
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
+        <div className="flex flex-col items-center justify-center gap-2 mb-6">
+          <div className="flex items-center justify-center gap-4">
+            <button
+              onClick={decrease}
+              aria-label="Decrease font size"
+              className="w-[44px] h-[44px] rounded-full bg-[#FF7A2F] hover:bg-[#E86A25] hover:shadow-[0_4px_20px_rgba(255,122,47,0.5)] hover:-translate-y-0.5 text-white flex items-center justify-center transition-all duration-200 active:scale-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 shadow-[0_2px_12px_rgba(255,122,47,0.3)] shrink-0"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[22px] h-[22px]">
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
 
-          <div className={`w-[124px] h-[68px] rounded-[18px] border-2 flex items-center justify-center px-3 transition-all duration-200 focus-within:border-[#FF7A2F] focus-within:ring-4 focus-within:ring-[#FF7A2F]/20 hover:border-[#FF7A2F]/30 hover:shadow-md ${inputBg} ${inputBorder}`}>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={sizeInput}
-              onChange={(event) => handleInputChange(event.target.value)}
-              onBlur={normalizeInput}
-              className={`w-full bg-transparent text-center text-[42px] leading-none font-black outline-none tracking-tighter ${textColor}`}
-              aria-label="Font size in pixels"
-            />
+            <div className={`w-[124px] h-[68px] rounded-[18px] border-2 flex items-center justify-center px-3 transition-all duration-200 focus-within:border-[#FF7A2F] focus-within:ring-4 focus-within:ring-[#FF7A2F]/20 hover:border-[#FF7A2F]/30 hover:shadow-md ${inputBg} ${inputBorder}`}>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={sizeInput}
+                onFocus={() => setIsInputFocused(true)}
+                onChange={(event) => handleInputChange(event.target.value)}
+                onBlur={() => {
+                  setIsInputFocused(false)
+                  normalizeInput()
+                }}
+                onKeyDown={(e) => e.stopPropagation()}
+                onKeyUp={(e) => e.stopPropagation()}
+                onKeyPress={(e) => e.stopPropagation()}
+                className={`w-full bg-transparent text-center text-[42px] leading-none font-black outline-none tracking-tighter ${textColor}`}
+                aria-label="Font size in pixels"
+              />
+            </div>
+
+            <button
+              onClick={increase}
+              aria-label="Increase font size"
+              className="w-[44px] h-[44px] rounded-full bg-[#FF7A2F] hover:bg-[#E86A25] hover:shadow-[0_4px_20px_rgba(255,122,47,0.5)] hover:-translate-y-0.5 text-white flex items-center justify-center transition-all duration-200 active:scale-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 shadow-[0_2px_12px_rgba(255,122,47,0.3)] shrink-0"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[22px] h-[22px]">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
           </div>
-
-          <button
-            onClick={increase}
-            aria-label="Increase font size"
-            className="w-[44px] h-[44px] rounded-full bg-[#FF7A2F] hover:bg-[#E86A25] hover:shadow-[0_4px_20px_rgba(255,122,47,0.5)] hover:-translate-y-0.5 text-white flex items-center justify-center transition-all duration-200 active:scale-90 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 shadow-[0_2px_12px_rgba(255,122,47,0.3)] shrink-0"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-[22px] h-[22px]">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
+          <span className={`text-[11px] font-semibold tracking-wide ${secondaryText}`}>
+            Allowed range: 12px – 100px
+          </span>
         </div>
 
         {/* Footer Actions */}

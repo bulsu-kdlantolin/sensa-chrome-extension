@@ -397,10 +397,15 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
 
   return (
     // Allow overflow visibility to prevent clipping of animated button glow effects
-    <div className="flex-1 flex flex-col items-center justify-center px-6 w-full h-full bg-transparent select-none relative overflow-visible">
+    <div className="flex-1 flex flex-col items-center justify-center px-6 w-full h-full bg-transparent select-none relative overflow-visible animate-interface-enter">
       
       {/* Component-scoped CSS keyframe animations */}
       <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes interface-enter {
+          0% { opacity: 0; transform: scale(0.92) translateY(18px); filter: blur(10px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0px); }
+        }
+        .animate-interface-enter { animation: interface-enter 0.55s cubic-bezier(0.23,1,0.32,1) forwards; }
         @keyframes visual-soundwave {
           0%, 100% { transform: scaleY(0.5); opacity: 0.5; }
           50% { transform: scaleY(1.2); opacity: 1; }

@@ -535,7 +535,8 @@ export default function FloatingDockManager() {
 
   // --- DRAG PHYSICS ---
   const handleMouseDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return
+    if ((e.target as HTMLElement).closest('button, input, select, textarea, [role="button"]')) return
+    e.preventDefault()
     setIsDragging(true)
     dragStartPos.current = { x: e.clientX - position.x, y: e.clientY - position.y }
   }
@@ -543,15 +544,21 @@ export default function FloatingDockManager() {
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDragging) return
+      e.preventDefault()
       setPosition({ x: e.clientX - dragStartPos.current.x, y: e.clientY - dragStartPos.current.y })
     }
-    const handleMouseUp = () => setIsDragging(false)
+    const handleMouseUp = () => {
+      setIsDragging(false)
+      document.body.style.userSelect = ''
+    }
 
     if (isDragging) {
+      document.body.style.userSelect = 'none'
       window.addEventListener('mousemove', handleMouseMove)
       window.addEventListener('mouseup', handleMouseUp)
     }
     return () => {
+      document.body.style.userSelect = ''
       window.removeEventListener('mousemove', handleMouseMove)
       window.removeEventListener('mouseup', handleMouseUp)
     }

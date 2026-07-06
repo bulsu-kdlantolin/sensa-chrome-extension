@@ -354,7 +354,7 @@ export function useSpeech(
   useEffect(() => {
     isOverlaySuppressedRef.current = isOverlaySuppressed;
 
-    if (isOverlaySuppressed) {
+    if (isOverlaySuppressed || isPaused) {
       clearSentenceOverlay();
     } else {
       // Only re-render if reading is actively running or paused.
@@ -364,7 +364,7 @@ export function useSpeech(
         renderSegmentOverlay(segment);
       }
     }
-  }, [clearSentenceOverlay, isOverlaySuppressed, renderSegmentOverlay]);
+  }, [clearSentenceOverlay, isOverlaySuppressed, isPaused, renderSegmentOverlay]);
 
   useEffect(() => {
     if (isVisualModeActive) return;
@@ -561,7 +561,7 @@ export function useSpeech(
         clearSentenceOverlay();
         return;
       }
-      if (!isPlayingRef.current) {
+      if (!isPlayingRef.current || isPausedRef.current) {
         clearSentenceOverlay();
         return;
       }
@@ -592,17 +592,17 @@ export function useSpeech(
   }, [clearSentenceOverlay, extractReadableContent, renderSegmentOverlay]);
 
   useEffect(() => {
-    if (!isPlaying) {
+    if (!isPlaying || isPaused) {
       clearSentenceOverlay();
     }
-  }, [clearSentenceOverlay, isPlaying]);
+  }, [clearSentenceOverlay, isPlaying, isPaused]);
 
   useEffect(() => {
-    if (!isPlaying || isOverlaySuppressedRef.current) return;
+    if (!isPlaying || isPaused || isOverlaySuppressedRef.current) return;
     const segment = segmentsRef.current[currentSegmentIndexRef.current];
     if (!segment) return;
     renderSegmentOverlay(segment);
-  }, [highlightColor, isPlaying, renderSegmentOverlay]);
+  }, [highlightColor, isPlaying, isPaused, renderSegmentOverlay]);
 
   const togglePlayPause = useCallback(() => {
     if (!segmentsRef.current.length) extractReadableContent();

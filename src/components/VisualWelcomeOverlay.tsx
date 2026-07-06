@@ -23,6 +23,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
   const isDark = theme === "dark"
   const { playHoverAudio, cancelHoverAudio } = useUIHoverAudio()
   const [isSkipping, setIsSkipping] = useState(false)
+  const [isExiting, setIsExiting] = useState(false)
   const [typedWordCount, setTypedWordCount] = useState(0)
   const [startDescription, setStartDescription] = useState(false)
   const [visibleFeatureCount, setVisibleFeatureCount] = useState(0)
@@ -532,17 +533,21 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
   }, [])
 
   const handleManualProceed = () => {
+    if (isExiting) return
+    setIsExiting(true)
     setIsSkipping(true)
     narrationCanceledRef.current = true
     if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
       window.speechSynthesis.cancel()
     }
     playPopSfx()
-    chrome.storage.local.set({
-      sensa_visual_entered_from_welcome: true
-    }, () => {
-      onGetStartedRef.current()
-    })
+    window.setTimeout(() => {
+      chrome.storage.local.set({
+        sensa_visual_entered_from_welcome: true
+      }, () => {
+        onGetStartedRef.current()
+      })
+    }, 480)
   }
 
   useEffect(() => {
@@ -592,9 +597,10 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
       sendVoiceBridgeMessage("stop")
       chrome.storage.local.remove("sensa_welcome_proceed_trigger")
     }
-  }, [])
+  }, [isExiting])
 
   const handleSkipStep = () => {
+    if (isExiting) return
     setIsSkipping(true)
     narrationCanceledRef.current = true
     if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
@@ -610,13 +616,24 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
 
   return (
     <div
-      className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] flex flex-col items-center justify-start font-sans relative overflow-hidden select-none transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-white' : 'bg-gray-50 text-gray-900'}`}
+      className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] flex flex-col items-center justify-start font-sans relative overflow-hidden select-none transition-all duration-500 ${isExiting ? 'animate-modal-exit' : 'animate-modal-enter'} ${isDark ? 'bg-[#1C1C1E] text-white' : 'bg-gray-50 text-gray-900'}`}
       onClick={handleSkipStep}
     >
 
       {/* Keyframe animation stylesheet for floating ambient background graphics and reveals */}
       <style dangerouslySetInnerHTML={{
         __html: `
+        @keyframes modal-enter {
+          0% { opacity: 0; transform: scale(0.92) translateY(20px); filter: blur(8px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0px); }
+        }
+        @keyframes modal-exit {
+          0% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0px); }
+          40% { transform: scale(1.03) translateY(-4px); box-shadow: 0 20px 50px rgba(10,68,255,0.4); }
+          100% { opacity: 0; transform: scale(0.88) translateY(-28px); filter: blur(14px); }
+        }
+        .animate-modal-enter { animation: modal-enter 0.55s cubic-bezier(0.23,1,0.32,1) forwards; }
+        .animate-modal-exit { animation: modal-exit 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards; pointer-events: none; }
         @keyframes float-blue-1 {
           0%, 100% { transform: translate(0, 0) scale(1); }
           50% { transform: translate(20px, 30px) scale(1.1); }

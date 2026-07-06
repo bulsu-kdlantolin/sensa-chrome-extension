@@ -371,6 +371,23 @@ function ScreenMagnifierOverlay({ isDark, onClose }: { isDark: boolean; onClose:
     bodyClone.style.overflow = "hidden"
     bodyClone.style.margin = "0"
 
+    const scrollY = window.scrollY || document.documentElement?.scrollTop || 0
+    const scrollX = window.scrollX || document.documentElement?.scrollLeft || 0
+
+    // Fix position:fixed and position:sticky elements (like Wikipedia sidebars/TOC) inside transformed lens
+    const origElements = document.body.querySelectorAll("header, nav, aside, div, section, table, ul, main, footer")
+    const clonedElements = bodyClone.querySelectorAll("header, nav, aside, div, section, table, ul, main, footer")
+    for (let i = 0; i < origElements.length && i < clonedElements.length; i++) {
+      const origEl = origElements[i] as HTMLElement
+      const clonedEl = clonedElements[i] as HTMLElement
+      try {
+        const style = window.getComputedStyle(origEl)
+        if (style.position === "fixed" || style.position === "sticky") {
+          clonedEl.style.translate = `${scrollX}px ${scrollY}px`
+        }
+      } catch (e) {}
+    }
+
     // Copy canvases (charts, animations)
     const origCanvases = document.body.getElementsByTagName("canvas")
     const clonedCanvases = bodyClone.getElementsByTagName("canvas")
@@ -417,9 +434,16 @@ function ScreenMagnifierOverlay({ isDark, onClose }: { isDark: boolean; onClose:
       setIsHiddenOverUI(checkIsOverPanelRect(e.clientX, e.clientY))
     }
 
+    let scrollTimeout: any = null
     const handleScroll = () => {
       updatePos(lastClientRef.current.x, lastClientRef.current.y)
       setIsHiddenOverUI(checkIsOverPanelRect(lastClientRef.current.x, lastClientRef.current.y))
+      if (!scrollTimeout) {
+        scrollTimeout = setTimeout(() => {
+          updateSnapshot()
+          scrollTimeout = null
+        }, 150)
+      }
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -430,11 +454,12 @@ function ScreenMagnifierOverlay({ isDark, onClose }: { isDark: boolean; onClose:
     window.addEventListener("scroll", handleScroll, { passive: true })
     window.addEventListener("keydown", handleKeyDown)
     return () => {
+      if (scrollTimeout) clearTimeout(scrollTimeout)
       window.removeEventListener("mousemove", handleMouseMove)
       window.removeEventListener("scroll", handleScroll)
       window.removeEventListener("keydown", handleKeyDown)
     }
-  }, [onClose])
+  }, [onClose, updateSnapshot])
 
   const bodyEl = document.body
   if (!bodyEl) return null
@@ -665,7 +690,7 @@ export default function VisualDock({
 
     const checkReminder = () => {
       const cbs = callbacksRef.current
-      if (cbs.isPlaying || cbs.isVoiceCommandsSuspended || document.visibilityState !== "visible" || isSpeechBusy()) {
+      if ((cbs.isPlaying && !cbs.isPaused) || cbs.isVoiceCommandsSuspended || document.visibilityState !== "visible" || isSpeechBusy()) {
         loopTimer = window.setTimeout(checkReminder, 1000)
         return
       }
@@ -677,7 +702,7 @@ export default function VisualDock({
 
       chrome.storage.local.get(["sensa_last_voice_reminder_time"], (res) => {
         const cbsAsync = callbacksRef.current
-        if (cbsAsync.isPlaying || cbsAsync.isVoiceCommandsSuspended || isSpeechBusy()) {
+        if ((cbsAsync.isPlaying && !cbsAsync.isPaused) || cbsAsync.isVoiceCommandsSuspended || isSpeechBusy()) {
           loopTimer = window.setTimeout(checkReminder, 1000)
           return
         }
@@ -713,7 +738,7 @@ export default function VisualDock({
       hasPlayedInitialReminderRef.current = true
       initialTimeout = window.setTimeout(() => {
         const cbs = callbacksRef.current
-        if (!cbs.isPlaying && !cbs.isVoiceCommandsSuspended && document.visibilityState === "visible" && Date.now() - lastUISpeechTimeRef.current >= lastUISpeechDurationRef.current && !isSpeechBusy()) {
+        if (!(cbs.isPlaying && !cbs.isPaused) && !cbs.isVoiceCommandsSuspended && document.visibilityState === "visible" && Date.now() - lastUISpeechTimeRef.current >= lastUISpeechDurationRef.current && !isSpeechBusy()) {
           chrome.storage.local.set({ sensa_last_voice_reminder_time: Date.now() })
           if (cbs.isVoiceCommandActive) {
             cbs.playClickAudio("You can say 'commands' when you want to know the list of commands for the visual dock.")
@@ -771,7 +796,7 @@ export default function VisualDock({
 
   const handleToggleVoiceCommand = () => {
     playClickSfx()
-    wrappedPlayClickAudio(isVoiceCommandActive ? "Voice commands deactivated" : "Voice commands activated. You can say 'commands' when you want to know the list of commands for the visual dock.")
+    wrappedPlayClickAudio(isVoiceCommandActive ? `Voice commands deactivated. You can say ${wakeWordRef.current} to activate voice commands.` : "Voice commands activated. You can say 'commands' when you want to know the list of commands for the visual dock.")
     onToggleVoiceCommand()
   }
 

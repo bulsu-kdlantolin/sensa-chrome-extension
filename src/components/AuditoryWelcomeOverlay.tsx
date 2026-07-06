@@ -11,7 +11,7 @@
  *    - Employs hardware-accelerated CSS keyframe animations (`float-orange-1`, `pop-in`) for smooth, premium onboarding presentations.
  */
 
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 
 interface WelcomeProps {
   theme: "light" | "dark"
@@ -20,17 +20,37 @@ interface WelcomeProps {
 
 export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeProps) {
   const isDark = theme === "dark"
+  const [isExiting, setIsExiting] = useState(false)
 
   useEffect(() => {
     window.speechSynthesis.cancel()
   }, [])
 
+  const handleProceed = () => {
+    if (isExiting) return
+    setIsExiting(true)
+    window.setTimeout(() => {
+      onGetStarted()
+    }, 480)
+  }
+
   return (
-    <div className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] flex flex-col items-center justify-start font-sans relative overflow-hidden select-none transition-colors duration-500 ${isDark ? 'bg-[#1C1C1E] text-white' : 'bg-gray-50 text-gray-900'}`}>
+    <div className={`w-[350px] h-[550px] min-w-[350px] min-h-[550px] flex flex-col items-center justify-start font-sans relative overflow-hidden select-none transition-all duration-500 ${isExiting ? 'animate-modal-exit' : 'animate-modal-enter'} ${isDark ? 'bg-[#1C1C1E] text-white' : 'bg-gray-50 text-gray-900'}`}>
 
       {/* Keyframe animation stylesheet for floating ambient background graphics */}
       <style dangerouslySetInnerHTML={{
         __html: `
+        @keyframes modal-enter {
+          0% { opacity: 0; transform: scale(0.92) translateY(20px); filter: blur(8px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0px); }
+        }
+        @keyframes modal-exit {
+          0% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0px); }
+          40% { transform: scale(1.03) translateY(-4px); box-shadow: 0 20px 50px rgba(255,122,47,0.45); }
+          100% { opacity: 0; transform: scale(0.88) translateY(-28px); filter: blur(14px); }
+        }
+        .animate-modal-enter { animation: modal-enter 0.55s cubic-bezier(0.23,1,0.32,1) forwards; }
+        .animate-modal-exit { animation: modal-exit 0.48s cubic-bezier(0.4, 0, 0.2, 1) forwards; pointer-events: none; }
         @keyframes float-orange-1 {
           0%, 100% { transform: translate(0, 0) scale(1); }
           50% { transform: translate(-20px, -30px) scale(1.1); }
@@ -155,7 +175,7 @@ export default function AuditoryWelcomeOverlay({ theme, onGetStarted }: WelcomeP
         {/* Primary onboarding action button */}
         <div className="w-full h-[56px] shrink-0 mt-auto">
           <button
-            onClick={onGetStarted}
+            onClick={handleProceed}
             className="w-full h-full relative overflow-hidden fade-in-4 rounded-full bg-[#FF7A2F] shadow-[0_12px_30px_rgba(255,122,47,0.3)] hover:shadow-[0_16px_40px_rgba(255,122,47,0.4)] hover:scale-[1.03] hover:bg-[#E86A25] active:scale-95 transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50"
           >
             {/* Button Text & Icon */}

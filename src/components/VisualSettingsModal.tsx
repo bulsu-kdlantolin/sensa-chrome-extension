@@ -519,7 +519,9 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       "sensa_visual_highlight_mouse_screen_reader",
       "sensa_visual_image_alt_reader_enabled",
       "sensa_visual_wake_word",
-      "sensa_voice_command_active"
+      "sensa_voice_command_active",
+      "sensa_visual_magnifier_size",
+      "sensa_visual_magnifier_zoom"
     ], (res) => {
       if (typeof res.sensa_visual_highlight_color === "string") setHighlightColor(res.sensa_visual_highlight_color)
       if (typeof res.sensa_visual_autoscroll_enabled === "boolean") setIsAutoscrollEnabled(res.sensa_visual_autoscroll_enabled)

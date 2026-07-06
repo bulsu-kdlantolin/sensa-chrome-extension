@@ -61,6 +61,11 @@ export default function AuditoryMode({ isDark }: AuditoryModeProps) {
           25% { opacity: 1; }
           50%, 100% { opacity: 0; }
         }
+        @keyframes interface-enter {
+          0% { opacity: 0; transform: scale(0.92) translateY(18px); filter: blur(10px); }
+          100% { opacity: 1; transform: scale(1) translateY(0); filter: blur(0px); }
+        }
+        .animate-interface-enter { animation: interface-enter 0.55s cubic-bezier(0.23,1,0.32,1) forwards; }
         
         .animate-auditory-glow { animation: auditory-pulse-glow 2.4s ease-in-out infinite backwards; }
         
@@ -69,7 +74,7 @@ export default function AuditoryMode({ isDark }: AuditoryModeProps) {
         .a-arc-3 { animation: auditory-arc 2.4s ease-in-out infinite 0.4s backwards; }
       `}} />
 
-      <div className="flex flex-col items-center justify-center w-full relative z-10">
+      <div className="flex flex-col items-center justify-center w-full relative z-10 animate-interface-enter">
 
         <div className="flex items-center justify-center gap-6 mb-10 mt-4 w-full relative overflow-visible">
           
