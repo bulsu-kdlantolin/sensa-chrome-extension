@@ -296,10 +296,28 @@ export default function CaptionLanguageOverlay({
     return match?.label ?? currentSelected
   }, [currentSelected, currentOptions])
 
+  const saveAndApply = (newTarget: string, newSource: string) => {
+    chrome.storage.local.set({ 
+      sensa_source_lang: newSource, 
+      sensa_target_lang: newTarget, 
+      sensa_auditory_caption_language: newTarget 
+    })
+    try {
+      const tgt = (newTarget.split("-")[0] || newTarget).toUpperCase()
+      chrome.runtime.sendMessage({ type: "UPDATE_CAPTION_LANGUAGE", targetLang: tgt })
+    } catch (e) {}
+    try {
+      chrome.runtime.sendMessage({ type: "UPDATE_SOURCE_LANGUAGE", sourceLang: newSource })
+    } catch (e) {}
+    onLanguageChange?.(newTarget)
+    onSourceLanguageChange?.(newSource)
+  }
+
   const isBackdropMouseDownRef = useRef(false)
   const handleBackdropClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (event.target === event.currentTarget && isBackdropMouseDownRef.current) {
       isBackdropMouseDownRef.current = false
+      saveAndApply(selectedLanguage, selectedSourceLanguage)
       setIsMounted(false)
       setTimeout(onClose, 300)
     }
@@ -329,7 +347,7 @@ export default function CaptionLanguageOverlay({
       aria-modal="true"
     >
       <div
-        className={`relative w-full max-w-[480px] ${modalBg} rounded-[26px] border ${isDark ? "border-white/10" : "border-black/5"} p-6 shadow-[0_24px_60px_rgba(0,0,0,0.40)] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-95 translate-y-6'}`}
+        className={`relative w-full max-w-[480px] ${modalBg} rounded-[32px] border ${isDark ? "border-white/10" : "border-black/5"} p-8 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.35),_0_0_2px_rgba(255,255,255,0.15)_inset] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-[0.95] translate-y-4'}`}
         onMouseDown={onHeaderMouseDown}
         style={{
           transform: `translate(${offset.x}px, ${offset.y}px) scale(${isMounted ? 1 : 0.95})`,
@@ -340,13 +358,38 @@ export default function CaptionLanguageOverlay({
         {/* Visual Drag Handle */}
         <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-gray-400/30 pointer-events-none" />
 
-        <h2 className="mt-1 text-[24px] leading-tight font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A]">Language Settings</h2>
-        
-        {/* Animated Tab Switcher */}
-        <div className={`relative mt-4 mb-4 flex rounded-xl p-1 border shadow-inner ${isDark ? "bg-[#1C1C20] border-white/10" : "bg-gray-100/90 border-gray-200"}`}>
-          {/* Animated Sliding Pill Indicator */}
+        {/* Flex Header matching AuditorySettingsModal */}
+        <div className="flex items-start justify-between gap-4 mb-5 mt-1">
+          <div>
+            <h2 className="text-[26px] font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A]">
+              Language Settings
+            </h2>
+            <p className={`mt-1.5 text-[13px] leading-relaxed max-w-[28rem] ${secondaryText}`}>
+              {activeTab === "source" ? "Spoken language detected in the video/audio:" : "Language for translation subtitles:"}{" "}
+              <span className={`${textColor} font-bold`}>{activeLabel}</span>
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              saveAndApply(selectedLanguage, selectedSourceLanguage)
+              setIsMounted(false)
+              setTimeout(onClose, 300)
+            }}
+            className={`shrink-0 bg-transparent hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 hover:${textColor} transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF7A2F]/50 rounded-full p-2`}
+            aria-label="Close"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Simple & Premium Tab Switcher with Smooth Auditory/Visual Mode Spring Effects */}
+        <div className={`relative mb-5 flex rounded-xl p-1 border ${isDark ? "bg-[#1C1C1E] border-white/10" : "bg-gray-100 border-gray-200/80"}`}>
+          {/* Sliding Pill Indicator with 500ms Spring Curve */}
           <div
-            className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A] shadow-[0_2px_8px_rgba(255,122,47,0.35)] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)]"
+            className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg bg-[#FF7A2F] shadow-md transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
             style={{
               left: activeTab === "source" ? "4px" : "calc(50%)"
             }}
@@ -355,49 +398,38 @@ export default function CaptionLanguageOverlay({
           <button
             type="button"
             onClick={() => { setActiveTab("source"); setSearchTerm(""); }}
-            className={`relative z-10 flex-1 py-2 text-[14px] font-bold rounded-lg transition-colors duration-200 flex items-center justify-center gap-2 focus-visible:outline-none active:scale-[0.98] ${
+            className={`relative z-10 flex-1 py-2 text-[13.5px] font-semibold rounded-lg transform-gpu transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] flex items-center justify-center gap-2 focus-visible:outline-none active:scale-[0.93] hover:scale-[1.02] ${
               activeTab === "source" ? "text-white" : `text-gray-400 hover:${textColor}`
             }`}
           >
-            <span className="text-[15px] transition-transform duration-300 hover:scale-110">🎙️</span>
-            <span>Source Audio</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" x2="12" y1="19" y2="22" />
+            </svg>
+            <span>Spoken Language</span>
           </button>
 
           <button
             type="button"
             onClick={() => { setActiveTab("target"); setSearchTerm(""); }}
-            className={`relative z-10 flex-1 py-2 text-[14px] font-bold rounded-lg transition-colors duration-200 flex items-center justify-center gap-2 focus-visible:outline-none active:scale-[0.98] ${
+            className={`relative z-10 flex-1 py-2 text-[13.5px] font-semibold rounded-lg transform-gpu transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] flex items-center justify-center gap-2 focus-visible:outline-none active:scale-[0.93] hover:scale-[1.02] ${
               activeTab === "target" ? "text-white" : `text-gray-400 hover:${textColor}`
             }`}
           >
-            <span className="text-[15px] transition-transform duration-300 hover:scale-110">🌐</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="2" x2="22" y1="12" y2="12" />
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+            </svg>
             <span>Translate To</span>
           </button>
         </div>
 
-        <p className={`text-[13px] leading-relaxed mb-5 transition-all duration-200 ${secondaryText}`}>
-          {activeTab === "source" ? "Spoken language detected in the video/audio:" : "Language for translation subtitles:"}{" "}
-          <span className={`${textColor} font-bold`}>{activeLabel}</span>
-        </p>
-
-        <button
-          onClick={() => {
-            setIsMounted(false)
-            setTimeout(onClose, 300)
-          }}
-          className={`absolute top-6 right-6 bg-transparent hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 hover:${textColor} transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF7A2F]/50 rounded-full p-2`}
-          aria-label="Close"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-
-        {/* 🚨 God-Tier Search Input */}
-        <div className="relative mb-5">
-          <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-gray-400">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        {/* Simple & Premium Search Input */}
+        <div className="relative mb-4">
+          <div className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none text-gray-400">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
@@ -408,14 +440,30 @@ export default function CaptionLanguageOverlay({
             onKeyDown={(e) => e.stopPropagation()}
             onKeyUp={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
-            placeholder={activeTab === "source" ? "Search 30 speech audio languages..." : "Search 123 translation languages..."}
-            className={`w-full ${inputBg} border-2 ${inputBorder} ${textColor} rounded-[16px] text-[15px] font-medium h-[46px] pl-12 pr-4 focus:outline-none focus:border-[#FF7A2F] focus:ring-4 focus:ring-[#FF7A2F]/20 transition-all placeholder:text-gray-500`}
+            placeholder={activeTab === "source" ? "Search source audio language..." : "Search translation language..."}
+            className={`w-full ${isDark ? "bg-[#242426] border-white/10 text-white placeholder:text-gray-500" : "bg-gray-100/80 border-gray-200 text-gray-900 placeholder:text-gray-400"} border rounded-xl text-[13.5px] font-medium h-11 pl-10 pr-9 focus:outline-none focus:border-[#FF7A2F] focus:ring-2 focus:ring-[#FF7A2F]/20 transition-all`}
           />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm("")}
+              onMouseDown={(e) => e.preventDefault()}
+              className={`absolute inset-y-0 right-2.5 my-auto h-6 w-6 flex items-center justify-center rounded-full transition-colors ${
+                isDark ? "hover:bg-white/10 text-gray-400 hover:text-white" : "hover:bg-gray-200 text-gray-500 hover:text-gray-900"
+              } focus-visible:outline-none`}
+              aria-label="Clear search"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
         </div>
 
-        {/* 🚨 Scrollable List Container */}
-        <div className={`border-2 rounded-[20px] overflow-hidden ${isDark ? "border-gray-800 bg-[#151515]" : "border-gray-200 bg-gray-50"}`}>
-          <div className="max-h-[250px] overflow-y-auto custom-scrollbar">
+        {/* 🚨 Scrollable List Container (Height increased to max-h-[340px] to match AuditorySettingsModal) */}
+        <div className={`border rounded-2xl overflow-hidden shadow-inner ${isDark ? "border-white/10 bg-[#141416]" : "border-gray-200 bg-gray-50/50"}`}>
+          <div className="max-h-[340px] overflow-y-auto custom-scrollbar">
             {filteredLanguages.map((language) => {
               const isSelected = language.code === currentSelected
               return (
@@ -425,68 +473,37 @@ export default function CaptionLanguageOverlay({
                   onClick={() => {
                     if (activeTab === "target") {
                       setSelectedLanguage(language.code)
+                      saveAndApply(language.code, selectedSourceLanguage)
                     } else {
                       setSelectedSourceLanguage(language.code)
+                      saveAndApply(selectedLanguage, language.code)
                     }
                   }}
                   aria-selected={isSelected}
-                  className={`w-full text-left min-h-[46px] px-5 py-2.5 transition-colors flex items-center justify-between border-b last:border-0 ${isDark ? "border-gray-800" : "border-gray-200"} focus-visible:outline-none focus-visible:bg-[#FF7A2F]/20 ${
+                  className={`w-full text-left min-h-[48px] px-5 py-3 transition-all flex items-center justify-between border-b last:border-0 ${isDark ? "border-white/5" : "border-gray-200/60"} focus-visible:outline-none focus-visible:bg-[#FF7A2F]/20 ${
                     isSelected
-                      ? "bg-[#FF7A2F] text-white"
+                      ? "bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A] text-white font-bold shadow-md"
                       : isDark
-                        ? "text-gray-200 hover:bg-white/5"
-                        : "text-gray-800 hover:bg-[#FF7A2F]/10"
+                        ? "text-gray-200 hover:bg-white/5 hover:text-white hover:pl-6"
+                        : "text-gray-800 hover:bg-[#FF7A2F]/10 hover:text-[#FF7A2F] hover:pl-6"
                   }`}
                 >
-                  <span className="font-bold text-[15px]">{language.label}</span>
+                  <span className="font-semibold text-[15px]">{language.label}</span>
+                  {isSelected && (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-white">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
                 </button>
               )
             })}
 
             {filteredLanguages.length === 0 && (
-              <div className={`px-4 py-12 text-center text-[15px] font-bold ${secondaryText}`}>
+              <div className={`px-4 py-14 text-center text-[15px] font-medium ${secondaryText}`}>
                 No languages found.
               </div>
             )}
           </div>
-        </div>
-
-        {/* Footer Actions */}
-        <div className="mt-6 flex justify-end gap-3.5">
-          <button
-            onClick={() => {
-              setIsMounted(false)
-              setTimeout(onClose, 300)
-            }}
-            className={`px-5 py-2.5 rounded-full border-2 ${isDark ? 'border-white/10 hover:bg-white/10 hover:border-white/20 text-white' : 'border-gray-300 hover:bg-gray-100 hover:border-gray-400 text-gray-800'} text-[14px] font-bold transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gray-400 active:scale-95 hover:-translate-y-0.5`}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => {
-              // Persist source and target languages
-              chrome.storage.local.set({ 
-                sensa_source_lang: selectedSourceLanguage, 
-                sensa_target_lang: selectedLanguage, 
-                sensa_auditory_caption_language: selectedLanguage 
-              })
-              // Inform background/offscreen immediately so live capture uses both new target and source languages
-              try {
-                const tgt = (selectedLanguage.split("-")[0] || selectedLanguage).toUpperCase()
-                chrome.runtime.sendMessage({ type: "UPDATE_CAPTION_LANGUAGE", targetLang: tgt })
-              } catch (e) {}
-              try {
-                chrome.runtime.sendMessage({ type: "UPDATE_SOURCE_LANGUAGE", sourceLang: selectedSourceLanguage })
-              } catch (e) {}
-              onLanguageChange?.(selectedLanguage)
-              onSourceLanguageChange?.(selectedSourceLanguage)
-              setIsMounted(false)
-              setTimeout(onClose, 300)
-            }}
-            className="px-6 py-2.5 rounded-full bg-[#FF7A2F] text-[14px] font-bold text-white hover:bg-[#E86A25] hover:shadow-xl hover:shadow-[#FF7A2F]/35 hover:-translate-y-0.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 shadow-lg shadow-[#FF7A2F]/30 active:scale-95"
-          >
-            Apply
-          </button>
         </div>
       </div>
     </div>

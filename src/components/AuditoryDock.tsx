@@ -619,19 +619,6 @@ export default function AuditoryDock({
             </button>
 
             <button
-              onClick={onOpenCaptionLanguage}
-              className={`${btnBaseClass} ${btnHoverClass} relative z-10 active:scale-90 hover:scale-105`}
-              aria-label="Caption Language"
-            >
-              <SharedTooltip label="Caption Language" isDark={isDark} isAuditory />
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[22px] !h-[22px] shrink-0">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
-                <path d="M2 12h20" />
-              </svg>
-            </button>
-
-            <button
               onClick={onToggleFocusMode}
               aria-pressed={isFocusMode}
               className={`${btnBaseClass} relative z-10 active:scale-90 ${isFocusMode
@@ -650,6 +637,19 @@ export default function AuditoryDock({
             </button>
 
             <div className={dividerClass} />
+
+            <button
+              onClick={onOpenCaptionLanguage}
+              className={`${btnBaseClass} ${btnHoverClass} relative z-10 active:scale-90 hover:scale-105`}
+              aria-label="Caption Language"
+            >
+              <SharedTooltip label="Caption Language" isDark={isDark} isAuditory />
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="!w-[22px] !h-[22px] shrink-0">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+                <path d="M2 12h20" />
+              </svg>
+            </button>
 
             <button
               onClick={onOpenTextSize}

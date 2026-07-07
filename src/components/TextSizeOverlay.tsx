@@ -44,6 +44,7 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
     const normalized = clampSize(value)
     setFontSize(normalized)
     setSizeInput(String(normalized))
+    chrome.storage.local.set({ sensa_auditory_text_size: normalized, sensa_caption_font_size: normalized })
     onSizeChange?.(normalized)
     return normalized
   }
@@ -126,6 +127,7 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
     const num = Number.parseInt(value, 10)
     if (!isNaN(num) && num >= MIN_SIZE && num <= MAX_SIZE) {
       setFontSize(num)
+      chrome.storage.local.set({ sensa_auditory_text_size: num, sensa_caption_font_size: num })
       onSizeChange?.(num)
     }
   }
@@ -175,7 +177,7 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
       aria-modal="true"
     >
       <div
-        className={`relative w-full max-w-[480px] ${modalBg} rounded-[26px] border ${isDark ? "border-white/10" : "border-gray-200"} p-6 shadow-[0_24px_60px_rgba(0,0,0,0.40)] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-95 translate-y-6'}`}
+        className={`relative w-full max-w-[480px] ${modalBg} rounded-[32px] border ${isDark ? "border-white/10" : "border-black/5"} p-8 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.35),_0_0_2px_rgba(255,255,255,0.15)_inset] transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] ${isMounted ? 'scale-100 translate-y-0' : 'scale-[0.95] translate-y-4'}`}
         onMouseDown={onHeaderMouseDown}
         style={{
           transform: `translate(${offset.x}px, ${offset.y}px) scale(${isMounted ? 1 : 0.95})`,
@@ -185,9 +187,9 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
       >
         <div className="absolute top-3 left-1/2 -translate-x-1/2 w-14 h-1.5 rounded-full bg-gray-500/35 pointer-events-none" />
 
-        <div className="flex items-start justify-between gap-4 mb-4 mt-2">
+        <div className="flex items-start justify-between gap-4 mb-5 mt-1">
           <div>
-            <h2 className="mt-1 text-[24px] leading-tight font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A]">
+            <h2 className="mt-1 text-[26px] leading-tight font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A]">
               Caption Size
             </h2>
             <p className={`mt-2 text-[13px] leading-relaxed max-w-[32rem] ${secondaryText}`}>
@@ -197,6 +199,7 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
 
           <button
             onClick={() => {
+              normalizeInput()
               setIsMounted(false)
               setTimeout(onClose, 300)
             }}
@@ -225,7 +228,7 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
         </div>
 
         {/* 🚨 Hyper-Tactile Controls */}
-        <div className="flex flex-col items-center justify-center gap-2 mb-6">
+        <div className="flex flex-col items-center justify-center gap-2 mb-2">
           <div className="flex items-center justify-center gap-4">
             <button
               onClick={decrease}
@@ -270,29 +273,6 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
           <span className={`text-[11px] font-semibold tracking-wide ${secondaryText}`}>
             Allowed range: 12px – 100px
           </span>
-        </div>
-
-        {/* Footer Actions */}
-        <div className="flex justify-end gap-4">
-          <button
-            onClick={() => {
-              setIsMounted(false)
-              setTimeout(onClose, 300)
-            }}
-            className={`px-5 py-2.5 rounded-full border-2 ${isDark ? 'border-white/10 hover:bg-white/10 hover:border-white/20 text-white' : 'border-gray-300 hover:bg-gray-100 hover:border-gray-400 text-gray-800'} text-[14px] font-bold transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gray-400 active:scale-95 hover:-translate-y-0.5`}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => {
-              normalizeInput()
-              setIsMounted(false)
-              setTimeout(onClose, 300)
-            }}
-            className="px-6 py-2.5 rounded-full bg-[#FF7A2F] text-[14px] font-bold text-white hover:bg-[#E86A25] hover:shadow-xl hover:shadow-[#FF7A2F]/35 hover:-translate-y-0.5 transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 shadow-lg shadow-[#FF7A2F]/30 active:scale-95"
-          >
-            Apply
-          </button>
         </div>
       </div>
     </div>
