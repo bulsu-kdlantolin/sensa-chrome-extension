@@ -360,14 +360,18 @@ export default function CaptionLanguageOverlay({
 
         {/* Flex Header matching AuditorySettingsModal */}
         <div className="flex items-start justify-between gap-4 mb-5 mt-1">
-          <div>
-            <h2 className="text-[26px] font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A]">
+          <div className="flex-1 min-w-0 pr-2">
+            <h2 className="!m-0 !p-0 !block text-[26px] font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-[#FF7A2F] to-[#FF9F0A]">
               Language Settings
             </h2>
-            <p className={`mt-1.5 text-[13px] leading-relaxed max-w-[28rem] ${secondaryText}`}>
-              {activeTab === "source" ? "Spoken language detected in the video/audio:" : "Language for translation subtitles:"}{" "}
-              <span className={`${textColor} font-bold`}>{activeLabel}</span>
-            </p>
+            <div className="!mt-2 !mb-0 !flex !items-center !flex-wrap !gap-1.5 text-[13px] leading-relaxed">
+              <span className={`!m-0 !p-0 !inline ${secondaryText}`}>
+                {activeTab === "source" ? "Spoken language detected in the video/audio:" : "Language for translation subtitles:"}
+              </span>
+              <span className={`!m-0 !p-0 !inline !font-bold !whitespace-nowrap ${textColor}`}>
+                {activeLabel}
+              </span>
+            </div>
           </div>
           <button
             onClick={() => {
@@ -407,7 +411,7 @@ export default function CaptionLanguageOverlay({
               <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
               <line x1="12" x2="12" y1="19" y2="22" />
             </svg>
-            <span>Spoken Language</span>
+            <span className="!m-0 !p-0 !inline !whitespace-nowrap">Spoken Language</span>
           </button>
 
           <button
@@ -422,7 +426,7 @@ export default function CaptionLanguageOverlay({
               <line x1="2" x2="22" y1="12" y2="12" />
               <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
             </svg>
-            <span>Translate To</span>
+            <span className="!m-0 !p-0 !inline !whitespace-nowrap">Translate To</span>
           </button>
         </div>
 

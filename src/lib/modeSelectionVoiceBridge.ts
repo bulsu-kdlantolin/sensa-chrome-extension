@@ -242,29 +242,37 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
 
     tabLog(`[Sensa Mode Selection Tab Voice Bridge] Heard transcript: "${normalizedTranscript}" (Raw: "${rawTranscript}")`)
 
-    // Ignore TTS narration echoes picked up by the microphone when echoCancellation is disabled
-    if (
-      normalizedTranscript.includes("support low vision") ||
-      normalizedTranscript.includes("screen magnifier") ||
-      normalizedTranscript.includes("guided reading") ||
-      normalizedTranscript.includes("support hearing loss") ||
-      normalizedTranscript.includes("multilingual captions") ||
-      normalizedTranscript.includes("audio visualizer") ||
-      normalizedTranscript.includes("noise alerts") ||
-      normalizedTranscript.includes("you can say") ||
-      normalizedTranscript.includes("primary accessibility mode") ||
-      normalizedTranscript.includes("assisting visual and auditory") ||
-      normalizedTranscript.includes("specialized accessibility") ||
-      normalizedTranscript.includes("welcome to sensa")
-    ) {
-      tabLog(`[Sensa Mode Selection Tab Voice Bridge] Ignoring TTS narration echo: "${normalizedTranscript}"`)
+    // Strip known TTS narration echoes so the user's voice command can be recognized immediately even while TTS is playing
+    let targetTranscript = normalizedTranscript
+    const ttsPhrases = [
+      "welcome to sensa a chrome extension assisting visual and auditory impaired users with specialized accessibility tools and features",
+      "welcome to sensa",
+      "assisting visual and auditory impaired users",
+      "specialized accessibility tools and features",
+      "select your primary accessibility mode",
+      "visual mode support low vision with voice navigation screen magnifier and guided reading",
+      "support low vision with voice navigation screen magnifier and guided reading",
+      "support low vision",
+      "auditory mode support hearing loss with multilingual captions audio visualizer and noise alerts",
+      "support hearing loss with multilingual captions audio visualizer and noise alerts",
+      "support hearing loss",
+      "you can say visual mode or auditory mode to choose a primary accessibility mode",
+      "you can say visual mode or auditory mode",
+      "to choose a primary accessibility mode"
+    ]
+    for (const phrase of ttsPhrases) {
+      targetTranscript = targetTranscript.replace(new RegExp(phrase, "g"), "").replace(/\s+/g, " ").trim()
+    }
+
+    if (!targetTranscript) {
+      tabLog(`[Sensa Mode Selection Tab Voice Bridge] Ignoring pure TTS narration echo: "${normalizedTranscript}"`)
       globalBuffer = ""
       return
     }
 
     const count = (w: string) => {
       const regex = new RegExp(`\\b${w}\\b`, "g")
-      return (normalizedTranscript.match(regex) || []).length
+      return (targetTranscript.match(regex) || []).length
     }
 
     let visualScore = 0
@@ -289,17 +297,17 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
 
     if (visualScore === 0) {
       if (
-        fuzzyMatch(normalizedTranscript, "visual mode", 2) ||
-        fuzzyMatch(normalizedTranscript, "vision mode", 2) ||
-        fuzzyMatch(normalizedTranscript, "option one", 2) ||
-        fuzzyMatch(normalizedTranscript, "first option", 2)
+        fuzzyMatch(targetTranscript, "visual mode", 2) ||
+        fuzzyMatch(targetTranscript, "vision mode", 2) ||
+        fuzzyMatch(targetTranscript, "option one", 2) ||
+        fuzzyMatch(targetTranscript, "first option", 2)
       ) {
         visualScore += 4
       } else if (
-        fuzzyMatch(normalizedTranscript, "visual", 1) ||
-        fuzzyMatch(normalizedTranscript, "vision", 1) ||
-        fuzzyMatch(normalizedTranscript, "bisual", 1) ||
-        fuzzyMatch(normalizedTranscript, "first", 1)
+        fuzzyMatch(targetTranscript, "visual", 1) ||
+        fuzzyMatch(targetTranscript, "vision", 1) ||
+        fuzzyMatch(targetTranscript, "bisual", 1) ||
+        fuzzyMatch(targetTranscript, "first", 1)
       ) {
         visualScore += 3
       }
@@ -327,21 +335,21 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
 
     if (auditoryScore === 0) {
       if (
-        fuzzyMatch(normalizedTranscript, "auditory mode", 2) ||
-        fuzzyMatch(normalizedTranscript, "audio mode", 2) ||
-        fuzzyMatch(normalizedTranscript, "sound mode", 2) ||
-        fuzzyMatch(normalizedTranscript, "hearing mode", 2) ||
-        fuzzyMatch(normalizedTranscript, "option two", 2) ||
-        fuzzyMatch(normalizedTranscript, "second option", 2)
+        fuzzyMatch(targetTranscript, "auditory mode", 2) ||
+        fuzzyMatch(targetTranscript, "audio mode", 2) ||
+        fuzzyMatch(targetTranscript, "sound mode", 2) ||
+        fuzzyMatch(targetTranscript, "hearing mode", 2) ||
+        fuzzyMatch(targetTranscript, "option two", 2) ||
+        fuzzyMatch(targetTranscript, "second option", 2)
       ) {
         auditoryScore += 4
       } else if (
-        fuzzyMatch(normalizedTranscript, "auditory", 1) ||
-        fuzzyMatch(normalizedTranscript, "audio", 1) ||
-        fuzzyMatch(normalizedTranscript, "auditor", 1) ||
-        fuzzyMatch(normalizedTranscript, "auditori", 1) ||
-        fuzzyMatch(normalizedTranscript, "hearing", 1) ||
-        fuzzyMatch(normalizedTranscript, "second", 1)
+        fuzzyMatch(targetTranscript, "auditory", 1) ||
+        fuzzyMatch(targetTranscript, "audio", 1) ||
+        fuzzyMatch(targetTranscript, "auditor", 1) ||
+        fuzzyMatch(targetTranscript, "auditori", 1) ||
+        fuzzyMatch(targetTranscript, "hearing", 1) ||
+        fuzzyMatch(targetTranscript, "second", 1)
       ) {
         auditoryScore += 3
       }

@@ -21,6 +21,7 @@ interface ColorPickerPopupProps {
   isDark?: boolean
   accent?: "blue" | "orange"
   placement?: "center" | "start" | "end"
+  enableSoundEffects?: boolean
 }
 
 // Math helpers for color conversion
@@ -75,7 +76,7 @@ const rgbToHsv = (r: number, g: number, b: number) => {
   return { h, s, v: max }
 }
 
-export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", onColorChange, isDark = false, accent = "blue", placement = "center" }: ColorPickerPopupProps) {
+export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", onColorChange, isDark = false, accent = "blue", placement = "center", enableSoundEffects = true }: ColorPickerPopupProps) {
   const [hsv, setHsv] = useState(() => {
     const parsed = hexToRgb(initialColor)
     if (!parsed) return { h: 0.16, s: 1, v: 1 }
@@ -113,6 +114,7 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
   }
 
   const playHoverSfx = () => {
+    if (!enableSoundEffects || accent === "orange") return;
     if (!isSoundEffectsEnabled) return;
     const ctx = getAudioContext()
     if (!ctx) return
@@ -134,6 +136,7 @@ export default function ColorPickerPopup({ onClose, initialColor = "#FFFE00", on
   }
 
   const playClickSfx = () => {
+    if (!enableSoundEffects || accent === "orange") return;
     if (!isSoundEffectsEnabled) return;
     const ctx = getAudioContext()
     if (!ctx) return

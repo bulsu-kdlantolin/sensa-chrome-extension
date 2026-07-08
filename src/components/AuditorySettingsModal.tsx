@@ -28,6 +28,7 @@ interface AuditorySettingsModalProps {
 interface AuditorySettingsState {
   fontFamily: string
   showOriginalText: boolean
+  translationEnabled?: boolean
   textColor: string
   captionBgColor: string
 }
@@ -35,6 +36,7 @@ interface AuditorySettingsState {
 const DEFAULT_SETTINGS: AuditorySettingsState = {
   fontFamily: "Arial",
   showOriginalText: true,
+  translationEnabled: true,
   textColor: "#FFFFFF",
   captionBgColor: "#000000",
 }
@@ -405,16 +407,31 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
               </span>
             </label>
 
-            {/* ORIGINAL TEXT TOGGLE */}
+            {/* ORIGINAL SUBTITLES TOGGLE */}
             <label
-              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} ${sectionHoverClass} rounded-xl transition-colors cursor-pointer`}
-              {...getHoverHandlers("Original Text")}
-              onMouseDown={(e) => e.stopPropagation()}
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} ${sectionHoverClass} rounded-xl transition-all ${
+                settings.translationEnabled === false ? "opacity-40 pointer-events-none cursor-not-allowed select-none" : "cursor-pointer"
+              }`}
+              {...getHoverHandlers("Original Subtitles")}
+              onMouseDown={(e) => {
+                if (settings.translationEnabled === false) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  return;
+                }
+                e.stopPropagation();
+              }}
+              onClick={(e) => {
+                if (settings.translationEnabled === false) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }
+              }}
             >
               <div className="flex items-center gap-3 pointer-events-none">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                 <div className="flex flex-col">
-                  <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Original Text</span>
+                  <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Original Subtitles</span>
                   <span className={`text-[11px] ${secondaryText}`}>Show the original language above translations</span>
                 </div>
               </div>
@@ -422,8 +439,43 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
                 <input
                   type="checkbox"
                   className="sr-only peer"
-                  checked={settings.showOriginalText}
-                  onChange={(e) => persistSettings({ showOriginalText: e.target.checked })}
+                  disabled={settings.translationEnabled === false}
+                  checked={settings.translationEnabled === false ? true : settings.showOriginalText}
+                  onChange={(e) => {
+                    if (settings.translationEnabled === false) return;
+                    persistSettings({ showOriginalText: e.target.checked });
+                  }}
+                />
+                <span className={toggleSwitchClass} aria-hidden="true" />
+              </span>
+            </label>
+
+            {/* TRANSLATION TOGGLE */}
+            <label
+              className={`flex items-center justify-between py-3 px-3 border-b ${dividerClass} ${sectionHoverClass} rounded-xl transition-colors cursor-pointer`}
+              {...getHoverHandlers("Translate Subtitles")}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center gap-3 pointer-events-none">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 ${iconColor}`}><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                <div className="flex flex-col">
+                  <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Translate Subtitles</span>
+                  <span className={`text-[11px] ${secondaryText}`}>Translate live speech into your target language</span>
+                </div>
+              </div>
+              <span className="relative inline-flex items-center shrink-0 pointer-events-none">
+                <input
+                  type="checkbox"
+                  className="sr-only peer"
+                  checked={settings.translationEnabled !== false}
+                  onChange={(e) => {
+                    const isEnabled = e.target.checked;
+                    if (!isEnabled) {
+                      persistSettings({ translationEnabled: false, showOriginalText: true });
+                    } else {
+                      persistSettings({ translationEnabled: true });
+                    }
+                  }}
                 />
                 <span className={toggleSwitchClass} aria-hidden="true" />
               </span>
@@ -453,6 +505,7 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
                 {activeColorPicker === "text" && (
                   <ColorPickerPopup 
                     isDark={isDark} accent="orange" placement="end"
+                    enableSoundEffects={false}
                     initialColor={settings.textColor} 
                     onColorChange={(color) => persistSettings({ textColor: color })} 
                     onClose={() => setActiveColorPicker(null)} 
@@ -485,6 +538,7 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
                 {activeColorPicker === "bg" && (
                   <ColorPickerPopup 
                     isDark={isDark} accent="orange" placement="end"
+                    enableSoundEffects={false}
                     initialColor={settings.captionBgColor} 
                     onColorChange={(color) => persistSettings({ captionBgColor: color })} 
                     onClose={() => setActiveColorPicker(null)} 

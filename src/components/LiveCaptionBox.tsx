@@ -36,6 +36,7 @@ interface LiveCaptionBoxProps {
   bgColor: string
   fontFamily?: string
   showOriginalText?: boolean
+  translationEnabled?: boolean
   sourceLanguage?: string
   targetLanguage?: string
 }
@@ -44,7 +45,7 @@ interface LiveCaptionBoxProps {
 const MAX_VISIBLE_BLOCKS = 2 
 
 export default function LiveCaptionBox({
-  captions, error, fontSize, textColor, bgColor, fontFamily, showOriginalText = true, sourceLanguage = "en", targetLanguage = "EN"
+  captions, error, fontSize, textColor, bgColor, fontFamily, showOriginalText = true, translationEnabled = true, sourceLanguage = "en", targetLanguage = "EN"
 }: LiveCaptionBoxProps) {
   const sourceLangMatch = SOURCE_LANGUAGE_OPTIONS.find((item) => item.code.toLowerCase() === (sourceLanguage || "en").toLowerCase())
   const sourceLangLabel = sourceLangMatch?.label || "English"
@@ -303,6 +304,15 @@ export default function LiveCaptionBox({
       >
         {error ? (
           <div style={{ color: "#FCA5A5", textAlign: "center", fontSize: `${Math.max(14, fontSize * 0.8)}px`, fontWeight: 500, padding: "4px 0" }}>{error}</div>
+        ) : !translationEnabled && !showOriginalText ? (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: `${Math.max(4, fontSize * 0.15)}px`, padding: "8px 0" }}>
+            <div style={{ opacity: 0.8, textAlign: "center", fontSize: `${Math.max(14, fontSize * 0.85)}px`, fontWeight: 600, color: "#FCA5A5" }}>
+              Subtitles are turned off
+            </div>
+            <div style={{ opacity: 0.6, textAlign: "center", fontSize: `${Math.max(11, fontSize * 0.7)}px` }}>
+              Enable Original or Translated Subtitles in Auditory Settings to view captions.
+            </div>
+          </div>
         ) : displayBlocks.length === 0 ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: `${Math.max(4, fontSize * 0.15)}px`, padding: "4px 0" }}>
             <div style={{ opacity: 0.7, textAlign: "center", fontSize: `${Math.max(14, fontSize * 0.8)}px`, fontWeight: 500, fontStyle: "italic" }}>
@@ -333,15 +343,22 @@ export default function LiveCaptionBox({
                     willChange: "transform"
                   }}
                 >
-                  {showOriginalText && (
-                    <div style={{ fontSize: `${Math.max(11, fontSize * 0.75)}px` }}>
-                      {renderOriginal(b, isLatest)}
+                  {translationEnabled ? (
+                    <>
+                      {showOriginalText && (
+                        <div style={{ fontSize: `${Math.max(11, fontSize * 0.75)}px` }}>
+                          {renderOriginal(b, isLatest)}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        {renderTranslation(b, isLatest)}
+                      </div>
+                    </>
+                  ) : showOriginalText ? (
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      {renderTranslation({ ...b, translated: b.original || b.translated }, isLatest)}
                     </div>
-                  )}
-
-                  <div style={{ display: "flex", flexDirection: "column" }}>
-                    {renderTranslation(b, isLatest)}
-                  </div>
+                  ) : null}
                 </div>
               )
             })}

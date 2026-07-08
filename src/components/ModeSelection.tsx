@@ -91,6 +91,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const audioCtxRef = useRef<AudioContext | null>(null)
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
   const commandReminderIntervalRef = useRef<number | null>(null)
+  const lastReminderTimeRef = useRef<number>(0)
 
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 
@@ -226,6 +227,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
       narrationCanceledRef.current = true
       window.speechSynthesis.cancel()
       playPopSfx()
+      onSelectMode(activeMode as "visual" | "auditory")
     }
 
     const handleTabLogMessage = (msg: any) => {
@@ -482,6 +484,10 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     if (!reminderTrigger) return
 
     const playReminder = () => {
+      if (narrationStageRef.current !== "cardsDone") return
+      if (Date.now() - lastReminderTimeRef.current < 4500) return
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) return
+      lastReminderTimeRef.current = Date.now()
       speakWithResolvedVoice(commandReminderText, () => { })
     }
 
@@ -561,6 +567,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const handleSkipStep = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
     if (target.closest("button")) return
+    if (narrationStageRef.current === "cardsDone") return
 
     // Cancel any in-progress narration FIRST to prevent onend callbacks from firing
     narrationCanceledRef.current = true

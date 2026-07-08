@@ -88,6 +88,7 @@ export const getStyle = () => {
 interface AuditorySettingsState {
   fontFamily: string
   showOriginalText: boolean
+  translationEnabled?: boolean
   textColor: string
   captionBgColor: string
   outputDevice: string
@@ -96,6 +97,7 @@ interface AuditorySettingsState {
 const DEFAULT_AUDITORY_SETTINGS: AuditorySettingsState = {
   fontFamily: "Arial",
   showOriginalText: true,
+  translationEnabled: true,
   textColor: "#FFFFFF",
   captionBgColor: "#000000",
   outputDevice: "Default - Speaker"
@@ -730,7 +732,8 @@ export default function FloatingDockManager() {
             captionTransparency / 100
           )}
           fontFamily={auditorySettings.fontFamily || DEFAULT_AUDITORY_SETTINGS.fontFamily}
-          showOriginalText={auditorySettings.showOriginalText}
+          showOriginalText={auditorySettings.translationEnabled === false ? true : auditorySettings.showOriginalText}
+          translationEnabled={auditorySettings.translationEnabled !== false}
           sourceLanguage={sourceLanguage}
           targetLanguage={targetLanguage}
         />
