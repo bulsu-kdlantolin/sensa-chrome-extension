@@ -18,6 +18,7 @@
 import React, { useState, useEffect, useRef } from "react"
 import ColorPickerPopup from "./ColorPickerPopup"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
+import { startVisualModeVoiceListener, stopVisualModeVoiceListener } from "../lib/visualModeVoiceBridge"
 
 const getLevenshteinDistance = (a: string, b: string): number => {
   const tmp: number[][] = []
@@ -676,6 +677,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     }
 
     const voiceSelectionMatches = (text: string) => {
+      if (isReadingVoiceListRef.current) return false
       const cleanText = text.toLowerCase()
       if (cleanText.split(' ').length < 2) return false
       const matches = overlayStateRef.current.voices.filter((voice) => {
@@ -768,6 +770,22 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           newSpeech = liveText.slice(consumedString.length).trim()
         }
 
+        // Strip exact TTS guide narration from newSpeech so it does not interfere
+        const ttsPatterns = [
+          "here are the commands voice selection this opens the voice list reset this resets all settings to default close this exits settings",
+          "voice selection opened you can choose from",
+          "just say the name to select it",
+          "voice selection closed",
+          "settings reset to default",
+          "voice guide enabled",
+          "voice guide disabled"
+        ]
+        for (const p of ttsPatterns) {
+          while (newSpeech.includes(p)) {
+            newSpeech = newSpeech.replace(p, " ").replace(/\s+/g, " ").trim()
+          }
+        }
+
         if (!newSpeech) return
 
         if (Date.now() < ignoreSpeechUntil) {
@@ -816,9 +834,17 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           } else if (check("reset default", "reset defaults", "restore defaults", "restore default", "reset settings", "restore", "reset", "default") || fuzzyCheck("restore default", 1) || fuzzyCheck("reset default", 1)) {
             commandFired = true
             handleResetToDefault()
-          } else if (check("voice selection", "select voice", "voice voices")) {
+          } else if (
+            check("voice selection", "select voice", "voice voices", "voices", "voice list", "change voice", "choose voice", "show voices", "open voice", "open voice selection", "voice selections", "open voices", "open voice list") ||
+            fuzzyCheck("voice selection", 2) ||
+            fuzzyCheck("select voice", 2) ||
+            fuzzyCheck("change voice", 2) ||
+            fuzzyCheck("choose voice", 2) ||
+            (paddedSpeech.includes(" voice ") && (paddedSpeech.includes(" selection ") || paddedSpeech.includes(" select ") || paddedSpeech.includes(" list ") || paddedSpeech.includes(" choose ") || paddedSpeech.includes(" change ") || paddedSpeech.includes(" open ")))
+          ) {
             commandFired = true
             setIsVoiceDropdownOpen(true)
+            setSettingsState((next) => { next.isVoiceDropdownOpen = true })
             
             if (isVoiceGuideEnabledRef.current) {
               isReadingVoiceListRef.current = true
@@ -911,6 +937,9 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     window.addEventListener("focus", reviveEngine)
     window.addEventListener("visibilitychange", handleVisibilityChange)
 
+    if (isVoiceCommandActiveRef.current) {
+      stopVisualModeVoiceListener()
+    }
     buildRecognition()
     const startTimeout = window.setTimeout(() => {
       try { recognition?.start() } catch (e) {}

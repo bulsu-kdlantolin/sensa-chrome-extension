@@ -245,11 +245,27 @@ const primeMicrophone = async () => {
 
 const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
   if (changes.sensa_visual_active !== undefined) {
-    isCurrentlyActive = !!changes.sensa_visual_active.newValue
+    const nextActive = !!changes.sensa_visual_active.newValue
+    isCurrentlyActive = nextActive
+    if (nextActive) {
+      tabLog("[Sensa Tab Voice Bridge] Visual mode turned ON -> yielding microphone to VisualDock.")
+      stopVisualModeVoiceListener()
+    }
   }
 }
 
 export async function startVisualModeVoiceListener(): Promise<boolean> {
+  const isVisualActive = await new Promise<boolean>((resolve) => {
+    chrome.storage.local.get(["sensa_visual_active"], (res) => {
+      resolve(!!res.sensa_visual_active)
+    })
+  })
+  isCurrentlyActive = isVisualActive
+  if (isVisualActive) {
+    tabLog("[Sensa Tab Voice Bridge] Visual mode already ON -> yielding microphone to VisualDock.")
+    return false
+  }
+
   if (isActive && recognition) {
     return true
   }
@@ -269,10 +285,6 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
   ignoreSpeechUntil = 0
   globalBuffer = ""
 
-  // Synchronously fetch and track current visual active state
-  chrome.storage.local.get(["sensa_visual_active"], (res) => {
-    isCurrentlyActive = !!res.sensa_visual_active
-  })
   chrome.storage.onChanged.addListener(handleStorageChange)
 
   // Start priming in parallel so we don't block the SpeechRecognition initialization

@@ -308,7 +308,7 @@ export default function FloatingDockManager() {
 
   // --- THE BRIDGE ---
   useEffect(() => {
-    chrome.storage.local.get(["sensa_visual_active", "sensa_auditory_active", "sensa_user_profile", "sensa_visual_reading_speed", "sensa_visual_highlight_color", "sensa_visual_input_device_id", "sensa_visual_autoscroll_enabled", "sensa_visual_highlight_mouse_screen_reader", "sensa_visual_image_alt_reader_enabled", "sensa_auditory_caption_language", "sensa_source_lang", "sensa_auditory_text_size", "sensa_auditory_caption_transparency", "sensa_auditory_focus_mode", "sensa_auditory_settings", "sensa_voice_command_active"], (res) => {
+    chrome.storage.local.get(["sensa_visual_active", "sensa_auditory_active", "sensa_user_profile", "sensa_visual_reading_speed", "sensa_visual_highlight_color", "sensa_visual_input_device_id", "sensa_visual_autoscroll_enabled", "sensa_visual_highlight_mouse_screen_reader", "sensa_visual_image_alt_reader_enabled", "sensa_auditory_caption_language", "sensa_source_lang", "sensa_auditory_text_size", "sensa_auditory_caption_transparency", "sensa_auditory_focus_mode", "sensa_auditory_settings", "sensa_voice_command_active", "sensa_mode_selection_listening"], (res) => {
       const storedMode = res.sensa_visual_active ? "visual" : res.sensa_auditory_active ? "auditory" : null
       setActiveMode(storedMode)
       if (res.sensa_user_profile?.globalSettings?.theme === "dark") setUserThemePref(true)
@@ -345,6 +345,11 @@ export default function FloatingDockManager() {
       }
       if (typeof res.sensa_voice_command_active === "boolean") {
         setIsVoiceCommandActive(res.sensa_voice_command_active)
+      }
+      if (res.sensa_mode_selection_listening) {
+        void startModeSelectionVoiceListener().then((started) => {
+          setIsModeSelectionVoiceActive(started)
+        })
       }
     })
 
@@ -509,6 +514,18 @@ export default function FloatingDockManager() {
       }
       if (changes.sensa_voice_command_active !== undefined && typeof changes.sensa_voice_command_active.newValue === "boolean") {
         setIsVoiceCommandActive(changes.sensa_voice_command_active.newValue)
+      }
+      if (changes.sensa_mode_selection_listening !== undefined) {
+        if (changes.sensa_mode_selection_listening.newValue) {
+          if (!isModeSelectionVoiceActive) {
+            void startModeSelectionVoiceListener().then((started) => {
+              setIsModeSelectionVoiceActive(started)
+            })
+          }
+        } else {
+          stopModeSelectionVoiceListener()
+          setIsModeSelectionVoiceActive(false)
+        }
       }
     }
 
