@@ -116,7 +116,8 @@ const normalizeInput = (rawText: string): string => {
   let text = rawText.toLowerCase()
   text = text.replace(/[^a-z0-9\s]/gi, " ")
   text = text.replace(/\b(?:de|dee|the|to|do|you)\s+activate[d]?\b/g, "deactivate")
-  text = text.replace(/\bdeactivated\b/g, "deactivate")
+  text = text.replace(/\b(?:deactivated|deactivating|unactivate|disable|turn off|turn it off)\b/g, "deactivate")
+  text = text.replace(/\b(?:activated|activating|reactivate|enable|turn on)\b/g, "activate")
   text = text.replace(/\s+/g, " ").trim()
   const fillerWords = new Set(["the", "a", "please", "hey", "can", "you", "change", "set", "to", "my", "sincere", "sansa", "sensor", "sensia"])
   const tokens = text.split(" ").filter(t => !fillerWords.has(t))
@@ -169,12 +170,12 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
   if (commandApplied || Date.now() < ignoreSpeechUntil) return
 
   commandApplied = true
-  ignoreSpeechUntil = Date.now() + 2500
+  ignoreSpeechUntil = Date.now() + 1800
 
   // Clear commandApplied block after the ignore duration.
   setTimeout(() => {
     commandApplied = false
-  }, 2500)
+  }, 1800)
 
   tabLog(`[Sensa Tab Voice Bridge] Applying visual mode command: ${command}`)
 
@@ -218,7 +219,7 @@ const teardownRecognition = () => {
 
   try {
     recognition.stop()
-  } catch {}
+  } catch { }
 
   recognition.onresult = null
   recognition.onerror = null
@@ -247,10 +248,6 @@ const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageCha
   if (changes.sensa_visual_active !== undefined) {
     const nextActive = !!changes.sensa_visual_active.newValue
     isCurrentlyActive = nextActive
-    if (nextActive) {
-      tabLog("[Sensa Tab Voice Bridge] Visual mode turned ON -> yielding microphone to VisualDock.")
-      stopVisualModeVoiceListener()
-    }
   }
 }
 
@@ -261,10 +258,6 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
     })
   })
   isCurrentlyActive = isVisualActive
-  if (isVisualActive) {
-    tabLog("[Sensa Tab Voice Bridge] Visual mode already ON -> yielding microphone to VisualDock.")
-    return false
-  }
 
   if (isActive && recognition) {
     return true
@@ -281,6 +274,7 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
   isActive = true
   commandApplied = false
   consumedString = ""
+  let consumedKeywords: string[] = []
   currentResultIndex = 0
   ignoreSpeechUntil = 0
   globalBuffer = ""
@@ -304,8 +298,10 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
     }
 
     if (event.resultIndex !== currentResultIndex) {
+      consumedKeywords = []
       consumedString = ""
       currentResultIndex = event.resultIndex
+      globalBuffer = ""
     }
 
     let interimChunk = ""
@@ -331,14 +327,25 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
     const normalizedTranscript = normalizeInput(rawTranscript)
     if (!normalizedTranscript) return
 
-    tabLog(`[Sensa Tab Voice Bridge] Heard transcript: "${normalizedTranscript}" (Raw: "${rawTranscript}")`)
+    let cleanTranscript = normalizedTranscript
+    if (consumedKeywords.length > 0) {
+      consumedKeywords.forEach(kw => {
+        const escapedKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        cleanTranscript = cleanTranscript.replace(new RegExp(`\\b${escapedKw}\\b`, "g"), " ")
+      })
+      cleanTranscript = cleanTranscript.replace(/\s+/g, " ").trim()
+    }
+    if (!cleanTranscript) return
 
-    const words = normalizedTranscript.split(" ")
-    const hasWord = (w: string) => words.includes(w)
+    tabLog(`[Sensa Tab Voice Bridge] Heard transcript: "${cleanTranscript}" (Raw: "${rawTranscript}")`)
+
+    const words = cleanTranscript.split(" ")
+    const padded = ` ${cleanTranscript} `
+    const check = (...cues: string[]) => cues.some(c => padded.includes(` ${c} `))
 
     const count = (w: string) => {
       const regex = new RegExp(`\\b${w}\\b`, "g")
-      return (normalizedTranscript.match(regex) || []).length
+      return (cleanTranscript.match(regex) || []).length
     }
 
     let activateScore = 0
@@ -348,13 +355,14 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
     // Match activate cues
     activateScore += count("visual mode") * 5
     activateScore += count("vision mode") * 5
-    activateScore += count("visual ") * 3
+    activateScore += count("visual") * 3
     activateScore += count("activate") * 3
     activateScore += count("start") * 3
 
-    if (activateScore === 0) {
-      if (fuzzyMatch(normalizedTranscript, "visual mode", 2) || fuzzyMatch(normalizedTranscript, "vision mode", 2)) activateScore += 3
-      else if (fuzzyMatch(normalizedTranscript, "visual", 1) || fuzzyMatch(normalizedTranscript, "activate", 1) || fuzzyMatch(normalizedTranscript, "start", 1)) activateScore += 3
+    if (check("activate", "start", "enable", "visual mode", "vision mode")) {
+      activateScore += 6
+    } else if (fuzzyMatch(cleanTranscript, "activate", 2) || fuzzyMatch(cleanTranscript, "visual mode", 2) || fuzzyMatch(cleanTranscript, "vision mode", 2)) {
+      activateScore += 4
     }
 
     // Match deactivate cues
@@ -364,9 +372,10 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
     deactivateScore += count("deactivate") * 3
     deactivateScore += count("stop") * 3
 
-    if (deactivateScore === 0) {
-      if (fuzzyMatch(normalizedTranscript, "deactivate visual mode", 2) || fuzzyMatch(normalizedTranscript, "stop visual mode", 2) || fuzzyMatch(normalizedTranscript, "turn off", 1)) deactivateScore += 3
-      else if (fuzzyMatch(normalizedTranscript, "deactivate", 2) || fuzzyMatch(normalizedTranscript, "stop", 1)) deactivateScore += 3
+    if (check("deactivate", "stop", "disable", "turn off", "deactivate visual mode", "stop visual mode")) {
+      deactivateScore += 6
+    } else if (fuzzyMatch(cleanTranscript, "deactivate", 2) || fuzzyMatch(cleanTranscript, "deactivate visual mode", 2) || fuzzyMatch(cleanTranscript, "stop visual mode", 2)) {
+      deactivateScore += 4
     }
 
     // Match auditory cues
@@ -374,9 +383,10 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
     auditoryScore += count("audio mode") * 5
     auditoryScore += count("auditory") * 3
 
-    if (auditoryScore === 0) {
-      if (fuzzyMatch(normalizedTranscript, "auditory mode", 2) || fuzzyMatch(normalizedTranscript, "audio mode", 2)) auditoryScore += 3
-      else if (fuzzyMatch(normalizedTranscript, "auditory", 1) || fuzzyMatch(normalizedTranscript, "audio", 1)) auditoryScore += 3
+    if (check("auditory", "auditory mode", "audio mode")) {
+      auditoryScore += 6
+    } else if (fuzzyMatch(cleanTranscript, "auditory mode", 2) || fuzzyMatch(cleanTranscript, "audio mode", 2) || fuzzyMatch(cleanTranscript, "auditory", 1)) {
+      auditoryScore += 4
     }
 
     let chosenCommand: "activate" | "deactivate" | "auditory" | null = null
@@ -404,6 +414,13 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
 
     if (chosenCommand) {
       globalBuffer = ""
+      if (chosenCommand === "activate") {
+        consumedKeywords.push("activate", "start", "enable", "turn", "on", "visual", "mode")
+      } else if (chosenCommand === "deactivate") {
+        consumedKeywords.push("deactivate", "stop", "disable", "turn", "off", "visual", "mode")
+      } else if (chosenCommand === "auditory") {
+        consumedKeywords.push("auditory", "audio", "mode")
+      }
       applyCommand(chosenCommand)
     }
   }

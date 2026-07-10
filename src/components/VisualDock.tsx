@@ -385,7 +385,7 @@ function ScreenMagnifierOverlay({ isDark, onClose }: { isDark: boolean; onClose:
         if (style.position === "fixed" || style.position === "sticky") {
           clonedEl.style.translate = `${scrollX}px ${scrollY}px`
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // Copy canvases (charts, animations)
@@ -395,7 +395,7 @@ function ScreenMagnifierOverlay({ isDark, onClose }: { isDark: boolean; onClose:
       try {
         const destCtx = clonedCanvases[i].getContext("2d")
         if (destCtx) destCtx.drawImage(origCanvases[i], 0, 0)
-      } catch (e) {}
+      } catch (e) { }
     }
 
     contentRef.current.innerHTML = ""
@@ -694,7 +694,7 @@ export default function VisualDock({
         loopTimer = window.setTimeout(checkReminder, 1000)
         return
       }
-      
+
       if (Date.now() - lastUISpeechTimeRef.current < lastUISpeechDurationRef.current) {
         loopTimer = window.setTimeout(checkReminder, 1000)
         return
@@ -713,7 +713,7 @@ export default function VisualDock({
 
         const lastTime = res.sensa_last_voice_reminder_time || 0
         const now = Date.now()
-        
+
         // Wait exactly 60s since the last reminder
         if (now - lastTime < 60000) {
           loopTimer = window.setTimeout(checkReminder, 1000)

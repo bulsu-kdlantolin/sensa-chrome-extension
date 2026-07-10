@@ -100,19 +100,19 @@ const simplifyVoiceName = (name: string): string => {
   simplified = simplified.replace(/svenska/gi, "Swedish")
   simplified = simplified.replace(/dansk/gi, "Danish")
   simplified = simplified.replace(/norsk/gi, "Norwegian")
-  
+
   simplified = simplified.replace(/ - English \([^)]+\)/i, "")
   simplified = simplified.replace(/ English \([^)]+\)/i, "")
   simplified = simplified.replace(/ \([a-z]{2}-[A-Z]{2}\)/i, "")
   simplified = simplified.replace(/ Desktop/i, "")
   simplified = simplified.replace(/[\(\)]/g, "")
   simplified = simplified.replace(/\s+/g, " ")
-  
+
   // Custom user requests for specific Google voices
   simplified = simplified.replace(/Google Taiwanese Mandarin/gi, "Google Taiwanese")
   simplified = simplified.replace(/Google Mainland Mandarin/gi, "Google Mandarin")
   simplified = simplified.replace(/Google Bahasa Indonesia/gi, "Google Indonesia")
-  
+
   return simplified.trim() || name
 }
 
@@ -147,7 +147,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>("")
   const [speakingVoiceURI, setSpeakingVoiceURI] = useState<string | null>(null)
-  
+
   const defaultVoiceURIRef = useRef<string>("")
   const defaultVoiceLabelRef = useRef<string>("")
   const defaultVoiceAppliedRef = useRef(false)
@@ -617,9 +617,9 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
         if (!recognition || !isComponentMounted) return
-        try { 
-          recognition.start() 
-        } catch (e: any) { 
+        try {
+          recognition.start()
+        } catch (e: any) {
           if (e && e.name === 'InvalidStateError') {
             restartTimer = window.setTimeout(scheduleRestart, 400)
             return
@@ -635,12 +635,12 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
     const teardownRecognition = () => {
       if (!recognition) return
-      try { recognition.stop() } catch {}
+      try { recognition.stop() } catch { }
       recognition.onresult = null
       recognition.onerror = null
       recognition.onend = null
       recognition.onstart = null
-      ;(recognition as any).onsoundstart = null
+        ; (recognition as any).onsoundstart = null
       recognition = null
     }
 
@@ -687,11 +687,11 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
         return cleanText.includes(name) || name.includes(cleanText) || cleanText.includes(simpleName) || simpleName.includes(cleanText)
       })
       if (matches.length === 0) return false
-      
+
       if (matches.length > 1 && (cleanText === "google" || cleanText === "microsoft" || cleanText === "apple" || cleanText === "english")) {
         return false
       }
-      
+
       const matchedVoice = matches[0]
       setSelectedVoiceURI(matchedVoice.voiceURI)
       setSpeakingVoiceURI(matchedVoice.voiceURI)
@@ -720,9 +720,9 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       instance.onstart = () => {
         settingsRecognitionArmedRef.current = true
       }
-      
-      ;(instance as any).onsoundstart = () => {
-      }
+
+        ; (instance as any).onsoundstart = () => {
+        }
 
       instance.onresult = (event: any) => {
         if (!settingsRecognitionArmedRef.current) return
@@ -735,7 +735,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             liveText += event.results[i][0].transcript + " "
           }
           liveText = liveText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
-          
+
           let newSpeech = liveText
           if (liveText.startsWith(consumedString) && consumedString.length > 0) {
             newSpeech = liveText.slice(consumedString.length).trim()
@@ -845,12 +845,12 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             commandFired = true
             setIsVoiceDropdownOpen(true)
             setSettingsState((next) => { next.isVoiceDropdownOpen = true })
-            
+
             if (isVoiceGuideEnabledRef.current) {
               isReadingVoiceListRef.current = true
               window.speechSynthesis.cancel()
               window.sensa_utterances = []
-              
+
               const allVoices = window.speechSynthesis.getVoices()
               const defaultUri = selectedVoiceURIRef.current || defaultVoiceURIRef.current
               const defaultVoiceObj = (defaultUri ? allVoices.find((v) => v.voiceURI === defaultUri) : undefined) || allVoices.find((v) => v.name.includes("Google US English"))
@@ -928,11 +928,11 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
         scheduleRestart()
       }
     }
-    
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") reviveEngine()
     }
-    
+
     window.addEventListener("click", reviveEngine)
     window.addEventListener("focus", reviveEngine)
     window.addEventListener("visibilitychange", handleVisibilityChange)
@@ -942,7 +942,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     }
     buildRecognition()
     const startTimeout = window.setTimeout(() => {
-      try { recognition?.start() } catch (e) {}
+      try { recognition?.start() } catch (e) { }
     }, 150)
 
     return () => {
@@ -955,7 +955,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
       window.clearTimeout(startTimeout)
       if (recognition) {
-        try { recognition.stop() } catch (e) {}
+        try { recognition.stop() } catch (e) { }
       }
     }
   }, [playClickAudio, isTabVisible])
@@ -1361,7 +1361,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             {...getHoverHandlers("Capture Area. Set the size of the magnifying bubble on screen.")}
           >
             <div className="flex items-center gap-3">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 shrink-0 ${iconColor}`}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 shrink-0 ${iconColor}`}><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="4" /></svg>
               <div className="flex flex-col">
                 <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Capture Area</span>
                 <span className={`text-[11px] ${secondaryText}`}>Set the size of the magnifying bubble on screen</span>
@@ -1393,7 +1393,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             {...getHoverHandlers("Magnifier Zoom. Set how much the lens magnifies the text.")}
           >
             <div className="flex items-center gap-3">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 shrink-0 ${iconColor}`}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 shrink-0 ${iconColor}`}><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /><line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" /></svg>
               <div className="flex flex-col">
                 <span className={`text-[15px] font-semibold tracking-wide ${labelColor}`}>Magnifier Zoom</span>
                 <span className={`text-[11px] ${secondaryText}`}>Set how much the lens magnifies the text</span>
@@ -1474,15 +1474,14 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
                   key={voice.voiceURI}
                   role="option"
                   aria-selected={selectedVoiceURI === voice.voiceURI}
-                  className={`px-4 py-2.5 cursor-pointer block w-full text-left truncate transition-all font-medium m-1 rounded-lg ${
-                    speakingVoiceURI === voice.voiceURI
+                  className={`px-4 py-2.5 cursor-pointer block w-full text-left truncate transition-all font-medium m-1 rounded-lg ${speakingVoiceURI === voice.voiceURI
                       ? "bg-[#0A44FF]/30 text-[#0A44FF] shadow-inner border border-[#0A44FF]/50"
                       : selectedVoiceURI === voice.voiceURI
                         ? "bg-gradient-to-r from-[#0A44FF] to-[#0099FF] text-white shadow-md"
                         : isDark
                           ? "text-gray-200 hover:bg-[#0A44FF]/20 hover:text-[#0A44FF]"
                           : "text-gray-700 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF]"
-                  }`}
+                    }`}
                   onMouseEnter={() => { playHoverSfx(); previewVoice(voice) }}
                   onClick={() => { handleVoiceChange(voice.voiceURI); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }}
                   style={{ fontFamily: `"${voice.name}", system-ui, sans-serif` }}
