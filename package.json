@@ -34,8 +34,7 @@
       "activeTab",
       "storage",
       "tabCapture",
-      "offscreen",
-      "microphone"
+      "offscreen"
     ],
     "host_permissions": [
       "https://*/*",

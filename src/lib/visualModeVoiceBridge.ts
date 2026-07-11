@@ -59,10 +59,14 @@ const tryStart = () => {
   }
 }
 
+let visualRestartAttempts = 0
+
 const scheduleRestart = () => {
   if (!isActive) return
   clearRestartTimer()
-  restartTimer = window.setTimeout(tryStart, 300)
+  const delay = Math.min(500 * Math.pow(2, visualRestartAttempts), 5000)
+  visualRestartAttempts++
+  restartTimer = window.setTimeout(tryStart, delay)
 }
 
 const getLevenshteinDistance = (a: string, b: string): number => {
@@ -425,6 +429,10 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
     }
   }
 
+  instance.onstart = () => {
+    visualRestartAttempts = 0
+  }
+
   instance.onerror = (event: SpeechRecognitionErrorEvent) => {
     tabLog(`[Sensa Tab Voice Bridge] Visual mode SpeechRecognition error in tab: ${event.error}`, "error")
     if (event.error === "not-allowed" || event.error === "service-not-allowed") {
@@ -432,6 +440,10 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
       isActive = false
       teardownRecognition()
       chrome.storage.onChanged.removeListener(handleStorageChange)
+      return
+    }
+    if (event.error === "aborted" || event.error === "no-speech") {
+      // Let onend handle these with backoff
       return
     }
     scheduleRestart()

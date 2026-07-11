@@ -19,14 +19,13 @@ let recognition: SpeechRecognition | null = null
 let isActive = false
 let restartTimer: number | null = null
 let ignoreSpeechUntil = 0
-let consumedString = ""
-let currentResultIndex = 0
 let commandApplied = false
 let globalBuffer = ""
 let watchdogTimer: number | null = null
 let lastAudioTimestamp = 0
 let recognitionRunning = false
 let isStarting = false
+let restartAttempts = 0
 
 const getSpeechRecognitionCtor = () =>
   (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -64,20 +63,77 @@ const clearWatchdog = () => {
   }
 }
 
-const tryStart = () => {
-  if (!isActive || !recognition || commandApplied) return
+/**
+ * Tear down the current SpeechRecognition instance completely.
+ * After this, `recognition` is null and a fresh instance must be created.
+ */
+const teardownRecognition = () => {
+  clearRestartTimer()
+  recognitionRunning = false
+  if (!recognition) return
+
   try {
-    recognition.start()
+    recognition.stop()
+  } catch {}
+
+  recognition.onresult = null
+  recognition.onerror = null
+  recognition.onend = null
+  recognition.onstart = null
+  ;(recognition as any).onaudiostart = null
+  ;(recognition as any).onaudioend = null
+  ;(recognition as any).onsoundstart = null
+  ;(recognition as any).onsoundend = null
+  ;(recognition as any).onspeechstart = null
+  ;(recognition as any).onspeechend = null
+  recognition = null
+}
+
+/**
+ * Build a brand-new SpeechRecognition instance and start it.
+ * This avoids the Chrome bug where reusing a stopped instance causes
+ * rapid "aborted" error loops (the red pulsing mic indicator).
+ */
+const buildAndStart = () => {
+  if (!isActive || commandApplied) return
+
+  const SpeechRecognitionCtor = getSpeechRecognitionCtor()
+  if (!SpeechRecognitionCtor) return
+
+  // Tear down old instance first
+  teardownRecognition()
+
+  const instance = new SpeechRecognitionCtor()
+  recognition = instance
+  instance.continuous = true
+  instance.interimResults = true
+  instance.lang = "en-US"
+
+  attachRecognitionHandlers(instance)
+
+  try {
+    instance.start()
   } catch {
-    // Already started or transitioning in Chrome — do not rebuild, just wait for onend/onerror
+    // If start fails immediately, schedule another attempt
+    scheduleRestart()
   }
 }
 
+/**
+ * Schedule a restart with exponential backoff to prevent rapid-fire crash loops.
+ * Backoff resets as soon as recognition successfully starts (onstart fires).
+ */
 const scheduleRestart = () => {
   if (!isActive || commandApplied) return
   clearRestartTimer()
   recognitionRunning = false
-  restartTimer = window.setTimeout(tryStart, 300)
+
+  // Exponential backoff: 300ms, 600ms, 1200ms, 2400ms, capped at 3000ms
+  const delay = Math.min(300 * Math.pow(2, restartAttempts), 3000)
+  restartAttempts++
+
+  tabLog(`[Sensa Tab Voice Bridge] Scheduling restart in ${delay}ms (attempt ${restartAttempts})`)
+  restartTimer = window.setTimeout(buildAndStart, delay)
 }
 
 // Watchdog: periodically checks that recognition is alive and receiving audio.
@@ -92,11 +148,16 @@ const startWatchdog = () => {
     }
     
     const silenceDuration = Date.now() - lastAudioTimestamp
-    if ((!recognitionRunning && silenceDuration > 4000) || silenceDuration > 8000) {
-      tabLog(`[Sensa Tab Voice Bridge] Watchdog detected silence (${silenceDuration}ms, running: ${recognitionRunning}). Restarting...`, "warn")
-      tryStart()
+
+    // ONLY restart if recognition is NOT running (it crashed or never started).
+    // If recognitionRunning is true, Chrome still has the mic open — silence just
+    // means no one is speaking, which is perfectly normal. Do NOT kill it.
+    if (!recognitionRunning && silenceDuration > 15000) {
+      tabLog(`[Sensa Tab Voice Bridge] Watchdog: recognition not running for ${silenceDuration}ms. Rebuilding...`, "warn")
+      restartAttempts = 0
+      buildAndStart()
     }
-  }, 4000)
+  }, 8000)
 }
 
 const getLevenshteinDistance = (a: string, b: string): number => {
@@ -139,19 +200,94 @@ const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
   return false
 }
 
+/**
+ * Known TTS sentences spoken by the ModeSelection screen.
+ * We strip these from the transcript so the mic picking up the computer's
+ * own speakers doesn't trigger false commands.
+ */
+const TTS_SENTENCES = [
+  "welcome to sensa",
+  "a chrome extension assisting visual and auditory impaired users with specialized accessibility tools and features",
+  "chrome extension assisting",
+  "assisting visual and auditory impaired users",
+  "visual and auditory impaired",
+  "specialized accessibility tools and features",
+  "select your primary accessibility mode",
+  "visual mode support low vision with voice navigation screen magnifier and guided reading",
+  "visual mode",
+  "support low vision with voice navigation screen magnifier and guided reading",
+  "support low vision",
+  "with voice navigation",
+  "screen magnifier and guided reading",
+  "screen magnifier",
+  "guided reading",
+  "auditory mode support hearing loss with multilingual captions audio visualizer and noise alerts",
+  "auditory mode",
+  "support hearing loss with multilingual captions audio visualizer and noise alerts",
+  "support hearing loss",
+  "with multilingual captions",
+  "audio visualizer and noise alerts",
+  "audio visualizer",
+  "noise alerts",
+  "you can say visual mode or auditory mode to choose a primary accessibility mode",
+  "you can say visual mode or auditory mode",
+  "say visual mode or auditory mode",
+  "to choose a primary accessibility mode",
+  "primary accessibility mode"
+]
+
+/**
+ * Words that only appear in TTS narration, never in a user's command.
+ * If the transcript contains any of these, it's TTS echo — ignore it.
+ */
+const TTS_MARKER_WORDS = [
+  "impaired", "assisting", "magnifier", "multilingual",
+  "captions", "visualizer", "specialized", "accessibility",
+  "navigation", "extension", "chrome extension"
+]
+
 const normalizeInput = (rawText: string): string => {
   let text = rawText.toLowerCase()
   text = text.replace(/[^a-z0-9\s]/gi, " ")
   text = text.replace(/\s+/g, " ").trim()
-  const fillerWords = new Set(["the", "a", "please", "hey", "can", "you", "change", "set", "to", "my", "select", "sincere", "sansa", "sensor", "sensia"])
+  const fillerWords = new Set(["the", "a", "please", "hey", "can", "you", "change", "set", "to", "my", "select", "choose", "sincere", "sansa", "sensor", "sensia"])
   const tokens = text.split(" ").filter(t => !fillerWords.has(t))
   return tokens.join(" ")
+}
+
+/**
+ * Strip all known TTS sentences from the text, then check for TTS marker words.
+ * Returns null if the text is purely TTS echo and should be ignored.
+ */
+const scrubTTS = (text: string): string | null => {
+  let cleaned = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
+
+  // Strip TTS sentences (longest first to avoid partial matches leaving residue)
+  for (const sentence of TTS_SENTENCES) {
+    // Use a loop because the same sentence could appear multiple times
+    let safety = 0
+    while (cleaned.includes(sentence) && safety++ < 5) {
+      cleaned = cleaned.replace(sentence, " ")
+    }
+  }
+
+  cleaned = cleaned.replace(/\s+/g, " ").trim()
+
+  // If any TTS marker words remain, this is still TTS echo
+  for (const marker of TTS_MARKER_WORDS) {
+    if (cleaned.includes(marker)) {
+      return null
+    }
+  }
+
+  return cleaned || null
 }
 
 const attachRecognitionHandlers = (instance: SpeechRecognition) => {
   instance.onstart = () => {
     recognitionRunning = true
     lastAudioTimestamp = Date.now()
+    restartAttempts = 0 // Reset backoff on successful start
     tabLog("[Sensa Tab Voice Bridge] Recognition started successfully")
   }
 
@@ -164,15 +300,11 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
 
   instance.onresult = (event: SpeechRecognitionEvent) => {
     lastAudioTimestamp = Date.now()
-    if (commandApplied) {
+    if (commandApplied || Date.now() < ignoreSpeechUntil) {
       return
     }
 
-    if (event.resultIndex !== currentResultIndex) {
-      consumedString = ""
-      currentResultIndex = event.resultIndex
-    }
-
+    // Collect the transcript from this result event
     let interimChunk = ""
     let newFinals = ""
 
@@ -185,165 +317,105 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       }
     }
 
-    globalBuffer += newFinals
-    // Keep global buffer short (40 chars max) so we don't drag around old TTS narration
-    if (globalBuffer.length > 40) {
-      globalBuffer = globalBuffer.slice(-40)
-    }
+    // Use ONLY the current speech chunk for scoring.
+    // This avoids stale buffer content from TTS narration contaminating the score.
+    const currentSpeech = (newFinals + interimChunk).trim()
+    if (!currentSpeech) return
 
-    const rawTranscript = (globalBuffer + " " + interimChunk).trim()
-    if (!rawTranscript) return
-
-    let normalizedTranscript = normalizeInput(rawTranscript)
-    if (!normalizedTranscript) return
-
-    // 1. Strip out exact intro & reminder TTS phrases without greedy wildcards
-    const exactPhrasesToRemove = [
-      "welcome to sensa a chrome extension assisting visual and auditory impaired users with specialized accessibility tools and features",
-      "welcome to sensa",
-      "chrome extension assisting",
-      "assisting visual and auditory impaired users",
-      "visual and auditory impaired",
-      "specialized accessibility tools and features",
-      "select your primary accessibility mode",
-      "support low vision with voice navigation screen magnifier and guided reading",
-      "support low vision",
-      "with voice navigation",
-      "screen magnifier and guided reading",
-      "screen magnifier",
-      "guided reading",
-      "support hearing loss with multilingual captions audio visualizer and noise alerts",
-      "support hearing loss",
-      "with multilingual captions",
-      "audio visualizer and noise alerts",
-      "audio visualizer",
-      "noise alerts",
-      "you can say visual mode or auditory mode to choose a primary accessibility mode",
-      "you can say visual mode or auditory mode",
-      "to choose a primary accessibility mode",
-      "primary accessibility mode"
-    ]
-
-    for (const phrase of exactPhrasesToRemove) {
-      while (normalizedTranscript.includes(phrase)) {
-        normalizedTranscript = normalizedTranscript.replace(phrase, " ")
-      }
-    }
-
-    // 2. Also clean out compound TTS card headers when adjacent to support cues
-    normalizedTranscript = normalizedTranscript
-      .replace(/\b(?:visual\s+mode|vision\s+mode|visual|vision)\s+(?:support\s+low\s+vision|low\s+vision)\b/g, " ")
-      .replace(/\b(?:auditory\s+mode|audio\s+mode|auditory|audio)\s+(?:support\s+hearing\s+loss|hearing\s+loss)\b/g, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-
-    if (!normalizedTranscript) {
+    // Scrub TTS narration from the current speech
+    const scrubbedText = scrubTTS(currentSpeech)
+    if (!scrubbedText) {
+      // This chunk is purely TTS echo — ignore it silently
       return
     }
 
-    tabLog(`[Sensa Tab Voice Bridge] Cleaned transcript for scoring: "${normalizedTranscript}" (Raw: "${rawTranscript}")`)
+    const normalizedTranscript = normalizeInput(scrubbedText)
+    if (!normalizedTranscript) return
 
-    const count = (w: string) => {
-      const regex = new RegExp(`\\b${w}\\b`, "g")
-      return (normalizedTranscript.match(regex) || []).length
-    }
+    tabLog(`[Sensa Tab Voice Bridge] Scoring transcript: "${normalizedTranscript}" (Raw: "${currentSpeech}")`)
 
+    // --- Scoring ---
     let visualScore = 0
     let auditoryScore = 0
 
-    // Visual Mode Cues
-    visualScore += count("visual mode") * 5
-    visualScore += count("vision mode") * 5
-    visualScore += count("visual mod") * 4
-    visualScore += count("visual") * 4
-    visualScore += count("vision") * 4
-    visualScore += count("bisual") * 4
-    visualScore += count("option one") * 5
-    visualScore += count("option 1") * 5
-    visualScore += count("first option") * 5
-    visualScore += count("number one") * 5
-    visualScore += count("number 1") * 5
-    visualScore += count("first one") * 5
+    // Direct substring checks — instant detection on first interim chunk
+    const has = (keyword: string) => normalizedTranscript.includes(keyword)
 
+    // Visual Mode
+    if (has("visual mode") || has("vision mode") || has("bisual mode")) {
+      visualScore += 15
+    } else if (has("visual") || has("vision") || has("bisual")) {
+      visualScore += 8
+    }
+    if (has("option one") || has("option 1") || has("first option") || has("number one") || has("number 1") || has("first one")) {
+      visualScore += 10
+    }
+
+    // Fuzzy fallback (only if no direct match)
     if (visualScore === 0) {
       if (
         fuzzyMatch(normalizedTranscript, "visual mode", 2) ||
         fuzzyMatch(normalizedTranscript, "vision mode", 2) ||
-        fuzzyMatch(normalizedTranscript, "option one", 2) ||
-        fuzzyMatch(normalizedTranscript, "first option", 2)
-      ) {
-        visualScore += 4
-      } else if (
         fuzzyMatch(normalizedTranscript, "visual", 1) ||
-        fuzzyMatch(normalizedTranscript, "vision", 1) ||
-        fuzzyMatch(normalizedTranscript, "bisual", 1)
+        fuzzyMatch(normalizedTranscript, "vision", 1)
       ) {
-        visualScore += 3
+        visualScore += 5
       }
     }
 
-    // Auditory Mode Cues
-    auditoryScore += count("auditory mode") * 5
-    auditoryScore += count("audio mode") * 5
-    auditoryScore += count("sound mode") * 5
-    auditoryScore += count("hearing mode") * 5
-    auditoryScore += count("auditory") * 4
-    auditoryScore += count("audio") * 4
-    auditoryScore += count("hearing") * 4
-    auditoryScore += count("auditor") * 4
-    auditoryScore += count("auditori") * 4
-    auditoryScore += count("option two") * 5
-    auditoryScore += count("option 2") * 5
-    auditoryScore += count("second option") * 5
-    auditoryScore += count("number two") * 5
-    auditoryScore += count("number 2") * 5
-    auditoryScore += count("second one") * 5
+    // Auditory Mode
+    if (has("auditory mode") || has("audio mode") || has("sound mode") || has("hearing mode")) {
+      auditoryScore += 15
+    } else if (has("auditory") || has("audio") || has("hearing") || has("sound mode")) {
+      auditoryScore += 8
+    }
+    if (has("option two") || has("option 2") || has("second option") || has("number two") || has("number 2") || has("second one")) {
+      auditoryScore += 10
+    }
 
+    // Fuzzy fallback
     if (auditoryScore === 0) {
       if (
         fuzzyMatch(normalizedTranscript, "auditory mode", 2) ||
         fuzzyMatch(normalizedTranscript, "audio mode", 2) ||
         fuzzyMatch(normalizedTranscript, "sound mode", 2) ||
-        fuzzyMatch(normalizedTranscript, "hearing mode", 2) ||
-        fuzzyMatch(normalizedTranscript, "option two", 2) ||
-        fuzzyMatch(normalizedTranscript, "second option", 2)
-      ) {
-        auditoryScore += 4
-      } else if (
         fuzzyMatch(normalizedTranscript, "auditory", 1) ||
-        fuzzyMatch(normalizedTranscript, "audio", 1) ||
-        fuzzyMatch(normalizedTranscript, "auditor", 1) ||
-        fuzzyMatch(normalizedTranscript, "auditori", 1) ||
-        fuzzyMatch(normalizedTranscript, "hearing", 1)
+        fuzzyMatch(normalizedTranscript, "audio", 1)
       ) {
-        auditoryScore += 3
+        auditoryScore += 5
       }
     }
 
+    // --- Decision ---
     let chosenCommand: "visual" | "auditory" | null = null
-    const threshold = 3
+    const threshold = 5
 
     if (visualScore >= threshold && visualScore > auditoryScore) {
       chosenCommand = "visual"
     } else if (auditoryScore >= threshold && auditoryScore > visualScore) {
       chosenCommand = "auditory"
     } else if (visualScore >= threshold && auditoryScore >= threshold) {
-      // If both scored high (e.g., mixed speech tail), favor the most recently spoken keyword
-      const words = normalizedTranscript.split(/\s+/)
-      const tail = words.slice(-3).join(" ")
-      const hasTailVisual = tail.includes("visual") || tail.includes("vision") || tail.includes("option one") || tail.includes("first")
-      const hasTailAuditory = tail.includes("auditory") || tail.includes("audio") || tail.includes("hearing") || tail.includes("option two") || tail.includes("second")
+      // Tie: pick whichever keyword appears last (most recently spoken)
+      const lastVisualIdx = Math.max(
+        normalizedTranscript.lastIndexOf("visual"),
+        normalizedTranscript.lastIndexOf("vision"),
+        normalizedTranscript.lastIndexOf("bisual")
+      )
+      const lastAuditoryIdx = Math.max(
+        normalizedTranscript.lastIndexOf("auditory"),
+        normalizedTranscript.lastIndexOf("audio"),
+        normalizedTranscript.lastIndexOf("hearing")
+      )
 
-      if (hasTailVisual && !hasTailAuditory) {
+      if (lastVisualIdx > lastAuditoryIdx && lastVisualIdx !== -1) {
         chosenCommand = "visual"
-      } else if (hasTailAuditory && !hasTailVisual) {
+      } else if (lastAuditoryIdx > lastVisualIdx && lastAuditoryIdx !== -1) {
         chosenCommand = "auditory"
       }
     }
 
     if (chosenCommand) {
-      tabLog(`[Sensa Mode Selection Tab Voice Bridge] Command detected: "${chosenCommand}". Applying immediately.`)
-      globalBuffer = ""
+      tabLog(`[Sensa Mode Selection Tab Voice Bridge] Command detected: "${chosenCommand}" (visualScore=${visualScore}, auditoryScore=${auditoryScore}). Applying immediately.`)
       applyModeSelection(chosenCommand)
     }
   }
@@ -351,6 +423,7 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
   instance.onerror = (event: SpeechRecognitionErrorEvent) => {
     recognitionRunning = false
     tabLog(`[Sensa Tab Voice Bridge] SpeechRecognition error in tab: ${event.error}`, "error")
+
     if (event.error === "not-allowed" || event.error === "service-not-allowed") {
       tabLog("[Sensa Tab Voice Bridge] Microphone access denied, stopping tab listener.", "warn")
       isActive = false
@@ -358,14 +431,27 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       chrome.storage.local.set({ sensa_mode_selection_listening: false })
       return
     }
-    if (event.error === "no-speech") {
-      tabLog("[Sensa Tab Voice Bridge] No speech detected, restarting...", "log")
+
+    if (event.error === "aborted") {
+      // Chrome fires "aborted" when the recognition is interrupted. 
+      // Don't restart immediately — let onend handle it with backoff.
+      tabLog("[Sensa Tab Voice Bridge] Recognition aborted, waiting for onend.", "log")
+      return
     }
+
+    if (event.error === "no-speech") {
+      tabLog("[Sensa Tab Voice Bridge] No speech detected, will restart via onend.", "log")
+      return
+    }
+
+    // For other errors, schedule restart
     scheduleRestart()
   }
 
   instance.onend = () => {
     recognitionRunning = false
+    tabLog("[Sensa Tab Voice Bridge] Recognition ended.")
+    // Always rebuild with a fresh instance to avoid the Chrome reuse bug
     scheduleRestart()
   }
 }
@@ -412,23 +498,6 @@ const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
   })
 }
 
-const teardownRecognition = () => {
-  clearRestartTimer()
-  recognitionRunning = false
-  if (!recognition) return
-
-  try {
-    recognition.stop()
-  } catch {}
-
-  recognition.onresult = null
-  recognition.onerror = null
-  recognition.onend = null
-  recognition.onstart = null
-  ;(recognition as any).onaudiostart = null
-  recognition = null
-}
-
 const primeMicrophone = async () => {
   if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
     throw new Error("navigator.mediaDevices.getUserMedia is not available")
@@ -458,13 +527,11 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
     return false
   }
 
-  // Clean up any old recognition internally without calling stopModeSelectionVoiceListener()
-  // to avoid triggering external storage change hooks
+  // Clean up any old recognition
   isActive = false
   commandApplied = false
-  consumedString = ""
-  currentResultIndex = 0
   recognitionRunning = false
+  restartAttempts = 0
   clearWatchdog()
   teardownRecognition()
 
@@ -476,22 +543,14 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
 
   isActive = true
   commandApplied = false
-  consumedString = ""
-  currentResultIndex = 0
   ignoreSpeechUntil = 0
   globalBuffer = ""
   recognitionRunning = false
+  restartAttempts = 0
 
-  const instance = new SpeechRecognitionCtor()
-  recognition = instance
-  instance.continuous = true
-  instance.interimResults = true
-  instance.lang = "en-US"
-
-  attachRecognitionHandlers(instance)
   startWatchdog()
+  buildAndStart()
 
-  window.setTimeout(tryStart, 50)
   isStarting = false
   return true
 }
@@ -503,9 +562,8 @@ export function stopModeSelectionVoiceListener() {
   isStarting = false
   isActive = false
   commandApplied = false
-  consumedString = ""
-  currentResultIndex = 0
   recognitionRunning = false
+  restartAttempts = 0
   clearWatchdog()
   teardownRecognition()
 }

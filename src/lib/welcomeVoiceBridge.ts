@@ -60,10 +60,14 @@ const tryStart = () => {
   }
 }
 
+let welcomeRestartAttempts = 0
+
 const scheduleRestart = () => {
   if (!isActive || commandApplied) return
   clearRestartTimer()
-  restartTimer = window.setTimeout(tryStart, 300)
+  const delay = Math.min(500 * Math.pow(2, welcomeRestartAttempts), 5000)
+  welcomeRestartAttempts++
+  restartTimer = window.setTimeout(tryStart, delay)
 }
 
 const getLevenshteinDistance = (a: string, b: string): number => {
@@ -298,12 +302,20 @@ export async function startWelcomeVoiceListener(): Promise<boolean> {
     }
   }
 
+  instance.onstart = () => {
+    welcomeRestartAttempts = 0
+  }
+
   instance.onerror = (event: SpeechRecognitionErrorEvent) => {
     tabLog(`[Sensa Tab Voice Bridge] Welcome SpeechRecognition error in tab: ${event.error}`, "error")
     if (event.error === "not-allowed" || event.error === "service-not-allowed") {
       tabLog("[Sensa Tab Voice Bridge] Welcome microphone access denied, stopping tab listener.", "warn")
       isActive = false
       teardownRecognition()
+      return
+    }
+    if (event.error === "aborted" || event.error === "no-speech") {
+      // Let onend handle these with backoff
       return
     }
     scheduleRestart()
