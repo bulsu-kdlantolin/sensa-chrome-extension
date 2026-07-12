@@ -208,32 +208,9 @@ const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
 const TTS_SENTENCES = [
   "welcome to sensa",
   "a chrome extension assisting visual and auditory impaired users with specialized accessibility tools and features",
-  "chrome extension assisting",
-  "assisting visual and auditory impaired users",
-  "visual and auditory impaired",
+  "chrome extension assisting visual and auditory impaired users",
   "specialized accessibility tools and features",
-  "select your primary accessibility mode",
-  "visual mode support low vision with voice navigation screen magnifier and guided reading",
-  "visual mode",
-  "support low vision with voice navigation screen magnifier and guided reading",
-  "support low vision",
-  "with voice navigation",
-  "screen magnifier and guided reading",
-  "screen magnifier",
-  "guided reading",
-  "auditory mode support hearing loss with multilingual captions audio visualizer and noise alerts",
-  "auditory mode",
-  "support hearing loss with multilingual captions audio visualizer and noise alerts",
-  "support hearing loss",
-  "with multilingual captions",
-  "audio visualizer and noise alerts",
-  "audio visualizer",
-  "noise alerts",
-  "you can say visual mode or auditory mode to choose a primary accessibility mode",
-  "you can say visual mode or auditory mode",
-  "say visual mode or auditory mode",
-  "to choose a primary accessibility mode",
-  "primary accessibility mode"
+  "select your primary accessibility mode"
 ]
 
 /**
@@ -243,7 +220,7 @@ const TTS_SENTENCES = [
 const TTS_MARKER_WORDS = [
   "impaired", "assisting", "magnifier", "multilingual",
   "captions", "visualizer", "specialized", "accessibility",
-  "navigation", "extension", "chrome extension"
+  "navigation", "chrome extension"
 ]
 
 const normalizeInput = (rawText: string): string => {
@@ -264,7 +241,6 @@ const scrubTTS = (text: string): string | null => {
 
   // Strip TTS sentences (longest first to avoid partial matches leaving residue)
   for (const sentence of TTS_SENTENCES) {
-    // Use a loop because the same sentence could appear multiple times
     let safety = 0
     while (cleaned.includes(sentence) && safety++ < 5) {
       cleaned = cleaned.replace(sentence, " ")
@@ -347,7 +323,7 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     } else if (has("visual") || has("vision") || has("bisual")) {
       visualScore += 8
     }
-    if (has("option one") || has("option 1") || has("first option") || has("number one") || has("number 1") || has("first one")) {
+    if (has("option one") || has("option 1") || has("first option") || has("number one") || has("number 1") || has("first one") || has("one") || has("1") || has("first")) {
       visualScore += 10
     }
 
@@ -357,7 +333,9 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
         fuzzyMatch(normalizedTranscript, "visual mode", 2) ||
         fuzzyMatch(normalizedTranscript, "vision mode", 2) ||
         fuzzyMatch(normalizedTranscript, "visual", 1) ||
-        fuzzyMatch(normalizedTranscript, "vision", 1)
+        fuzzyMatch(normalizedTranscript, "vision", 1) ||
+        fuzzyMatch(normalizedTranscript, "option one", 1) ||
+        fuzzyMatch(normalizedTranscript, "first option", 1)
       ) {
         visualScore += 5
       }
@@ -366,10 +344,10 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     // Auditory Mode
     if (has("auditory mode") || has("audio mode") || has("sound mode") || has("hearing mode")) {
       auditoryScore += 15
-    } else if (has("auditory") || has("audio") || has("hearing") || has("sound mode")) {
+    } else if (has("auditory") || has("audio") || has("hearing") || has("sound")) {
       auditoryScore += 8
     }
-    if (has("option two") || has("option 2") || has("second option") || has("number two") || has("number 2") || has("second one")) {
+    if (has("option two") || has("option 2") || has("second option") || has("number two") || has("number 2") || has("second one") || has("two") || has("2") || has("second")) {
       auditoryScore += 10
     }
 
@@ -380,7 +358,10 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
         fuzzyMatch(normalizedTranscript, "audio mode", 2) ||
         fuzzyMatch(normalizedTranscript, "sound mode", 2) ||
         fuzzyMatch(normalizedTranscript, "auditory", 1) ||
-        fuzzyMatch(normalizedTranscript, "audio", 1)
+        fuzzyMatch(normalizedTranscript, "audio", 1) ||
+        fuzzyMatch(normalizedTranscript, "hearing", 1) ||
+        fuzzyMatch(normalizedTranscript, "option two", 1) ||
+        fuzzyMatch(normalizedTranscript, "second option", 1)
       ) {
         auditoryScore += 5
       }
@@ -388,7 +369,7 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
 
     // --- Decision ---
     let chosenCommand: "visual" | "auditory" | null = null
-    const threshold = 5
+    const threshold = 3
 
     if (visualScore >= threshold && visualScore > auditoryScore) {
       chosenCommand = "visual"
@@ -399,12 +380,16 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       const lastVisualIdx = Math.max(
         normalizedTranscript.lastIndexOf("visual"),
         normalizedTranscript.lastIndexOf("vision"),
-        normalizedTranscript.lastIndexOf("bisual")
+        normalizedTranscript.lastIndexOf("bisual"),
+        normalizedTranscript.lastIndexOf("one"),
+        normalizedTranscript.lastIndexOf("1")
       )
       const lastAuditoryIdx = Math.max(
         normalizedTranscript.lastIndexOf("auditory"),
         normalizedTranscript.lastIndexOf("audio"),
-        normalizedTranscript.lastIndexOf("hearing")
+        normalizedTranscript.lastIndexOf("hearing"),
+        normalizedTranscript.lastIndexOf("two"),
+        normalizedTranscript.lastIndexOf("2")
       )
 
       if (lastVisualIdx > lastAuditoryIdx && lastVisualIdx !== -1) {
@@ -472,11 +457,6 @@ const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
     }
 
     const profile = (res.sensa_user_profile as SensaUserProfile | undefined) ?? DEFAULT_PROFILE
-    if (profile.globalSettings?.activeMode) {
-      tabLog("[Sensa Tab Voice Bridge] Profile already has an active mode, selection ignored.", "warn")
-      commandApplied = false
-      return
-    }
 
     isActive = false
     clearWatchdog()

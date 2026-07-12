@@ -897,14 +897,7 @@ export default function VisualDock({
   useEffect(() => {
     if (isVoiceCommandsSuspended || !isTabVisible) return
 
-    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
-    if (!SpeechRecognitionCtor) return
-
-    const recognition = new SpeechRecognitionCtor()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = 'en-US'
-
+    let recognition: any = null
     let isComponentMounted = true
     let restartTimer: number | null = null
     let voiceToggleLockUntil = 0
@@ -912,10 +905,13 @@ export default function VisualDock({
     let silenceTimer: number | null = null
     let commandTimeout: number | null = null
     let currentResultIndex = 0
-    let globalBuffer = ""
     let ignoreSpeechUntil = 0
     let lastCommandName = ""
-    let consumedKeywords: string[] = []
+    let lastCommandTime = 0
+    let lastCommandResultIndex = -1
+    let lastCommandTranscript = ""
+    let lastProcessedFinalIndex = -1
+    let consumedKeywords: { word: string; expires: number }[] = []
 
     const getKeywordsForCommand = (cmd: string) => {
       switch (cmd) {
@@ -940,316 +936,312 @@ export default function VisualDock({
 
     resetSilenceTimerRef.current = resetSilenceTimer
 
-    const scheduleRestart = () => {
-      if (!isComponentMounted || isPermanentlyDead) return
-      if (restartTimer) window.clearTimeout(restartTimer)
-      restartTimer = window.setTimeout(() => {
-        try {
-          recognition.start()
-        } catch (e: any) {
-          console.error("[Sensa VisualDock] Failed to start recognition:", e)
-          if (e && e.name === 'InvalidStateError') {
-            restartTimer = window.setTimeout(scheduleRestart, 400)
-            return
-          }
-          restartTimer = window.setTimeout(scheduleRestart, 1000)
-        }
-      }, 300)
-    }
-
-    const lockVoiceToggle = () => {
-      voiceToggleLockUntil = Date.now() + 1800
-    }
-
-
-
-    recognition.onstart = () => {
-      currentResultIndex = 0
-      consumedKeywords = []
-      globalBuffer = ""
-      lastCommandName = ""
-    }
-
-    recognition.onsoundstart = () => {
-      resetSilenceTimer()
-    }
-
-    recognition.onresult = (event: any) => {
-      resetSilenceTimer()
-
-      if (event.resultIndex !== currentResultIndex) {
-        currentResultIndex = event.resultIndex
-        consumedKeywords = []
-        globalBuffer = ""
+    const teardownRecognition = () => {
+      if (restartTimer !== null) {
+        window.clearTimeout(restartTimer)
+        restartTimer = null
       }
-
-      let interimChunk = ""
-      let newFinals = ""
-
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const text = event.results[i][0].transcript
-        if (event.results[i].isFinal) {
-          newFinals += text + " "
-        } else {
-          interimChunk += text + " "
-        }
-      }
-
-      globalBuffer += newFinals
-      if (globalBuffer.length > 150) {
-        globalBuffer = globalBuffer.slice(-150)
-      }
-
-      const rawTranscript = (globalBuffer + " " + interimChunk).trim()
-      if (!rawTranscript) return
-
-      // Prevent Chrome memory leak from prolonged continuous speech recognition
-      if (event.results.length > 40) {
-        try { recognition.stop() } catch { }
-      }
-
-      if (commandTimeout) {
+      if (commandTimeout !== null) {
         window.clearTimeout(commandTimeout)
         commandTimeout = null
       }
+      if (!recognition) return
+      try {
+        recognition.stop()
+      } catch (e) { }
+      recognition.onresult = null
+      recognition.onerror = null
+      recognition.onend = null
+      recognition.onsoundstart = null
+      recognition.onstart = null
+      recognition = null
+    }
 
-      const runMatching = (text: string) => {
-        let cleanText = normalizeInput(text)
+    const buildAndStart = () => {
+      if (!isComponentMounted || isPermanentlyDead || isVoiceCommandsSuspended || !isTabVisible) return
+      teardownRecognition()
 
-        // Block feedback loops from the system's own speech for the "help/commands" trigger words
-        const systemRecentlySpoke = Date.now() - lastUISpeechTimeRef.current < lastUISpeechDurationRef.current
-        if (systemRecentlySpoke) {
-          cleanText = cleanText.replace(/\b(help|commands|commands list|list commands|help me|what can i say|read commands|show commands)\b/gi, " ")
+      const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+      if (!SpeechRecognitionCtor) return
+
+      const instance = new SpeechRecognitionCtor()
+      recognition = instance
+      instance.continuous = true
+      instance.interimResults = true
+      instance.lang = 'en-US'
+
+      instance.onstart = () => {
+        currentResultIndex = 0
+        lastCommandResultIndex = -1
+        lastCommandTranscript = ""
+        lastProcessedFinalIndex = -1
+        consumedKeywords = []
+        lastCommandName = ""
+        lastCommandTime = 0
+      }
+
+      instance.onsoundstart = () => {
+        resetSilenceTimer()
+      }
+
+      instance.onresult = (event: any) => {
+        resetSilenceTimer()
+
+        if (event.resultIndex !== currentResultIndex) {
+          currentResultIndex = event.resultIndex
+          consumedKeywords = []
+          lastCommandName = ""
+          lastCommandTime = 0
+          lastCommandTranscript = ""
         }
 
-        if (consumedKeywords.length > 0) {
-          consumedKeywords.forEach(kw => {
-            const escapedKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-            cleanText = cleanText.replace(new RegExp(`\\b${escapedKw}\\b`, "g"), " ")
-          })
-          cleanText = cleanText.replace(/\s+/g, " ").trim()
-        }
-
-        if (!cleanText) return false
-
-        if (Date.now() < ignoreSpeechUntil) {
-          return false
-        }
-
-        const paddedSpeech = ` ${cleanText} `
-        const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
-        const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(cleanText, target, maxDistance)
-
-        const canToggleVoiceMode = Date.now() >= voiceToggleLockUntil
-        const currentWakeWord = (wakeWordRef.current || DEFAULT_WAKE_WORD).toLowerCase().trim()
-
-        let shouldProcessCommands = callbacksRef.current.isVoiceCommandActive
-
-        const applyCommand = (commandName: string, action: () => void) => {
-          if (commandName !== "activate-voice") {
-            consumedKeywords.push(...getKeywordsForCommand(commandName))
-          }
-          if (Date.now() < ignoreSpeechUntil && commandName === lastCommandName) return
-          if (commandName !== "activate-voice") {
-            ignoreSpeechUntil = Date.now() + 800
-            lastCommandName = commandName
-          }
-          action()
-        }
-
-        if (!callbacksRef.current.isVoiceCommandActive) {
-          if (check("deactivate", "deactivate visual mode", "stop visual mode")) {
-            applyCommand("close", () => callbacksRef.current.onClose())
-            return true
-          }
-
-          const isCustom = currentWakeWord !== "sensa"
-          const wakeMatched = isCustom
-            ? paddedSpeech.includes(` ${currentWakeWord} `) || fuzzyCheck(currentWakeWord, 1)
-            : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake up", "hey sensa") || fuzzyCheck("sensa", 1)
-
-          if (canToggleVoiceMode && wakeMatched) {
-            applyCommand("activate-voice", () => {
-              lockVoiceToggle()
-              callbacksRef.current.playClickAudio?.("Voice commands activated. You can say 'commands' when you want to know the list of commands for the visual dock.")
-              try { callbacksRef.current.onToggleVoiceCommand() } catch { }
-            })
-            shouldProcessCommands = true
-            return true
+        // Rule 1: STOP HISTORICAL STACKING: Do not iterate through all event.results from index 0. 
+        // Strictly use event.resultIndex to only process the newest, unhandled transcript segment.
+        let activeTranscript = ""
+        let isSegmentFinal = false
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          activeTranscript += event.results[i][0].transcript + " "
+          if (event.results[i].isFinal) {
+            isSegmentFinal = true
           }
         }
 
-        if (shouldProcessCommands) {
-          if (callbacksRef.current.isVoiceCommandActive && canToggleVoiceMode && (check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening") || fuzzyCheck("sleep", 1) || fuzzyCheck("mute", 1))) {
-            applyCommand("deactivate-voice", () => {
-              lockVoiceToggle()
-              callbacksRef.current.playClickAudio?.('Voice commands deactivated')
-              try { callbacksRef.current.onToggleVoiceCommand() } catch { }
-            })
-            return true
+        if (currentResultIndex === lastCommandResultIndex && Date.now() - lastCommandTime < 1500) {
+          if (event.results[currentResultIndex]) {
+            lastCommandTranscript = event.results[currentResultIndex][0].transcript.trim()
           }
-          else if (check("help", "what can i say", "commands", "commands list", "list commands", "help me", "read commands", "show commands") || fuzzyCheck("help", 1)) {
-            applyCommand("help", () => {
-              const available = callbacksRef.current.isMinimized
-                ? "Stop listening. This turns off voice commands. Expand. This expands the dock. Read. This starts reading. Stop. This stops reading. Next. This skips forward. Previous. This goes back. Restart. This starts from the beginning. Reading speed. This adjusts speed. Settings. This opens settings. Close. This will exit and deactivate visual mode."
-                : "Stop listening. This turns off voice commands. Read. This starts reading. Stop. This stops reading. Next. This skips forward. Previous. This goes back. Restart. This starts from the beginning. Reading speed. This adjusts speed. Settings. This opens settings. Minimize. This shrinks the dock. Close. This will exit and deactivate visual mode."
-              callbacksRef.current.playClickAudio?.("Here are the commands. " + available, 0.8)
-            })
-            return true
+        }
+
+        const rawTranscript = activeTranscript.trim()
+        if (!rawTranscript) return
+
+        // Prevent Chrome memory leak from prolonged continuous speech recognition
+        if (event.results.length > 40) {
+          teardownRecognition()
+          scheduleRestart()
+          return
+        }
+
+        const runMatching = (text: string) => {
+          let cleanText = normalizeInput(text)
+
+          // Block feedback loops from the system's own speech for the "help/commands" trigger words
+          const systemRecentlySpoke = Date.now() - lastUISpeechTimeRef.current < lastUISpeechDurationRef.current
+          if (systemRecentlySpoke) {
+            cleanText = cleanText.replace(/\b(help|commands|commands list|list commands|help me|what can i say|read commands|show commands)\b/gi, " ")
           }
-          else if (check("speed", "rate", "reading speed", "voice speed") || fuzzyCheck("speed", 1) || fuzzyCheck("rate", 1)) {
-            applyCommand("speed", () => {
-              callbacksRef.current.playClickAudio?.('Reeding speed')
-              callbacksRef.current.onOpenReadingSpeed(true)
+
+          const now = Date.now()
+          if (consumedKeywords.length > 0) {
+            consumedKeywords.forEach(k => {
+              const escapedKw = k.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+              cleanText = cleanText.replace(new RegExp(`\\b${escapedKw}\\b`, "g"), " ")
             })
-            return true
+            cleanText = cleanText.replace(/\s+/g, " ").trim()
           }
-          else if (check("setting", "settings", "options", "open settings") || fuzzyCheck("settings", 1) || fuzzyCheck("options", 1)) {
-            applyCommand("settings", () => {
-              callbacksRef.current.playClickAudio?.('Settings')
-              callbacksRef.current.onOpenSettings(true)
-            })
-            return true
+
+          if (!cleanText) return false
+
+          const paddedSpeech = ` ${cleanText} `
+          const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
+          const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(cleanText, target, maxDistance)
+
+          const canToggleVoiceMode = Date.now() >= voiceToggleLockUntil
+          const currentWakeWord = (wakeWordRef.current || DEFAULT_WAKE_WORD).toLowerCase().trim()
+
+          // Rule 2: IMPLEMENT COMMAND COOLDOWN (THROTTLING): Once a command is successfully recognized and executed,
+          // lock the execution pipeline for 1500ms so that lingering interimResults do not trigger the same command 3 times in a row.
+          const nowTime = Date.now()
+          if (nowTime - lastCommandTime < 1500) {
+            return false
           }
-          else if (check("play", "resume", "continue", "start reading", "read") || fuzzyCheck("play", 1) || fuzzyCheck("resume", 1)) {
-            if (!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) {
-              const playAction = () => {
-                applyCommand("play", () => {
-                  callbacksRef.current.onTogglePlay()
-                })
-              }
-              // If the matched word is "read", wait 600ms to see if it turns into "reading speed"
-              if (check("read") && !check("start reading")) {
-                commandTimeout = window.setTimeout(playAction, 600)
-              } else {
-                playAction()
-              }
+
+          let shouldProcessCommands = callbacksRef.current.isVoiceCommandActive
+
+          const applyCommand = (commandName: string, action: () => void) => {
+            if (commandTimeout) {
+              window.clearTimeout(commandTimeout)
+              commandTimeout = null
             }
-            return true
+            if (commandName !== "activate-voice") {
+              const keywords = getKeywordsForCommand(commandName)
+              keywords.forEach(word => {
+                consumedKeywords.push({ word, expires: Number.MAX_SAFE_INTEGER })
+              })
+              cleanText.split(" ").forEach(w => {
+                if (w && w.length > 1) {
+                  consumedKeywords.push({ word: w, expires: Number.MAX_SAFE_INTEGER })
+                }
+              })
+              lastCommandName = commandName
+              lastCommandTime = Date.now()
+              lastCommandResultIndex = currentResultIndex
+              lastCommandTranscript = event.results[currentResultIndex] ? event.results[currentResultIndex][0].transcript.trim() : ""
+            }
+            action()
           }
-          else if (check("stop", "pause", "halt", "stop reading", "stop playing", "pass", "post", "pose", "boss", "paused", "wait", "hold on", "shut up", "hush", "shh", "stop it", "pause reading", "polls", "pulse", "paws") || fuzzyCheck("stop", 1) || fuzzyCheck("pause", 1) || fuzzyCheck("halt", 1)) {
-            if (callbacksRef.current.isPlaying && !callbacksRef.current.isPaused) {
+
+          if (!callbacksRef.current.isVoiceCommandActive) {
+            if (check("deactivate", "deactivate visual mode", "stop visual mode")) {
+              applyCommand("close", () => callbacksRef.current.onClose())
+              return true
+            }
+
+            const isCustom = currentWakeWord !== "sensa"
+            const wakeMatched = isCustom
+              ? paddedSpeech.includes(` ${currentWakeWord} `) || fuzzyCheck(currentWakeWord, 1)
+              : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "wake up", "hey sensa") || fuzzyCheck("sensa", 1)
+
+            if (canToggleVoiceMode && wakeMatched) {
+              applyCommand("activate-voice", () => {
+                lockVoiceToggle()
+                callbacksRef.current.playClickAudio?.("Voice commands activated. You can say 'commands' when you want to know the list of commands for the visual dock.")
+                try { callbacksRef.current.onToggleVoiceCommand() } catch { }
+              })
+              shouldProcessCommands = true
+              return true
+            }
+          }
+
+          if (shouldProcessCommands) {
+            if (callbacksRef.current.isVoiceCommandActive && canToggleVoiceMode && (check("stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening") || fuzzyCheck("sleep", 1) || fuzzyCheck("mute", 1))) {
+              applyCommand("deactivate-voice", () => {
+                lockVoiceToggle()
+                callbacksRef.current.playClickAudio?.('Voice commands deactivated')
+                try { callbacksRef.current.onToggleVoiceCommand() } catch { }
+              })
+              return true
+            }
+            else if (check("help", "what can i say", "commands", "commands list", "list commands", "help me", "read commands", "show commands") || fuzzyCheck("help", 1)) {
+              applyCommand("help", () => {
+                const available = callbacksRef.current.isMinimized
+                  ? "Stop listening. This turns off voice commands. Expand. This expands the dock. Read. This starts reading. Stop. This stops reading. Next. This skips forward. Previous. This goes back. Restart. This starts from the beginning. Reading speed. This adjusts speed. Settings. This opens settings. Close. This will exit and deactivate visual mode."
+                  : "Stop listening. This turns off voice commands. Read. This starts reading. Stop. This stops reading. Next. This skips forward. Previous. This goes back. Restart. This starts from the beginning. Reading speed. This adjusts speed. Settings. This opens settings. Minimize. This shrinks the dock. Close. This will exit and deactivate visual mode."
+                callbacksRef.current.playClickAudio?.("Here are the commands. " + available, 0.8)
+              })
+              return true
+            }
+            else if (check("speed", "rate", "reading speed", "voice speed") || fuzzyCheck("speed", 1) || fuzzyCheck("rate", 1)) {
+              applyCommand("speed", () => {
+                callbacksRef.current.playClickAudio?.('Reeding speed')
+                callbacksRef.current.onOpenReadingSpeed(true)
+              })
+              return true
+            }
+            else if (check("setting", "settings", "options", "open settings") || fuzzyCheck("settings", 1) || fuzzyCheck("options", 1)) {
+              applyCommand("settings", () => {
+                callbacksRef.current.playClickAudio?.('Settings')
+                callbacksRef.current.onOpenSettings(true)
+              })
+              return true
+            }
+            // Rule 1 & 2 & 3: EAGER INTERIM EXECUTION + HOMOPHONE DICTIONARY MAPPING + EARLY REGEX BOUNDARIES
+            else if (/\b(restart|restore|start over|re start|repeat|reset|refresh|re-start|from the top|from the beginning|begin again|we start|replay|rewind|again)\b/i.test(cleanText)) {
+              applyCommand("restart", () => {
+                callbacksRef.current.playClickAudio?.('Repeat')
+                callbacksRef.current.onRestart()
+              })
+              return true
+            }
+            else if (/\b(next|necks|net|text|max|skip|forward|nex|nix|next page|next sentence)\b/i.test(cleanText)) {
+              applyCommand("next", () => {
+                callbacksRef.current.onNext()
+              })
+              return true
+            }
+            else if (/\b(previous|previews|previs|prev|previ|preevi|back|go back|preveous|previus|privious|preview|previous page|previous sentence|go previous)\b/i.test(cleanText)) {
+              applyCommand("previous", () => {
+                callbacksRef.current.onPrev()
+              })
+              return true
+            }
+            else if (callbacksRef.current.isPlaying && !callbacksRef.current.isPaused && /\b(stop|stuff|step|top|pause|halt|stop reading|stop playing|paused|wait|hold on|shut up|hush|shh|stop it|pause reading|stahp)\b/i.test(cleanText)) {
               applyCommand("stop", () => {
                 callbacksRef.current.onTogglePlay()
                 callbacksRef.current.playClickAudio?.('Stop')
               })
               return true
             }
-          }
-          else if (check("next", "skip", "forward", "necks", "neck", "nex", "nix") || fuzzyCheck("next", 1) || fuzzyCheck("skip", 1)) {
-            applyCommand("next", () => {
-              callbacksRef.current.onNext()
-            })
-            return true
-          }
-          else if (check("previous", "prev", "previ", "preevi", "back", "go back", "preveous", "previus", "privious", "preview") || fuzzyCheck("previous", 1) || fuzzyCheck("prev", 1) || fuzzyCheck("back", 1)) {
-            applyCommand("previous", () => {
-              callbacksRef.current.onPrev()
-            })
-            return true
-          }
-          else if (cleanText.includes("repeat") || cleanText.includes("restart") || check("repeat", "restart", "start over", "reset", "refresh", "re start", "re-start", "from the top", "from the beginning", "begin again", "restore", "we start", "replay", "rewind", "again") || fuzzyCheck("repeat", 1) || fuzzyCheck("restart", 1) || fuzzyCheck("reset", 1)) {
-            applyCommand("restart", () => {
-              callbacksRef.current.playClickAudio?.('Repeat')
-              callbacksRef.current.onRestart()
-            })
-            return true
-          }
-          else if (check("minimize", "collapse", "hide", "mini") || fuzzyCheck("minimize", 1) || fuzzyCheck("collapse", 1)) {
-            if (!callbacksRef.current.isMinimized) {
+            else if ((!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) && /\b(read|red|reed|rid|ready|play|resume|continue|start reading)\b/i.test(cleanText)) {
+              if (cleanText === "reading" && !check("start reading")) {
+                return false
+              }
+              if (commandTimeout) {
+                window.clearTimeout(commandTimeout)
+                commandTimeout = null
+              }
+              applyCommand("play", () => {
+                callbacksRef.current.onTogglePlay()
+              })
+              return true
+            }
+            else if (!callbacksRef.current.isMinimized && (check("minimize", "collapse", "hide", "mini") || fuzzyCheck("minimize", 1) || fuzzyCheck("collapse", 1))) {
               applyCommand("minimize", () => {
                 callbacksRef.current.playClickAudio?.('Minimize')
                 callbacksRef.current.onMinimizeToggle()
               })
+              return true
             }
-            return true
-          }
-          else if (check("expand", "maximize", "show", "open", "expend", "span") || fuzzyCheck("expand", 1) || fuzzyCheck("maximize", 1)) {
-            if (callbacksRef.current.isMinimized) {
+            else if (callbacksRef.current.isMinimized && (check("expand", "maximize", "show", "open", "expend", "span") || fuzzyCheck("expand", 1) || fuzzyCheck("maximize", 1))) {
               applyCommand("expand", () => {
                 callbacksRef.current.playClickAudio?.('Expand')
                 callbacksRef.current.onMinimizeToggle()
               })
+              return true
             }
-            return true
-          }
-          else if ((check("close", "exit", "quit", "dismiss", "duck", "dark", "deactivate", "turn off") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1) || fuzzyCheck("quit", 1)) && !check("deactivate voice", "deactivate voice command", "deactivate listening")) {
-            applyCommand("close", () => {
-              callbacksRef.current.playClickAudio?.('Visual mode deactivated')
-              callbacksRef.current.onClose()
-            })
-            return true
-          }
-          else if (check("top", "go up") || fuzzyCheck("top", 1)) {
-            applyCommand("top", () => {
-              window.scrollTo({ top: 0, behavior: "smooth" })
-            })
-            return true
-          }
-          else if (check("bottom", "down below") || fuzzyCheck("bottom", 1)) {
-            applyCommand("bottom", () => {
-              window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })
-            })
-            return true
-          }
-          else if (check("scroll up", "up") && !check("go up", "top")) {
-            applyCommand("scroll-up", () => {
-              window.scrollBy({ top: -600, behavior: "smooth" })
-            })
-            return true
-          }
-          else if (check("scroll down", "down") && !check("down below", "bottom")) {
-            applyCommand("scroll-down", () => {
-              window.scrollBy({ top: 600, behavior: "smooth" })
-            })
-            return true
-          }
-        }
-
-        // Fallback: expand and close should work even when voice commands are not active
-        // (e.g., after silence timer deactivation). These are dock-level escape hatches.
-        if (!shouldProcessCommands) {
-          if (check("expand", "maximize", "show", "expend", "span") || fuzzyCheck("expand", 1) || fuzzyCheck("maximize", 1)) {
-            if (callbacksRef.current.isMinimized) {
-              applyCommand("expand", () => {
-                callbacksRef.current.playClickAudio?.('Expand')
-                callbacksRef.current.onMinimizeToggle()
+            else if ((check("close", "exit", "quit", "dismiss", "deactivate", "turn off") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1) || fuzzyCheck("quit", 1)) && !check("deactivate voice", "deactivate voice command", "deactivate listening")) {
+              applyCommand("close", () => {
+                callbacksRef.current.playClickAudio?.('Visual mode deactivated')
+                callbacksRef.current.onClose()
               })
+              return true
             }
-            return true
           }
-          else if ((check("close", "exit", "quit", "dismiss", "deactivate", "turn off") || fuzzyCheck("close", 1) || fuzzyCheck("exit", 1) || fuzzyCheck("quit", 1)) && !check("deactivate voice", "deactivate voice command", "deactivate listening")) {
-            applyCommand("close", () => {
-              callbacksRef.current.playClickAudio?.('Visual mode deactivated')
-              callbacksRef.current.onClose()
-            })
-            return true
-          }
+
+          return false
         }
 
-        return false
+        runMatching(rawTranscript)
       }
 
-      if (runMatching(rawTranscript)) {
-        globalBuffer = ""
+      instance.onerror = (event: any) => {
+        console.error("[Sensa VisualDock SpeechRecognition Error]", event.error)
+        if (event.error === "not-allowed") {
+          isPermanentlyDead = true
+          return
+        }
+        scheduleRestart()
+      }
+
+      instance.onend = () => {
+        scheduleRestart()
+      }
+
+      try {
+        instance.start()
+      } catch (e: any) {
+        scheduleRestart()
       }
     }
 
-    recognition.onerror = (event: any) => {
-      console.error("[Sensa VisualDock SpeechRecognition Error]", event.error)
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-        isPermanentlyDead = true
-        return
-      }
-      scheduleRestart()
+    const lockVoiceToggle = () => {
+      voiceToggleLockUntil = Date.now() + 1800
     }
 
-    recognition.onend = () => scheduleRestart()
+    const scheduleRestart = () => {
+      if (!isComponentMounted || isPermanentlyDead) return
+      if (restartTimer) window.clearTimeout(restartTimer)
+      restartTimer = window.setTimeout(() => {
+        buildAndStart()
+      }, 300)
+    }
 
     const reviveEngine = () => {
       if (isPermanentlyDead && !isVoiceCommandsSuspended) {
         isPermanentlyDead = false
-        try { recognition.start() } catch (e) { }
+        buildAndStart()
+      } else if (!recognition) {
+        buildAndStart()
       }
     }
     const handleVisibilityChange = () => {
@@ -1260,7 +1252,7 @@ export default function VisualDock({
     window.addEventListener("visibilitychange", handleVisibilityChange)
 
     const startTimeout = window.setTimeout(() => {
-      try { recognition.start() } catch (e) { }
+      buildAndStart()
     }, 150)
 
     return () => {
@@ -1272,11 +1264,16 @@ export default function VisualDock({
       if (silenceTimer) window.clearTimeout(silenceTimer)
       window.clearTimeout(startTimeout)
       if (commandTimeout) window.clearTimeout(commandTimeout)
-      try { recognition.stop() } catch (e) { }
-      recognition.onresult = null
-      recognition.onerror = null
-      recognition.onend = null
-      recognition.onsoundstart = null
+      if (recognition) {
+        recognition.onresult = null
+        recognition.onerror = null
+        recognition.onend = null
+        recognition.onsoundstart = null
+        recognition.onstart = null
+        try { recognition.stop() } catch (e) { }
+        recognition = null
+      }
+      teardownRecognition()
     }
   }, [isVoiceCommandsSuspended, isTabVisible])
 

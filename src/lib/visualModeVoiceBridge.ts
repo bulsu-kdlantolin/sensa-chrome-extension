@@ -50,12 +50,25 @@ const clearRestartTimer = () => {
   }
 }
 
-const tryStart = () => {
-  if (!isActive || !recognition) return
+const buildAndStart = () => {
+  if (!isActive) return
+  const SpeechRecognitionCtor = getSpeechRecognitionCtor()
+  if (!SpeechRecognitionCtor) return
+
+  teardownRecognition()
+
+  const instance = new SpeechRecognitionCtor()
+  recognition = instance
+  instance.continuous = true
+  instance.interimResults = true
+  instance.lang = "en-US"
+
+  attachRecognitionHandlers(instance)
+
   try {
-    recognition.start()
+    instance.start()
   } catch {
-    // Already started
+    scheduleRestart()
   }
 }
 
@@ -66,7 +79,7 @@ const scheduleRestart = () => {
   clearRestartTimer()
   const delay = Math.min(500 * Math.pow(2, visualRestartAttempts), 5000)
   visualRestartAttempts++
-  restartTimer = window.setTimeout(tryStart, delay)
+  restartTimer = window.setTimeout(buildAndStart, delay)
 }
 
 const getLevenshteinDistance = (a: string, b: string): number => {
@@ -255,46 +268,8 @@ const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageCha
   }
 }
 
-export async function startVisualModeVoiceListener(): Promise<boolean> {
-  const isVisualActive = await new Promise<boolean>((resolve) => {
-    chrome.storage.local.get(["sensa_visual_active"], (res) => {
-      resolve(!!res.sensa_visual_active)
-    })
-  })
-  isCurrentlyActive = isVisualActive
-
-  if (isActive && recognition) {
-    return true
-  }
-
-  const SpeechRecognitionCtor = getSpeechRecognitionCtor()
-  if (!SpeechRecognitionCtor) {
-    tabLog("[Sensa Tab Voice Bridge] SpeechRecognition is NOT supported in this browser for visual mode.", "warn")
-    return false
-  }
-
-  stopVisualModeVoiceListener()
-
-  isActive = true
-  commandApplied = false
-  consumedString = ""
+const attachRecognitionHandlers = (instance: SpeechRecognition) => {
   let consumedKeywords: string[] = []
-  currentResultIndex = 0
-  ignoreSpeechUntil = 0
-  globalBuffer = ""
-
-  chrome.storage.onChanged.addListener(handleStorageChange)
-
-  // Start priming in parallel so we don't block the SpeechRecognition initialization
-  primeMicrophone().catch((e) => {
-    tabLog(`[Sensa Tab Voice Bridge] Visual mode failed to acquire microphone permissions: ${e}`, "warn")
-  })
-
-  const instance = new SpeechRecognitionCtor()
-  recognition = instance
-  instance.continuous = true
-  instance.interimResults = true
-  instance.lang = "en-US"
 
   instance.onresult = (event: SpeechRecognitionEvent) => {
     if (commandApplied) {
@@ -372,11 +347,14 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
     // Match deactivate cues
     deactivateScore += count("deactivate visual mode") * 5
     deactivateScore += count("stop visual mode") * 5
-    deactivateScore += count("turn off") * 5
     deactivateScore += count("deactivate") * 3
-    deactivateScore += count("stop") * 3
 
-    if (check("deactivate", "stop", "disable", "turn off", "deactivate visual mode", "stop visual mode")) {
+    if (!isCurrentlyActive) {
+      deactivateScore += count("turn off") * 5
+      deactivateScore += count("stop") * 3
+    }
+
+    if (check("deactivate", "disable", "deactivate visual mode", "stop visual mode") || (!isCurrentlyActive && check("stop", "turn off"))) {
       deactivateScore += 6
     } else if (fuzzyMatch(cleanTranscript, "deactivate", 2) || fuzzyMatch(cleanTranscript, "deactivate visual mode", 2) || fuzzyMatch(cleanTranscript, "stop visual mode", 2)) {
       deactivateScore += 4
@@ -452,8 +430,43 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
   instance.onend = () => {
     scheduleRestart()
   }
+}
 
-  window.setTimeout(tryStart, 150)
+export async function startVisualModeVoiceListener(): Promise<boolean> {
+  const isVisualActive = await new Promise<boolean>((resolve) => {
+    chrome.storage.local.get(["sensa_visual_active"], (res) => {
+      resolve(!!res.sensa_visual_active)
+    })
+  })
+  isCurrentlyActive = isVisualActive
+
+  if (isActive && recognition) {
+    return true
+  }
+
+  const SpeechRecognitionCtor = getSpeechRecognitionCtor()
+  if (!SpeechRecognitionCtor) {
+    tabLog("[Sensa Tab Voice Bridge] SpeechRecognition is NOT supported in this browser for visual mode.", "warn")
+    return false
+  }
+
+  stopVisualModeVoiceListener()
+
+  isActive = true
+  commandApplied = false
+  consumedString = ""
+  currentResultIndex = 0
+  ignoreSpeechUntil = 0
+  globalBuffer = ""
+
+  chrome.storage.onChanged.addListener(handleStorageChange)
+
+  // Start priming in parallel so we don't block the SpeechRecognition initialization
+  primeMicrophone().catch((e) => {
+    tabLog(`[Sensa Tab Voice Bridge] Visual mode failed to acquire microphone permissions: ${e}`, "warn")
+  })
+
+  buildAndStart()
   return true
 }
 

@@ -51,12 +51,25 @@ const clearRestartTimer = () => {
   }
 }
 
-const tryStart = () => {
-  if (!isActive || !recognition || commandApplied) return
+const buildAndStart = () => {
+  if (!isActive) return
+  const SpeechRecognitionCtor = getSpeechRecognitionCtor()
+  if (!SpeechRecognitionCtor) return
+
+  teardownRecognition()
+
+  const instance = new SpeechRecognitionCtor()
+  recognition = instance
+  instance.continuous = true
+  instance.interimResults = true
+  instance.lang = "en-US"
+
+  attachRecognitionHandlers(instance)
+
   try {
-    recognition.start()
+    instance.start()
   } catch {
-    // Already started
+    scheduleRestart()
   }
 }
 
@@ -67,7 +80,7 @@ const scheduleRestart = () => {
   clearRestartTimer()
   const delay = Math.min(500 * Math.pow(2, welcomeRestartAttempts), 5000)
   welcomeRestartAttempts++
-  restartTimer = window.setTimeout(tryStart, delay)
+  restartTimer = window.setTimeout(buildAndStart, delay)
 }
 
 const getLevenshteinDistance = (a: string, b: string): number => {
@@ -167,38 +180,7 @@ const primeMicrophone = async () => {
   stream.getTracks().forEach((track) => track.stop())
 }
 
-export async function startWelcomeVoiceListener(): Promise<boolean> {
-  if (isActive && recognition) {
-    return true
-  }
-
-  const SpeechRecognitionCtor = getSpeechRecognitionCtor()
-  if (!SpeechRecognitionCtor) {
-    tabLog("[Sensa Tab Voice Bridge] SpeechRecognition is NOT supported in this browser for welcome.", "warn")
-    return false
-  }
-
-  stopWelcomeVoiceListener()
-
-  try {
-    await primeMicrophone()
-  } catch (e) {
-    tabLog(`[Sensa Tab Voice Bridge] Welcome failed to acquire microphone permissions in tab, trying to proceed anyway: ${e}`, "warn")
-  }
-
-  isActive = true
-  commandApplied = false
-  consumedString = ""
-  currentResultIndex = 0
-  ignoreSpeechUntil = 0
-  globalBuffer = ""
-
-  const instance = new SpeechRecognitionCtor()
-  recognition = instance
-  instance.continuous = true
-  instance.interimResults = true
-  instance.lang = "en-US"
-
+const attachRecognitionHandlers = (instance: SpeechRecognition) => {
   instance.onresult = (event: SpeechRecognitionEvent) => {
     if (commandApplied) {
       return
@@ -324,8 +306,35 @@ export async function startWelcomeVoiceListener(): Promise<boolean> {
   instance.onend = () => {
     scheduleRestart()
   }
+}
 
-  window.setTimeout(tryStart, 150)
+export async function startWelcomeVoiceListener(): Promise<boolean> {
+  if (isActive && recognition) {
+    return true
+  }
+
+  const SpeechRecognitionCtor = getSpeechRecognitionCtor()
+  if (!SpeechRecognitionCtor) {
+    tabLog("[Sensa Tab Voice Bridge] SpeechRecognition is NOT supported in this browser for welcome.", "warn")
+    return false
+  }
+
+  stopWelcomeVoiceListener()
+
+  try {
+    await primeMicrophone()
+  } catch (e) {
+    tabLog(`[Sensa Tab Voice Bridge] Welcome failed to acquire microphone permissions in tab, trying to proceed anyway: ${e}`, "warn")
+  }
+
+  isActive = true
+  commandApplied = false
+  consumedString = ""
+  currentResultIndex = 0
+  ignoreSpeechUntil = 0
+  globalBuffer = ""
+
+  buildAndStart()
   return true
 }
 

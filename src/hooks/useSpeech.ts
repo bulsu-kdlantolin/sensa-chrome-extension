@@ -246,6 +246,8 @@ export function useSpeech(
   const isPausedRef = useRef(false);
   const selectedVoiceURIRef = useRef<string>("");
   const selectedVoiceNameRef = useRef<string>("");
+  const lastAutoAdvanceTimeRef = useRef(0);
+  const lastAutoAdvancedFromIndexRef = useRef(-1);
 
   const sentenceOverlayRootRef = useRef<HTMLDivElement | null>(null);
 
@@ -447,6 +449,7 @@ export function useSpeech(
       currentSegmentIndexRef.current = safeIndex;
       currentCharOffsetRef.current = safeStartOffset;
 
+      const wasSpeakingOrPending = window.speechSynthesis.speaking || window.speechSynthesis.pending;
       window.speechSynthesis.resume();
       window.speechSynthesis.cancel();
       if (isOverlaySuppressedRef.current) {
@@ -504,8 +507,11 @@ export function useSpeech(
       utterance.onend = () => {
         if (sessionId !== speechSessionRef.current) return;
 
-        const nextIndex = findAdjacentSegment(currentSegmentIndexRef.current, 1);
+        const oldIndex = currentSegmentIndexRef.current;
+        const nextIndex = findAdjacentSegment(oldIndex, 1);
         if (nextIndex !== -1) {
+          lastAutoAdvanceTimeRef.current = Date.now();
+          lastAutoAdvancedFromIndexRef.current = oldIndex;
           speakAtSegment(nextIndex, 0, true);
           return;
         }
@@ -531,7 +537,16 @@ export function useSpeech(
 
       setIsPlaying(true);
       setIsPaused(false);
-      window.speechSynthesis.speak(utterance);
+
+      if (wasSpeakingOrPending) {
+        window.setTimeout(() => {
+          if (sessionId === speechSessionRef.current) {
+            window.speechSynthesis.speak(utterance);
+          }
+        }, 35);
+      } else {
+        window.speechSynthesis.speak(utterance);
+      }
     },
     [clearSentenceOverlay, findAdjacentSegment, isAutoscrollEnabled, readingSpeed, renderSegmentOverlay]
   );
@@ -636,6 +651,16 @@ export function useSpeech(
     if (!segmentsRef.current.length) extractReadableContent();
     if (!segmentsRef.current.length) return;
 
+    // If onend automatically advanced to the next sentence within the last 1500ms right as the user triggered "next",
+    // the reader is ALREADY right at the sentence the user intended to jump to!
+    // Instead of skipping over this new sentence (`N + 1 -> N + 2`), we simply ensure `currentSegmentIndexRef` stays right here
+    // and restart/play `currentSegmentIndexRef` immediately so they hear it cleanly from the beginning without delay.
+    if (Date.now() - lastAutoAdvanceTimeRef.current < 1500) {
+      lastAutoAdvanceTimeRef.current = 0;
+      speakAtSegment(currentSegmentIndexRef.current, 0, true);
+      return;
+    }
+
     const nextIndex = findAdjacentSegment(currentSegmentIndexRef.current, 1);
     if (nextIndex === -1) return;
     speakAtSegment(nextIndex, 0, true);
@@ -645,7 +670,15 @@ export function useSpeech(
     if (!segmentsRef.current.length) extractReadableContent();
     if (!segmentsRef.current.length) return;
 
-    const prevIndex = findAdjacentSegment(currentSegmentIndexRef.current, -1);
+    // If onend just auto-advanced from N to N+1 within the last 1500ms right when the user called "previous",
+    // they actually heard sentence N right before, so they want to jump back to N - 1 (or N if they just barely got to N+1).
+    let targetFromIndex = currentSegmentIndexRef.current;
+    if (Date.now() - lastAutoAdvanceTimeRef.current < 1500 && lastAutoAdvancedFromIndexRef.current !== -1) {
+      targetFromIndex = lastAutoAdvancedFromIndexRef.current;
+      lastAutoAdvanceTimeRef.current = 0;
+    }
+
+    const prevIndex = findAdjacentSegment(targetFromIndex, -1);
     if (prevIndex === -1) return;
     speakAtSegment(prevIndex, 0, true);
   }, [extractReadableContent, findAdjacentSegment, speakAtSegment]);
