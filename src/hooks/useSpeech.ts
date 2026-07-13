@@ -483,6 +483,11 @@ export function useSpeech(
         if (!preferredVoice && selectedVoiceNameRef.current) {
           preferredVoice = availableVoices.find((voice) => voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current));
         }
+        if (!preferredVoice) {
+          preferredVoice = availableVoices.find((voice) => voice.name.includes("Google US English")) ||
+            availableVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
+            availableVoices[0];
+        }
         if (preferredVoice) {
           utterance.voice = preferredVoice;
         }

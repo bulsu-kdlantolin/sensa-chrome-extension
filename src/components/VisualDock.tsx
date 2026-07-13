@@ -1205,6 +1205,9 @@ export default function VisualDock({
       }
 
       instance.onerror = (event: any) => {
+        if (event.error === "aborted" || event.error === "no-speech") {
+          return
+        }
         console.error("[Sensa VisualDock SpeechRecognition Error]", event.error)
         if (event.error === "not-allowed") {
           isPermanentlyDead = true

@@ -159,6 +159,12 @@ const speakFeedbackInTab = (text: string) => {
       if (!preferredVoice && voiceName) {
         preferredVoice = voices.find((v) => v.name === voiceName || v.name?.includes(voiceName))
       }
+      if (!preferredVoice) {
+        preferredVoice = voices.find((v) => v.name.includes("Google US English"))
+      }
+      if (!preferredVoice) {
+        preferredVoice = voices.find((v) => v.lang === "en-US" || v.lang.startsWith("en")) || voices[0]
+      }
 
       window.speechSynthesis.cancel()
       const utterance = new SpeechSynthesisUtterance(text)
@@ -412,16 +418,15 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
   }
 
   instance.onerror = (event: SpeechRecognitionErrorEvent) => {
+    if (event.error === "aborted" || event.error === "no-speech") {
+      return
+    }
     tabLog(`[Sensa Tab Voice Bridge] Visual mode SpeechRecognition error in tab: ${event.error}`, "error")
     if (event.error === "not-allowed" || event.error === "service-not-allowed") {
       tabLog("[Sensa Tab Voice Bridge] Visual mode microphone access denied, stopping tab listener.", "warn")
       isActive = false
       teardownRecognition()
       chrome.storage.onChanged.removeListener(handleStorageChange)
-      return
-    }
-    if (event.error === "aborted" || event.error === "no-speech") {
-      // Let onend handle these with backoff
       return
     }
     scheduleRestart()

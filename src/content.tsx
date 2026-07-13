@@ -46,26 +46,6 @@ import {
   stopVisualModeVoiceListener
 } from "./lib/visualModeVoiceBridge"
 
-import { audioInterceptorScript } from "./audioInterceptor"
-
-// Inject Web Audio API interceptor for game audio frequency tracking
-const injectAudioInterceptor = () => {
-  const script = document.createElement('script')
-  script.textContent = audioInterceptorScript
-  if (document.documentElement) {
-    document.documentElement.prepend(script)
-  } else {
-    document.head?.appendChild(script)
-  }
-  setTimeout(() => script.remove(), 100)
-}
-
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', injectAudioInterceptor)
-} else {
-  injectAudioInterceptor()
-}
-
 // Hidden wake-up ping for Render backend (prevents cold start delays)
 try {
   const lastPing = sessionStorage.getItem("sensa_backend_ping")
@@ -169,7 +149,7 @@ export default function FloatingDockManager() {
   const [isTextSizeOpen, setIsTextSizeOpen] = useState(false)
   const [isCaptionTransparencyOpen, setIsCaptionTransparencyOpen] = useState(false)
   const [auditorySettings, setAuditorySettings] = useState<AuditorySettingsState>(DEFAULT_AUDITORY_SETTINGS)
-  const [captionLanguage, setCaptionLanguage] = useState("en-US")
+  const [captionLanguage, setCaptionLanguage] = useState("EN-US")
   const [sourceLanguage, setSourceLanguage] = useState("en")
   const [textSize, setTextSize] = useState(32)
   const [captionTransparency, setCaptionTransparency] = useState(75)
@@ -232,6 +212,8 @@ export default function FloatingDockManager() {
         const preferredVoice =
           availableVoices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
           availableVoices.find((voice) => voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current)) ||
+          availableVoices.find((voice) => voice.name.includes("Google US English")) ||
+          availableVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
           availableVoices[0]
 
         if (preferredVoice) {
@@ -312,7 +294,10 @@ export default function FloatingDockManager() {
       const storedMode = res.sensa_visual_active ? "visual" : res.sensa_auditory_active ? "auditory" : null
       setActiveMode(storedMode)
       if (res.sensa_user_profile?.globalSettings?.theme === "dark") setUserThemePref(true)
-      if (typeof res.sensa_auditory_caption_language === "string") setCaptionLanguage(res.sensa_auditory_caption_language)
+      if (typeof res.sensa_auditory_caption_language === "string") {
+        const lang = res.sensa_auditory_caption_language.trim().toUpperCase()
+        setCaptionLanguage(lang === "US-ENGLISH" || lang === "EN-US" || lang === "EN" || lang === "ENGLISH" ? "EN-US" : lang)
+      }
       if (typeof res.sensa_source_lang === "string" && res.sensa_source_lang !== "AUTO") setSourceLanguage(res.sensa_source_lang)
       if (typeof res.sensa_auditory_text_size === "number") setTextSize(res.sensa_auditory_text_size)
       if (typeof res.sensa_auditory_caption_transparency === "number") setCaptionTransparency(res.sensa_auditory_caption_transparency)
@@ -625,6 +610,11 @@ export default function FloatingDockManager() {
         if (!preferred && selectedVoiceNameRef.current) {
           preferred = availableVoices.find((v) => v.name === selectedVoiceNameRef.current || v.name?.includes(selectedVoiceNameRef.current))
         }
+        if (!preferred) {
+          preferred = availableVoices.find((v) => v.name.includes("Google US English")) ||
+            availableVoices.find((v) => v.lang === "en-US" || v.lang.startsWith("en")) ||
+            availableVoices[0]
+        }
         if (preferred) utterance.voice = preferred
       }
 
@@ -694,6 +684,11 @@ export default function FloatingDockManager() {
               let preferred = availableVoices.find((v) => v.voiceURI === selectedVoiceURIRef.current)
               if (!preferred && selectedVoiceNameRef.current) {
                 preferred = availableVoices.find((v) => v.name === selectedVoiceNameRef.current || v.name?.includes(selectedVoiceNameRef.current))
+              }
+              if (!preferred) {
+                preferred = availableVoices.find((v) => v.name.includes("Google US English")) ||
+                  availableVoices.find((v) => v.lang === "en-US" || v.lang.startsWith("en")) ||
+                  availableVoices[0]
               }
               if (preferred) utterance.voice = preferred
             }

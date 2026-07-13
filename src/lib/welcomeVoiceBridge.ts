@@ -289,15 +289,14 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
   }
 
   instance.onerror = (event: SpeechRecognitionErrorEvent) => {
+    if (event.error === "aborted" || event.error === "no-speech") {
+      return
+    }
     tabLog(`[Sensa Tab Voice Bridge] Welcome SpeechRecognition error in tab: ${event.error}`, "error")
     if (event.error === "not-allowed" || event.error === "service-not-allowed") {
       tabLog("[Sensa Tab Voice Bridge] Welcome microphone access denied, stopping tab listener.", "warn")
       isActive = false
       teardownRecognition()
-      return
-    }
-    if (event.error === "aborted" || event.error === "no-speech") {
-      // Let onend handle these with backoff
       return
     }
     scheduleRestart()

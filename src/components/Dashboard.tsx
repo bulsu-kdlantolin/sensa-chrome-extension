@@ -238,7 +238,9 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
       sensa_visual_active: false,
       sensa_auditory_active: false
     })
-    chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null })
+    chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null }, () => {
+      const _ = chrome.runtime.lastError
+    })
     onModeChange(newMode)
   }
 
@@ -263,7 +265,6 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
       }
 
       await probeApi("Connectivity API", "https://clients3.google.com/generate_204")
-      await probeApi("Google Fonts API", "https://www.googleapis.com/webfonts/v1/webfonts")
       return unavailable
     }
 
@@ -282,20 +283,29 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
             const parsed = new URL(activeTab.url)
             const isWeb = parsed.protocol === "http:" || parsed.protocol === "https:"
             nextWebsiteLabel = isWeb ? parsed.hostname : parsed.protocol.replace(":", "")
-            nextWebsiteStatus = isWeb ? "online" : "unsupported"
+            if (!navigator.onLine) {
+              nextWebsiteStatus = "offline"
+            } else {
+              nextWebsiteStatus = isWeb ? "online" : "unsupported"
+            }
           } catch {
             nextWebsiteLabel = activeTab.url
             nextWebsiteStatus = "unsupported"
           }
         }
 
-        if (typeof activeTab?.id === "number") {
-          try {
-            const response = await chrome.tabs.sendMessage(activeTab.id, { type: "sensa-health-check" })
-            nextBridgeOnline = !!response?.ok
-          } catch {
-            nextBridgeOnline = false
-          }
+        if (typeof activeTab?.id === "number" && nextWebsiteStatus === "online") {
+          nextBridgeOnline = await new Promise<boolean>((resolve) => {
+            chrome.tabs.sendMessage(activeTab.id!, { type: "sensa-health-check" }, (response) => {
+              if (chrome.runtime.lastError) {
+                resolve(false)
+                return
+              }
+              resolve(!!response?.ok)
+            })
+          })
+        } else if (nextWebsiteStatus === "unsupported") {
+          nextBridgeOnline = true // Not required on restricted/system pages
         }
       } catch {
         nextWebsiteLabel = "Unavailable"
@@ -303,7 +313,8 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
       }
 
       const apiUnavailable = await checkApiConnectivity()
-      const nextUnavailable = [...(nextBridgeOnline ? [] : ["Extension Bridge"]), ...apiUnavailable]
+      const isBridgeRequired = nextWebsiteStatus === "online"
+      const nextUnavailable = [...(isBridgeRequired && !nextBridgeOnline ? ["Extension Bridge"] : []), ...apiUnavailable]
       nextExtensionStatus = nextUnavailable.length === 0 ? "online" : "offline"
 
       if (!isComponentMounted) return

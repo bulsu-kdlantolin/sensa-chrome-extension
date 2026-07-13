@@ -203,6 +203,14 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
     }
 
     if (!preferredVoice) {
+      preferredVoice = availableVoices.find((voice) => voice.name.includes("Google US English"))
+    }
+
+    if (!preferredVoice) {
+      preferredVoice = availableVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) || availableVoices[0]
+    }
+
+    if (!preferredVoice) {
       return
     }
 

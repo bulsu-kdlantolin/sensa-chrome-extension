@@ -122,6 +122,7 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
         }
 
         chrome.runtime.sendMessage({ type: "FETCH_GOOGLE_FONTS" }, (response) => {
+          if (chrome.runtime.lastError) return
           if (!cancelled && response?.ok && Array.isArray(response.items)) {
             setGoogleFonts(response.items.slice(0, 100).map((it: any) => ({ family: it.family })))
           }

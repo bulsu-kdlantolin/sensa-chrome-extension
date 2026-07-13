@@ -316,7 +316,10 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     const preferredVoice =
       voices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
       voices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
-      voices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current))
+      voices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
+      voices.find((voice) => voice.name.includes("Google US English")) ||
+      voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
+      voices[0]
 
     if (!preferredVoice && (selectedVoiceURIRef.current || selectedVoiceNameRef.current)) {
       pendingUtteranceRef.current = text
@@ -333,7 +336,10 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
           const readyVoice =
             refreshedVoices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
             refreshedVoices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
-            refreshedVoices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current))
+            refreshedVoices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
+            refreshedVoices.find((voice) => voice.name.includes("Google US English")) ||
+            refreshedVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
+            refreshedVoices[0]
 
           if (readyVoice || attempts++ >= 20) {
             window.clearInterval(voiceReadyRetryRef.current as number)
@@ -355,9 +361,10 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
 
     const utterance = new SpeechSynthesisUtterance(text)
     activeUtteranceRef.current = utterance
-    if (preferredVoice) {
-      utterance.voice = preferredVoice
-      utterance.lang = preferredVoice.lang
+    const finalVoice = preferredVoice || voices.find((voice) => voice.name.includes("Google US English")) || voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) || voices[0]
+    if (finalVoice) {
+      utterance.voice = finalVoice
+      utterance.lang = finalVoice.lang
     }
 
     utterance.onstart = () => {

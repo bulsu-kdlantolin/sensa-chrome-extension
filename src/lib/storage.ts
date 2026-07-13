@@ -40,6 +40,6 @@ export const DEFAULT_PROFILE: SensaUserProfile = {
   },
   auditoryState: {
     captionsEnabled: false,
-    targetLanguage: "en-US",
+    targetLanguage: "EN-US",
   },
 };

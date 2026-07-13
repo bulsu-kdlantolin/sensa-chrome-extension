@@ -101,7 +101,9 @@ export function useUIHoverAudio() {
 				voices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
 				voices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
 				voices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
-				voices.find((voice) => voice.name.includes("Google US English"))
+				voices.find((voice) => voice.name.includes("Google US English")) ||
+				voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
+				voices[0]
 
 			if (preferredVoice) {
 				utterance.voice = preferredVoice

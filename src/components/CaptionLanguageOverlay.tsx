@@ -182,6 +182,24 @@ export const SOURCE_LANGUAGE_OPTIONS = [
   { code: "tl", label: "Tagalog (Filipino)" }
 ]
 
+const normalizeTargetCode = (code: string | undefined): string => {
+  if (!code) return "EN-US"
+  const clean = code.trim().toUpperCase()
+  if (clean === "US-ENGLISH" || clean === "EN-US" || clean === "EN" || clean === "ENGLISH" || clean === "US ENGLISH") {
+    return "EN-US"
+  }
+  return clean
+}
+
+const normalizeSourceCode = (code: string | undefined): string => {
+  if (!code) return "en"
+  const clean = code.trim().toLowerCase()
+  if (clean === "en-us" || clean === "us-english" || clean === "en" || clean === "english" || clean === "us english") {
+    return "en"
+  }
+  return clean
+}
+
 interface CaptionLanguageOverlayProps {
   isDark: boolean
   onClose: () => void
@@ -200,8 +218,8 @@ export default function CaptionLanguageOverlay({
   onSourceLanguageChange
 }: CaptionLanguageOverlayProps) {
   const [activeTab, setActiveTab] = useState<"target" | "source">("source")
-  const [selectedLanguage, setSelectedLanguage] = useState(initialLanguage)
-  const [selectedSourceLanguage, setSelectedSourceLanguage] = useState(initialSourceLanguage)
+  const [selectedLanguage, setSelectedLanguage] = useState(() => normalizeTargetCode(initialLanguage))
+  const [selectedSourceLanguage, setSelectedSourceLanguage] = useState(() => normalizeSourceCode(initialSourceLanguage))
   const [searchTerm, setSearchTerm] = useState("")
 
   // Dragging & Animation State
@@ -220,11 +238,11 @@ export default function CaptionLanguageOverlay({
   }, [])
 
   useEffect(() => {
-    setSelectedLanguage(initialLanguage)
+    setSelectedLanguage(normalizeTargetCode(initialLanguage))
   }, [initialLanguage])
 
   useEffect(() => {
-    setSelectedSourceLanguage(initialSourceLanguage)
+    setSelectedSourceLanguage(normalizeSourceCode(initialSourceLanguage))
   }, [initialSourceLanguage])
 
   useEffect(() => {
@@ -237,12 +255,12 @@ export default function CaptionLanguageOverlay({
         setOffset(result.sensa_caption_language_overlay_offset)
       }
       if (result.sensa_source_lang && typeof result.sensa_source_lang === "string" && result.sensa_source_lang !== "AUTO") {
-        setSelectedSourceLanguage(result.sensa_source_lang)
+        setSelectedSourceLanguage(normalizeSourceCode(result.sensa_source_lang))
       }
       if (result.sensa_target_lang && typeof result.sensa_target_lang === "string") {
-        setSelectedLanguage(result.sensa_target_lang)
+        setSelectedLanguage(normalizeTargetCode(result.sensa_target_lang))
       } else if (result.sensa_auditory_caption_language && typeof result.sensa_auditory_caption_language === "string") {
-        setSelectedLanguage(result.sensa_auditory_caption_language)
+        setSelectedLanguage(normalizeTargetCode(result.sensa_auditory_caption_language))
       }
       setInitialOffsetLoaded(true)
     })
@@ -292,9 +310,13 @@ export default function CaptionLanguageOverlay({
   }, [searchTerm, currentOptions])
 
   const activeLabel = useMemo(() => {
-    const match = currentOptions.find((item) => item.code === currentSelected)
+    const normSelected = activeTab === "target" ? normalizeTargetCode(currentSelected) : normalizeSourceCode(currentSelected)
+    const match = currentOptions.find((item) => {
+      const normItem = activeTab === "target" ? normalizeTargetCode(item.code) : normalizeSourceCode(item.code)
+      return normItem === normSelected
+    })
     return match?.label ?? currentSelected
-  }, [currentSelected, currentOptions])
+  }, [currentSelected, currentOptions, activeTab])
 
   const saveAndApply = (newTarget: string, newSource: string) => {
     chrome.storage.local.set({ 
@@ -469,7 +491,8 @@ export default function CaptionLanguageOverlay({
         <div className={`border rounded-2xl overflow-hidden shadow-inner ${isDark ? "border-white/10 bg-[#141416]" : "border-gray-200 bg-gray-50/50"}`}>
           <div className="max-h-[340px] overflow-y-auto custom-scrollbar">
             {filteredLanguages.map((language) => {
-              const isSelected = language.code === currentSelected
+              const normSelected = activeTab === "target" ? normalizeTargetCode(currentSelected) : normalizeSourceCode(currentSelected)
+              const isSelected = (activeTab === "target" ? normalizeTargetCode(language.code) : normalizeSourceCode(language.code)) === normSelected
               return (
                 <button
                   key={language.code}

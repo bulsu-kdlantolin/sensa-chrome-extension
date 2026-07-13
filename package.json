@@ -5,9 +5,11 @@
   "description": "An advanced dual-mode accessibility extension offering live AI subtitles, translation, text-to-speech reading enhancements, and sensory customization.",
   "author": "Sensa",
   "scripts": {
-    "dev": "plasmo dev",
-    "build": "plasmo build",
-    "package": "plasmo package"
+    "dev": "npx plasmo dev",
+    "build": "npx plasmo build && node scripts/fix-manifest.js",
+    "build:prod": "npx plasmo build --target=chrome-mv3 --prod && node scripts/fix-manifest.js",
+    "package": "npx plasmo package && node scripts/fix-manifest.js",
+    "postbuild": "node scripts/fix-manifest.js"
   },
   "dependencies": {
     "annyang": "^3.0.0",
@@ -30,6 +32,8 @@
     "typescript": "5.3.3"
   },
   "manifest": {
+    "version": "1.0.0",
+    "description": "An advanced dual-mode accessibility extension offering live AI subtitles, translation, text-to-speech reading enhancements, and sensory customization.",
     "permissions": [
       "activeTab",
       "storage",

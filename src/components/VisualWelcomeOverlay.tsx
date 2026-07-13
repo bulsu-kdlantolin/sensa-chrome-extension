@@ -209,7 +209,10 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
       const readyVoice =
         voices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
         voices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
-        voices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current))
+        voices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
+        voices.find((voice) => voice.name.includes("Google US English")) ||
+        voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
+        voices[0]
 
       if (readyVoice) {
         setVoiceReady(true)
@@ -322,7 +325,10 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     const preferredVoice =
       voices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
       voices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
-      voices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current))
+      voices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
+      voices.find((voice) => voice.name.includes("Google US English")) ||
+      voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
+      voices[0]
 
     // If a specific voice is selected, wait for it to become available.
     if (!preferredVoice && (selectedVoiceURIRef.current || selectedVoiceNameRef.current)) {
@@ -340,7 +346,10 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
           const readyVoice =
             refreshedVoices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
             refreshedVoices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
-            refreshedVoices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current))
+            refreshedVoices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
+            refreshedVoices.find((voice) => voice.name.includes("Google US English")) ||
+            refreshedVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
+            refreshedVoices[0]
 
           if (readyVoice || attempts++ >= 20) {
             window.clearInterval(voiceReadyRetryRef.current as number)
@@ -543,7 +552,11 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     playPopSfx()
     window.setTimeout(() => {
       chrome.storage.local.set({
-        sensa_visual_entered_from_welcome: true
+        sensa_visual_entered_from_welcome: true,
+        sensa_visual_highlight_mouse_screen_reader: true,
+        sensa_visual_image_alt_reader_enabled: true,
+        sensa_visual_voice_guide_enabled: true,
+        sensa_visual_autoscroll_enabled: true
       }, () => {
         onGetStartedRef.current()
       })

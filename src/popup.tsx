@@ -167,8 +167,14 @@ export default function IndexPopup() {
     await updateProfile({
       globalSettings: { ...userProfile!.globalSettings, activeMode: mode }
     })
+    const extraDefaults = mode === "visual" ? {
+      sensa_visual_highlight_mouse_screen_reader: true,
+      sensa_visual_image_alt_reader_enabled: true,
+      sensa_visual_voice_guide_enabled: true,
+      sensa_visual_autoscroll_enabled: true
+    } : {}
     // Persist the last-opened tab so Dashboard hydrates into the selected mode
-    chrome.storage.local.set({ sensa_last_tab: mode }, () => {
+    chrome.storage.local.set({ sensa_last_tab: mode, ...extraDefaults }, () => {
       setCurrentView("WELCOME")
     })
   }
@@ -197,9 +203,15 @@ export default function IndexPopup() {
       sensa_user_profile: DEFAULT_PROFILE,
       sensa_visual_active: false,
       sensa_auditory_active: false,
-      sensa_voice_command_active: false
+      sensa_voice_command_active: false,
+      sensa_visual_highlight_mouse_screen_reader: true,
+      sensa_visual_image_alt_reader_enabled: true,
+      sensa_visual_voice_guide_enabled: true,
+      sensa_visual_autoscroll_enabled: true
     }, () => {
-      chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null })
+      chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null }, () => {
+        const _ = chrome.runtime.lastError
+      })
       setUserProfile(DEFAULT_PROFILE)
       setCurrentTheme(DEFAULT_PROFILE.globalSettings.theme)
       setCurrentView("MODE_SELECTION")

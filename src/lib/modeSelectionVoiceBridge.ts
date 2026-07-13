@@ -407,6 +407,11 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
 
   instance.onerror = (event: SpeechRecognitionErrorEvent) => {
     recognitionRunning = false
+
+    if (event.error === "aborted" || event.error === "no-speech") {
+      return
+    }
+
     tabLog(`[Sensa Tab Voice Bridge] SpeechRecognition error in tab: ${event.error}`, "error")
 
     if (event.error === "not-allowed" || event.error === "service-not-allowed") {
@@ -414,18 +419,6 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       isActive = false
       teardownRecognition()
       chrome.storage.local.set({ sensa_mode_selection_listening: false })
-      return
-    }
-
-    if (event.error === "aborted") {
-      // Chrome fires "aborted" when the recognition is interrupted. 
-      // Don't restart immediately — let onend handle it with backoff.
-      tabLog("[Sensa Tab Voice Bridge] Recognition aborted, waiting for onend.", "log")
-      return
-    }
-
-    if (event.error === "no-speech") {
-      tabLog("[Sensa Tab Voice Bridge] No speech detected, will restart via onend.", "log")
       return
     }
 
