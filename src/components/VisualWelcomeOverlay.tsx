@@ -568,24 +568,44 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     let isMounted = true
 
     const sendVoiceBridgeMessage = (action: "start" | "stop", retries = 0) => {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        const activeTab = tabs?.find(t => t.url && (t.url.startsWith("http://") || t.url.startsWith("https://"))) || tabs?.[0]
-        const tabId = activeTab?.id
-        if (!tabId) return
-
-        if (activeTab.url && (activeTab.url.startsWith("chrome://") || activeTab.url.startsWith("edge://") || activeTab.url.startsWith("about:"))) {
-          return
-        }
-
-        chrome.tabs.sendMessage(tabId, { type: "sensa-welcome-voice", action }, (response) => {
+      const dispatchToTab = (targetTabId: number) => {
+        chrome.tabs.sendMessage(targetTabId, { type: "sensa-welcome-voice", action }, async () => {
           const err = chrome.runtime.lastError?.message
-          // Retry start if content script wasn't ready (message failed)
+          if (action === "start" && err && retries === 0) {
+            try {
+              const manifest = chrome.runtime.getManifest()
+              const jsFiles = manifest?.content_scripts?.[0]?.js || []
+              if (jsFiles.length > 0) await chrome.scripting.executeScript({ target: { tabId: targetTabId }, files: jsFiles })
+            } catch {}
+          }
           if (action === "start" && err && retries < 3 && isMounted) {
             retryTimer = window.setTimeout(() => {
               if (isMounted) sendVoiceBridgeMessage("start", retries + 1)
             }, 800)
+          } else if (action === "start" && err && retries >= 3 && isMounted) {
+            chrome.tabs.query({ url: ["http://*/*", "https://*/*"] }, (fallbackTabs) => {
+              const alt = fallbackTabs?.find(t => t.id !== targetTabId && typeof t.id === "number")
+              if (alt?.id) chrome.tabs.sendMessage(alt.id, { type: "sensa-welcome-voice", action: "start" }, () => chrome.runtime.lastError)
+            })
           }
         })
+      }
+
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const activeTab = tabs?.find(t => t.url && (t.url.startsWith("http://") || t.url.startsWith("https://"))) || tabs?.[0]
+        const tabId = activeTab?.id
+
+        if (!tabId || (activeTab?.url && (activeTab.url.startsWith("chrome://") || activeTab.url.startsWith("edge://") || activeTab.url.startsWith("about:")))) {
+          chrome.tabs.query({ url: ["http://*/*", "https://*/*"] }, (httpTabs) => {
+            const fallback = httpTabs?.[0]
+            if (fallback?.id) {
+              dispatchToTab(fallback.id)
+            }
+          })
+          return
+        }
+
+        dispatchToTab(tabId)
       })
     }
 

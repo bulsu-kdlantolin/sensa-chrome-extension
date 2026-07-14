@@ -155,7 +155,7 @@ const teardownRecognition = () => {
 
   try {
     recognition.stop()
-  } catch {}
+  } catch { }
 
   recognition.onresult = null
   recognition.onerror = null

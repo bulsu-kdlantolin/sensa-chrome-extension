@@ -268,6 +268,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false
   }
 
+  if (message?.type === "sensa-activate-mode") {
+    sendResponse({ ok: true })
+    chrome.tabs.query({ url: ["http://*/*", "https://*/*"] }, (tabs) => {
+      tabs?.forEach(t => {
+        if (typeof t.id === "number") {
+          chrome.tabs.sendMessage(t.id, message).catch(() => {})
+        }
+      })
+    })
+    return false
+  }
+
   // Forward offscreen transcription updates to the originating tab's content script.
   if (message?.type === "FORWARD_TO_TAB" && message.tabId) {
     chrome.tabs.sendMessage(message.tabId, message.payload).catch(() => { })
@@ -298,4 +310,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })();
     return true; // Keeps the message channel open for the async response
   }
+})
+
+// Auto-inject content script into all open HTTP/HTTPS tabs on extension reload or update
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.tabs.query({ url: ["http://*/*", "https://*/*"] }, async (tabs) => {
+    const manifest = chrome.runtime.getManifest()
+    const jsFiles = manifest?.content_scripts?.[0]?.js || []
+    if (jsFiles.length === 0) return
+
+    for (const tab of tabs) {
+      if (typeof tab.id === "number") {
+        try {
+          await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: jsFiles
+          })
+        } catch {
+          // Ignore tabs with strict CSP or restricted permissions
+        }
+      }
+    }
+  })
 })

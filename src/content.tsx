@@ -171,6 +171,7 @@ export default function FloatingDockManager() {
   const dragRef = useRef<HTMLDivElement>(null)
   const dragStartPos = useRef({ x: 0, y: 0 })
   const activeModeRef = useRef<"visual" | "auditory" | null>(null)
+  const isModeSelectionVoiceActiveRef = useRef(false)
 
   const isSettingsOverlayOpen =
     isVisualSettingsOpen ||
@@ -501,14 +502,9 @@ export default function FloatingDockManager() {
         setIsVoiceCommandActive(changes.sensa_voice_command_active.newValue)
       }
       if (changes.sensa_mode_selection_listening !== undefined) {
-        if (changes.sensa_mode_selection_listening.newValue) {
-          if (!isModeSelectionVoiceActive) {
-            void startModeSelectionVoiceListener().then((started) => {
-              setIsModeSelectionVoiceActive(started)
-            })
-          }
-        } else {
+        if (!changes.sensa_mode_selection_listening.newValue) {
           stopModeSelectionVoiceListener()
+          isModeSelectionVoiceActiveRef.current = false
           setIsModeSelectionVoiceActive(false)
         }
       }

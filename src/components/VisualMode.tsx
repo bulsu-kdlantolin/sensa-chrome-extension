@@ -325,7 +325,7 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
     }
     const newState = !isListening
     setIsListening(newState)
-    chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: newState ? "visual" : null })
+    chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: newState ? "visual" : null }, () => void chrome.runtime.lastError)
     chrome.storage.local.set({
       sensa_visual_active: newState,
       sensa_voice_command_active: false,
@@ -359,19 +359,48 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
   }, [isListening, handleToggle, playActivateSfx, playDeactivateSfx, speakFeedback])
 
   useEffect(() => {
-    const sendVoiceBridgeMessage = (action: "start" | "stop") => {
+    let isMounted = true
+    let retryTimer: number | null = null
+
+    const sendVoiceBridgeMessage = (action: "start" | "stop", retries = 0) => {
+      const dispatchToTab = (targetTabId: number) => {
+        chrome.tabs.sendMessage(targetTabId, { type: "sensa-visual-mode-voice", action }, async () => {
+          const err = chrome.runtime.lastError?.message
+          if (action === "start" && err && retries === 0) {
+            try {
+              const manifest = chrome.runtime.getManifest()
+              const jsFiles = manifest?.content_scripts?.[0]?.js || []
+              if (jsFiles.length > 0) await chrome.scripting.executeScript({ target: { tabId: targetTabId }, files: jsFiles })
+            } catch {}
+          }
+          if (action === "start" && err && retries < 3 && isMounted) {
+            retryTimer = window.setTimeout(() => {
+              if (isMounted) sendVoiceBridgeMessage("start", retries + 1)
+            }, 600)
+          } else if (action === "start" && err && retries >= 3 && isMounted) {
+            chrome.tabs.query({ url: ["http://*/*", "https://*/*"] }, (fallbackTabs) => {
+              const alt = fallbackTabs?.find(t => t.id !== targetTabId && typeof t.id === "number")
+              if (alt?.id) chrome.tabs.sendMessage(alt.id, { type: "sensa-visual-mode-voice", action: "start" }, () => chrome.runtime.lastError)
+            })
+          }
+        })
+      }
+
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         const activeTab = tabs?.find(t => t.url && (t.url.startsWith("http://") || t.url.startsWith("https://"))) || tabs?.[0]
         const tabId = activeTab?.id
-        if (!tabId) return
 
-        if (activeTab.url && (activeTab.url.startsWith("chrome://") || activeTab.url.startsWith("edge://") || activeTab.url.startsWith("about:"))) {
+        if (!tabId || (activeTab?.url && (activeTab.url.startsWith("chrome://") || activeTab.url.startsWith("edge://") || activeTab.url.startsWith("about:")))) {
+          chrome.tabs.query({ url: ["http://*/*", "https://*/*"] }, (httpTabs) => {
+            const fallback = httpTabs?.[0]
+            if (fallback?.id) {
+              dispatchToTab(fallback.id)
+            }
+          })
           return
         }
 
-        chrome.tabs.sendMessage(tabId, { type: "sensa-visual-mode-voice", action }, () => {
-          const err = chrome.runtime.lastError?.message
-        })
+        dispatchToTab(tabId)
       })
     }
 
@@ -382,6 +411,8 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
     }
 
     return () => {
+      isMounted = false
+      if (retryTimer !== null) window.clearTimeout(retryTimer)
       sendVoiceBridgeMessage("stop")
     }
   }, [isActiveView])
@@ -401,7 +432,7 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
     return () => window.clearInterval(interval)
   }, [])
 
-  const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
+  const springTransition = "transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)]"
 
   return (
     // Allow overflow visibility to prevent clipping of animated button glow effects
@@ -415,21 +446,21 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
         }
         .animate-interface-enter { animation: interface-enter 0.55s cubic-bezier(0.23,1,0.32,1) forwards; }
         @keyframes visual-soundwave {
-          0%, 100% { transform: scaleY(0.5); opacity: 0.5; }
-          50% { transform: scaleY(1.2); opacity: 1; }
+          0% { transform: scaleY(0.3); opacity: 0.2; }
+          30% { transform: scaleY(1.25); opacity: 1; }
+          60%, 100% { transform: scaleY(0.3); opacity: 0.2; }
         }
         @keyframes visual-pulse-glow {
-          0%, 100% { box-shadow: 0 0 25px rgba(10,68,255,0.3); }
+          0%, 100% { box-shadow: 0 0 20px rgba(10,68,255,0.3); }
           50% { box-shadow: 0 0 65px rgba(10,68,255,0.8); }
         }
         
-        .animate-visual-wave-1 { animation: visual-soundwave 0.8s ease-in-out infinite 0.0s; }
-        .animate-visual-wave-2 { animation: visual-soundwave 0.8s ease-in-out infinite 0.2s; }
-        .animate-visual-wave-3 { animation: visual-soundwave 0.8s ease-in-out infinite 0.4s; }
-        .animate-visual-wave-4 { animation: visual-soundwave 0.8s ease-in-out infinite 0.6s; }
+        .animate-visual-wave-1 { animation: visual-soundwave 2.4s ease-in-out infinite 0.0s backwards; }
+        .animate-visual-wave-2 { animation: visual-soundwave 2.4s ease-in-out infinite 0.2s backwards; }
+        .animate-visual-wave-3 { animation: visual-soundwave 2.4s ease-in-out infinite 0.4s backwards; }
+        .animate-visual-wave-4 { animation: visual-soundwave 2.4s ease-in-out infinite 0.6s backwards; }
         
-        /* Synchronize glow duration to exactly double the 0.8s wave animation cycle */
-        .animate-visual-pulse-glow { animation: visual-pulse-glow 1.6s ease-in-out infinite backwards; }
+        .animate-visual-pulse-glow { animation: visual-pulse-glow 2.4s ease-in-out infinite backwards; }
       `}} />
 
       <div className="flex flex-col items-center justify-center w-full relative z-10 overflow-visible pb-2">
@@ -437,11 +468,11 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
         <div className="flex items-center justify-center gap-6 mb-10 mt-4 w-full relative overflow-visible">
           
           {/* LEFT SOUNDWAVE */}
-          <div className={`flex items-center gap-2.5 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] shrink-0 ${isListening ? 'opacity-100 scale-100 text-[#0A44FF]' : 'opacity-0 scale-75 pointer-events-none text-gray-300'}`}>
-            <div className={`w-[5px] h-4 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-1' : ''}`} />
-            <div className={`w-[5px] h-8 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-2' : ''}`} />
-            <div className={`w-[5px] h-12 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-3' : ''}`} />
-            <div className={`w-[5px] h-5 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-4' : ''}`} />
+          <div className={`flex items-center gap-2.5 ${springTransition} shrink-0 ${isListening ? 'opacity-100 scale-100 text-[#0A44FF]' : 'opacity-0 scale-75 pointer-events-none text-gray-300'}`}>
+            <div className={`w-[5px] h-4 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-4' : ''}`} />
+            <div className={`w-[5px] h-8 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-3' : ''}`} />
+            <div className={`w-[5px] h-12 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-2' : ''}`} />
+            <div className={`w-[5px] h-5 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-1' : ''}`} />
           </div>
 
           {/* MAIN MIC BUTTON */}
@@ -460,12 +491,10 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
             onBlur={cancelHoverSpeak}
             aria-pressed={isListening}
             aria-label={isListening ? "Deactivate Visual Mode" : "Activate Visual Mode"}
-            className={`w-[136px] h-[136px] shrink-0 rounded-full flex items-center justify-center relative group outline-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-offset-4 focus-visible:ring-[#0A44FF]/60 transform-gpu active:scale-90 ${springTransition}
-              ${isListening 
-                ? "bg-[#0A44FF] animate-visual-pulse-glow" 
-                : "bg-[#0A44FF] ring-[10px] ring-[#0A44FF]/10 shadow-[0_16px_35px_rgba(0,0,0,0.15)] hover:scale-105 hover:bg-[#0836CC] hover:ring-[#0A44FF]/20"
-              }`}
+            className={`w-[136px] h-[136px] shrink-0 rounded-full flex items-center justify-center relative group outline-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-offset-4 focus-visible:ring-[#0A44FF]/60 transform-gpu active:scale-90 ${springTransition} ${isListening ? "bg-[#0A44FF] scale-105 shadow-[0_10px_40px_rgba(10,68,255,0.4)] ring-[0px] ring-[#0A44FF]/0" : "bg-[#0A44FF] scale-100 ring-[8px] ring-[#0A44FF]/10 shadow-[0_16px_35px_rgba(0,0,0,0.15)] hover:scale-105 hover:bg-[#0836CC] hover:ring-[#0A44FF]/20"}`}
           >
+            <div className={`absolute inset-0 rounded-full pointer-events-none transition-opacity duration-700 ease-out ${isListening ? 'opacity-100 animate-visual-pulse-glow' : 'opacity-0'}`} />
+
             <div className="absolute inset-0 rounded-full bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
 
             <div className="relative z-10 flex items-center justify-center w-full h-full pointer-events-none">
@@ -489,11 +518,11 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
           </button>
 
           {/* RIGHT SOUNDWAVE */}
-          <div className={`flex items-center gap-2.5 transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] shrink-0 ${isListening ? 'opacity-100 scale-100 text-[#0A44FF]' : 'opacity-0 scale-75 pointer-events-none text-gray-300'}`}>
-            <div className={`w-[5px] h-5 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-4' : ''}`} />
-            <div className={`w-[5px] h-12 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-3' : ''}`} />
-            <div className={`w-[5px] h-8 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-2' : ''}`} />
-            <div className={`w-[5px] h-4 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-1' : ''}`} />
+          <div className={`flex items-center gap-2.5 ${springTransition} shrink-0 ${isListening ? 'opacity-100 scale-100 text-[#0A44FF]' : 'opacity-0 scale-75 pointer-events-none text-gray-300'}`}>
+            <div className={`w-[5px] h-5 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-1' : ''}`} />
+            <div className={`w-[5px] h-12 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-2' : ''}`} />
+            <div className={`w-[5px] h-8 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-3' : ''}`} />
+            <div className={`w-[5px] h-4 bg-current rounded-full origin-center ${isListening ? 'animate-visual-wave-4' : ''}`} />
           </div>
         </div>
 

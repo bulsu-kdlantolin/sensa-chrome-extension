@@ -326,10 +326,10 @@ export default function CaptionLanguageOverlay({
     })
     try {
       const tgt = (newTarget.split("-")[0] || newTarget).toUpperCase()
-      chrome.runtime.sendMessage({ type: "UPDATE_CAPTION_LANGUAGE", targetLang: tgt })
+      chrome.runtime.sendMessage({ type: "UPDATE_CAPTION_LANGUAGE", targetLang: tgt }, () => void chrome.runtime.lastError)
     } catch (e) {}
     try {
-      chrome.runtime.sendMessage({ type: "UPDATE_SOURCE_LANGUAGE", sourceLang: newSource })
+      chrome.runtime.sendMessage({ type: "UPDATE_SOURCE_LANGUAGE", sourceLang: newSource }, () => void chrome.runtime.lastError)
     } catch (e) {}
     onLanguageChange?.(newTarget)
     onSourceLanguageChange?.(newSource)

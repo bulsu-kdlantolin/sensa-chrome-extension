@@ -74,18 +74,18 @@ const teardownRecognition = () => {
 
   try {
     recognition.stop()
-  } catch {}
+  } catch { }
 
   recognition.onresult = null
   recognition.onerror = null
   recognition.onend = null
   recognition.onstart = null
-  ;(recognition as any).onaudiostart = null
-  ;(recognition as any).onaudioend = null
-  ;(recognition as any).onsoundstart = null
-  ;(recognition as any).onsoundend = null
-  ;(recognition as any).onspeechstart = null
-  ;(recognition as any).onspeechend = null
+    ; (recognition as any).onaudiostart = null
+    ; (recognition as any).onaudioend = null
+    ; (recognition as any).onsoundstart = null
+    ; (recognition as any).onsoundend = null
+    ; (recognition as any).onspeechstart = null
+    ; (recognition as any).onspeechend = null
   recognition = null
 }
 
@@ -140,13 +140,13 @@ const scheduleRestart = () => {
 const startWatchdog = () => {
   clearWatchdog()
   lastAudioTimestamp = Date.now()
-  
+
   watchdogTimer = window.setInterval(() => {
     if (!isActive || commandApplied) {
       clearWatchdog()
       return
     }
-    
+
     const silenceDuration = Date.now() - lastAudioTimestamp
 
     // ONLY restart if recognition is NOT running (it crashed or never started).
@@ -267,12 +267,12 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     tabLog("[Sensa Tab Voice Bridge] Recognition started successfully")
   }
 
-  ;(instance as any).onaudiostart = () => { lastAudioTimestamp = Date.now() }
-  ;(instance as any).onaudioend = () => { lastAudioTimestamp = Date.now() }
-  ;(instance as any).onsoundstart = () => { lastAudioTimestamp = Date.now() }
-  ;(instance as any).onsoundend = () => { lastAudioTimestamp = Date.now() }
-  ;(instance as any).onspeechstart = () => { lastAudioTimestamp = Date.now() }
-  ;(instance as any).onspeechend = () => { lastAudioTimestamp = Date.now() }
+    ; (instance as any).onaudiostart = () => { lastAudioTimestamp = Date.now() }
+    ; (instance as any).onaudioend = () => { lastAudioTimestamp = Date.now() }
+    ; (instance as any).onsoundstart = () => { lastAudioTimestamp = Date.now() }
+    ; (instance as any).onsoundend = () => { lastAudioTimestamp = Date.now() }
+    ; (instance as any).onspeechstart = () => { lastAudioTimestamp = Date.now() }
+    ; (instance as any).onspeechend = () => { lastAudioTimestamp = Date.now() }
 
   instance.onresult = (event: SpeechRecognitionEvent) => {
     lastAudioTimestamp = Date.now()

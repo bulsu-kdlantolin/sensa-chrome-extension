@@ -195,25 +195,48 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   }, [])
 
   useEffect(() => {
-    const sendVoiceBridgeMessage = (action: "start" | "stop") => {
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        // Find the first tab with an HTTP/HTTPS protocol, or fallback to the first active tab in current view.
-        const activeTab = tabs?.find(t => t.url && (t.url.startsWith("http://") || t.url.startsWith("https://"))) || tabs?.[0]
-        const tabId = activeTab?.id
-        if (!tabId) {
-          console.warn("[Sensa Debug] No active tab ID found, voice bridge message NOT sent.")
-          return
-        }
-        if (activeTab.url && (activeTab.url.startsWith("chrome://") || activeTab.url.startsWith("edge://") || activeTab.url.startsWith("about:"))) {
-          console.warn(`[Sensa Debug] Tab URL ${activeTab.url} is a restricted page. Voice bridge cannot be used here.`)
-          return
-        }
-        chrome.tabs.sendMessage(tabId, { type: "sensa-mode-selection-voice", action }, (response) => {
+    let retryTimer: number | null = null
+    let isMounted = true
+
+    const sendVoiceBridgeMessage = (action: "start" | "stop", retries = 0) => {
+      const dispatchToTab = (targetTabId: number) => {
+        chrome.tabs.sendMessage(targetTabId, { type: "sensa-mode-selection-voice", action }, async () => {
           const err = chrome.runtime.lastError?.message
-          if (err) {
-            console.error("[Sensa Debug] Failed to send message to tab voice bridge:", err)
+          if (action === "start" && err && retries === 0) {
+            try {
+              const manifest = chrome.runtime.getManifest()
+              const jsFiles = manifest?.content_scripts?.[0]?.js || []
+              if (jsFiles.length > 0) await chrome.scripting.executeScript({ target: { tabId: targetTabId }, files: jsFiles })
+            } catch {}
+          }
+          if (action === "start" && err && retries < 3 && isMounted) {
+            retryTimer = window.setTimeout(() => {
+              if (isMounted) sendVoiceBridgeMessage("start", retries + 1)
+            }, 800)
+          } else if (action === "start" && err && retries >= 3 && isMounted) {
+            chrome.tabs.query({ url: ["http://*/*", "https://*/*"] }, (fallbackTabs) => {
+              const alt = fallbackTabs?.find(t => t.id !== targetTabId && typeof t.id === "number")
+              if (alt?.id) chrome.tabs.sendMessage(alt.id, { type: "sensa-mode-selection-voice", action: "start" }, () => chrome.runtime.lastError)
+            })
           }
         })
+      }
+
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        const activeTab = tabs?.find(t => t.url && (t.url.startsWith("http://") || t.url.startsWith("https://"))) || tabs?.[0]
+        const tabId = activeTab?.id
+
+        if (!tabId || (activeTab?.url && (activeTab.url.startsWith("chrome://") || activeTab.url.startsWith("edge://") || activeTab.url.startsWith("about:")))) {
+          chrome.tabs.query({ url: ["http://*/*", "https://*/*"] }, (httpTabs) => {
+            const fallback = httpTabs?.[0]
+            if (fallback?.id) {
+              dispatchToTab(fallback.id)
+            }
+          })
+          return
+        }
+
+        dispatchToTab(tabId)
       })
     }
 
@@ -253,6 +276,8 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     chrome.runtime.onMessage.addListener(handleTabLogMessage)
 
     return () => {
+      isMounted = false
+      if (retryTimer !== null) window.clearTimeout(retryTimer)
       window.speechSynthesis.cancel()
       chrome.storage.onChanged.removeListener(handleProfileVoiceSelect)
       chrome.runtime.onMessage.removeListener(handleTabLogMessage)

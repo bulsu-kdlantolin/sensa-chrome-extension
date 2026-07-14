@@ -296,8 +296,30 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
         if (typeof activeTab?.id === "number" && nextWebsiteStatus === "online") {
           nextBridgeOnline = await new Promise<boolean>((resolve) => {
-            chrome.tabs.sendMessage(activeTab.id!, { type: "sensa-health-check" }, (response) => {
+            const targetTabId = activeTab.id!
+            chrome.tabs.sendMessage(targetTabId, { type: "sensa-health-check" }, async (response) => {
               if (chrome.runtime.lastError) {
+                try {
+                  const manifest = chrome.runtime.getManifest()
+                  const jsFiles = manifest?.content_scripts?.[0]?.js || []
+                  if (jsFiles.length > 0) {
+                    await chrome.scripting.executeScript({
+                      target: { tabId: targetTabId },
+                      files: jsFiles
+                    })
+                    await new Promise(r => setTimeout(r, 200))
+                    chrome.tabs.sendMessage(targetTabId, { type: "sensa-health-check" }, (retryResp) => {
+                      if (chrome.runtime.lastError) {
+                        resolve(false)
+                      } else {
+                        resolve(!!retryResp?.ok)
+                      }
+                    })
+                    return
+                  }
+                } catch {
+                  // Injection forbidden or failed
+                }
                 resolve(false)
                 return
               }

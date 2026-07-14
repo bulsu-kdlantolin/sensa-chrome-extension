@@ -12,7 +12,7 @@ function moveContentsUp(srcDir, destDir) {
         fs.mkdirSync(destPath, { recursive: true });
       }
       moveContentsUp(srcPath, destPath);
-      try { fs.rmdirSync(srcPath); } catch (e) {}
+      try { fs.rmSync(srcPath, { recursive: true, force: true }); } catch (e) {}
     } else {
       if (fs.existsSync(destPath)) {
         fs.unlinkSync(destPath);
@@ -66,7 +66,7 @@ for (const buildDir of buildDirs) {
     if (fs.existsSync(stagingDir)) {
       console.log(`Moving contents from ${path.relative(path.join(__dirname, '..'), stagingDir)} up to ${path.relative(path.join(__dirname, '..'), buildDir)}...`);
       moveContentsUp(stagingDir, buildDir);
-      try { fs.rmdirSync(stagingDir); } catch (e) {}
+      try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
     }
   }
 

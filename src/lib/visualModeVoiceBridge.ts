@@ -209,7 +209,7 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
       sensa_auditory_active: false,
       sensa_voice_command_active: false
     }, () => {
-      chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: "visual" })
+      chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: "visual" }, () => void chrome.runtime.lastError)
       speakFeedbackInTab("Visual mode activated")
       tabLog("[Sensa Tab Voice Bridge] Visual mode activated via voice.")
     })
@@ -218,7 +218,7 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
       sensa_visual_active: false,
       sensa_voice_command_active: false
     }, () => {
-      chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null })
+      chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null }, () => void chrome.runtime.lastError)
       speakFeedbackInTab("Visual mode deactivated")
       tabLog("[Sensa Tab Voice Bridge] Visual mode deactivated via voice.")
     })
@@ -229,7 +229,7 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
       sensa_last_tab: "auditory",
       sensa_voice_command_active: false
     }, () => {
-      chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: "auditory" })
+      chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: "auditory" }, () => void chrome.runtime.lastError)
       speakFeedbackInTab("Auditory mode activated")
       tabLog("[Sensa Tab Voice Bridge] Auditory mode activated via voice.")
     })
