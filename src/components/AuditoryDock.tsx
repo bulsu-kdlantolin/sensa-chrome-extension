@@ -5,7 +5,7 @@
  * Architectural Overview:
  * 1. Audio Capture & Visualizer (`SiteAudioSystem`):
  *    - Connects directly to page `<audio>` and `<video>` HTML5 elements via `.captureStream()`.
- *    - Also listens for Web Audio API frequency packets sent by the injected `audioInterceptorScript` (for HTML5 games or Web Audio sites).
+ *    - Also listens for Web Audio API frequency packets sent by the injected `audioInterceptorMain` content script (for HTML5 games or Web Audio sites).
  *    - Performs FFT analysis to render smooth, framerate-independent audio visualizer bars.
  *
  * 2. Loud Noise Spike Detection:
@@ -77,14 +77,13 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
     const lerp = (start: number, end: number, amt: number) => (1 - amt) * start + amt * end
 
     const handleMessage = (event: MessageEvent) => {
-      if (event.data && event.data.type === 'SENSA_GAME_AUDIO_FREQUENCY') {
-        if (!gameAudioArray || gameAudioArray.length !== event.data.frequencies.length) {
-          gameAudioArray = new Uint8Array(event.data.frequencies)
-        } else {
-          gameAudioArray.set(event.data.frequencies)
-        }
-        lastGameAudioTick = Date.now()
+      if (event.source !== window || !event.data || event.data.type !== 'SENSA_GAME_AUDIO_FREQUENCY') return
+      if (!gameAudioArray || gameAudioArray.length !== event.data.frequencies.length) {
+        gameAudioArray = new Uint8Array(event.data.frequencies)
+      } else {
+        gameAudioArray.set(event.data.frequencies)
       }
+      lastGameAudioTick = Date.now()
     }
 
     const handleRuntimeMessage = (message: any) => {

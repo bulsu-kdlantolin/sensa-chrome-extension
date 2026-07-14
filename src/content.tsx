@@ -12,7 +12,7 @@
  *    - Mounts floating docks (`VisualDock`, `AuditoryDock`), live subtitles (`LiveCaptionBox`), and modals/overlays within the Shadow DOM.
  *
  * 3. Audio & Voice Bridging:
- *    - Injects `audioInterceptorScript` into the host page context to capture Web Audio API frequency packets for games.
+ *    - Relies on `audioInterceptorMain` content script running inside the host page context to capture Web Audio API frequency packets for games.
  *    - Orchestrates speech recognition bridges (`visualModeVoiceBridge`, `modeSelectionVoiceBridge`) and live captioning (`useLiveCaptions`).
  */
 

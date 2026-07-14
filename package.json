@@ -35,15 +35,12 @@
     "version": "1.0.0",
     "description": "An advanced dual-mode accessibility extension offering live AI subtitles, translation, text-to-speech reading enhancements, and sensory customization.",
     "permissions": [
-      "activeTab",
+      "scripting",
       "storage",
       "tabCapture",
       "offscreen"
     ],
     "host_permissions": [
-      "https://*/*",
-      "http://*/*",
-      "https://*.youtube.com/*",
       "<all_urls>"
     ]
   }
