@@ -1163,8 +1163,10 @@ export default function VisualDock({
               return true
             }
             else if ((!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) && /\b(read|red|reed|rid|ready|play|resume|continue|start reading)\b/i.test(cleanText)) {
-              if (cleanText === "reading" && !check("start reading")) {
-                return false
+              if (/\b(read|red|reed|rid|ready|reading)\b/i.test(cleanText) && !/\b(play|resume|continue|start reading)\b/i.test(cleanText)) {
+                if (!isSegmentFinal || check("speed", "rate")) {
+                  return false
+                }
               }
               if (commandTimeout) {
                 window.clearTimeout(commandTimeout)

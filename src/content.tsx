@@ -139,9 +139,13 @@ export default function FloatingDockManager() {
         })
       }
     }
-    chrome.runtime.onConnect.addListener(handleConnect)
+    if (chrome.runtime?.onConnect) {
+      chrome.runtime.onConnect.addListener(handleConnect)
+    }
     return () => {
-      chrome.runtime.onConnect.removeListener(handleConnect)
+      if (chrome.runtime?.onConnect) {
+        chrome.runtime.onConnect.removeListener(handleConnect)
+      }
     }
   }, [])
   const [isCaptionLanguageOpen, setIsCaptionLanguageOpen] = useState(false)
