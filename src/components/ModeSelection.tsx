@@ -339,10 +339,11 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
     }
 
     const preferredVoice =
-      voices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
-      voices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
-      voices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
+      voices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current) ||
+      voices.find((voice) => !voice.name.includes("David") && voice.name === selectedVoiceNameRef.current) ||
+      voices.find((voice) => !voice.name.includes("David") && selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
       voices.find((voice) => voice.name.includes("Google US English")) ||
+      voices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
       voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
       voices[0]
 
@@ -359,10 +360,11 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
 
           const refreshedVoices = window.speechSynthesis.getVoices()
           const readyVoice =
-            refreshedVoices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
-            refreshedVoices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
-            refreshedVoices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
+            refreshedVoices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current) ||
+            refreshedVoices.find((voice) => !voice.name.includes("David") && voice.name === selectedVoiceNameRef.current) ||
+            refreshedVoices.find((voice) => !voice.name.includes("David") && selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
             refreshedVoices.find((voice) => voice.name.includes("Google US English")) ||
+            refreshedVoices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
             refreshedVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
             refreshedVoices[0]
 
@@ -386,7 +388,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
 
     const utterance = new SpeechSynthesisUtterance(text)
     activeUtteranceRef.current = utterance
-    const finalVoice = preferredVoice || voices.find((voice) => voice.name.includes("Google US English")) || voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) || voices[0]
+    const finalVoice = preferredVoice || voices.find((voice) => voice.name.includes("Google US English")) || voices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) || voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) || voices[0]
     if (finalVoice) {
       utterance.voice = finalVoice
       utterance.lang = finalVoice.lang

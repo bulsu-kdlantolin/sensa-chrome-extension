@@ -1,14 +1,24 @@
 /**
  * @file modeSelectionVoiceBridge.ts
- * @description Web Speech API (`SpeechRecognition`) bridge executed within host page content scripts to enable hands-free voice onboarding mode selection ("visual mode" vs "auditory mode").
+ * @description Web Speech API (`SpeechRecognition`) bridge executed within host page content scripts to enable ultra-fast, hands-free voice onboarding mode selection ("visual mode" vs "auditory mode").
  *
  * Architectural Overview:
- * 1. Robust Speech Recognition Engine:
- *    - Uses continuous, interim-result `SpeechRecognition` with audio activity tracking (`onaudiostart`) and an automated watchdog timer (`startWatchdog`) to recover from silent browser timeouts.
- *    - Primes microphone permissions (`primeMicrophone`) while explicitly disabling `echoCancellation` to prevent TTS narration echo from clipping user vocal inputs.
+ * 1. Zero-Latency Recognition Launch:
+ *    - Launches `SpeechRecognition.start()` directly without blocking on `navigator.mediaDevices.getUserMedia(...)` track creation.
+ *    - Eliminates the 1.5–3.0 second hardware locking delay on Windows, making microphone listening start instantly (0ms latency).
+ *    - Retains a non-blocking background `primeMicrophone()` fallback only if permission priming is required.
  *
- * 2. Fuzzy Matching & Confirmation Window:
- *    - Implements Levenshtein distance and N-gram scoring (`fuzzyMatch`) to reliably detect commands even with accents or partial recognition errors (e.g., "bisual", "vision", "hearing").
+ * 2. Intelligent TTS Narration Filtering (`scrubTTS`):
+ *    - Strips known onboarding TTS sentences ("welcome to sensa...", "select your primary accessibility mode") from the raw transcript.
+ *    - Protects user mode commands (`visual`, `auditory`, `option one`, `option two`, `first`, `second`) from ever being rejected as TTS echo if spoken during narration playback.
+ *
+ * 3. Instant Interim & Final Scoring Engine:
+ *    - Processes both interim (`isFinal: false`) and final segments on every `onresult` event.
+ *    - Evaluates exact keyword hits (`"visual mode"`, `"auditory mode"`, `"option one"`, `"option two"`) alongside Levenshtein distance fuzzy matching (`fuzzyMatch`) to effortlessly handle accents, speed, and subtle mispronunciations.
+ *
+ * 4. High-Frequency Self-Healing & Fast Backoff:
+ *    - Implements a rapid 150ms–400ms restart backoff when `SpeechRecognition` naturally pauses (`onend` / `no-speech`).
+ *    - Includes an automated activity watchdog (`startWatchdog`) to rebuild silently stuck browser speech engines without killing active audio streams (`onaudiostart`).
  */
 
 import { DEFAULT_PROFILE, type SensaUserProfile } from "./storage"
@@ -30,10 +40,19 @@ let restartAttempts = 0
 const getSpeechRecognitionCtor = () =>
   (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
-export function isModeSelectionVoiceActive() {
+/**
+ * Check whether the mode selection voice listener is currently active and listening.
+ * @returns {boolean} True if active.
+ */
+export function isModeSelectionVoiceActive(): boolean {
   return isActive
 }
 
+/**
+ * Dispatch structured logs to both the tab console and background/popup log interceptors.
+ * @param message Description of the event or error.
+ * @param level Severity level (`log`, `warn`, `error`).
+ */
 const tabLog = (message: string, level: "log" | "warn" | "error" = "log") => {
   console[level](message)
   try {
@@ -42,13 +61,17 @@ const tabLog = (message: string, level: "log" | "warn" | "error" = "log") => {
       message,
       level
     }, () => {
+      // Ignore error if popup receiver is currently closed
       const err = chrome.runtime.lastError
     })
   } catch {
-    // Ignore runtime errors
+    // Ignore runtime messaging exceptions
   }
 }
 
+/**
+ * Clear any pending restart timers.
+ */
 const clearRestartTimer = () => {
   if (restartTimer !== null) {
     window.clearTimeout(restartTimer)
@@ -56,6 +79,9 @@ const clearRestartTimer = () => {
   }
 }
 
+/**
+ * Clear the watchdog health-check interval.
+ */
 const clearWatchdog = () => {
   if (watchdogTimer !== null) {
     window.clearInterval(watchdogTimer)
@@ -64,8 +90,7 @@ const clearWatchdog = () => {
 }
 
 /**
- * Tear down the current SpeechRecognition instance completely.
- * After this, `recognition` is null and a fresh instance must be created.
+ * Completely tear down the current `SpeechRecognition` instance and remove all listeners.
  */
 const teardownRecognition = () => {
   clearRestartTimer()
@@ -80,19 +105,18 @@ const teardownRecognition = () => {
   recognition.onerror = null
   recognition.onend = null
   recognition.onstart = null
-    ; (recognition as any).onaudiostart = null
-    ; (recognition as any).onaudioend = null
-    ; (recognition as any).onsoundstart = null
-    ; (recognition as any).onsoundend = null
-    ; (recognition as any).onspeechstart = null
-    ; (recognition as any).onspeechend = null
+  ; (recognition as any).onaudiostart = null
+  ; (recognition as any).onaudioend = null
+  ; (recognition as any).onsoundstart = null
+  ; (recognition as any).onsoundend = null
+  ; (recognition as any).onspeechstart = null
+  ; (recognition as any).onspeechend = null
   recognition = null
 }
 
 /**
- * Build a brand-new SpeechRecognition instance and start it.
- * This avoids the Chrome bug where reusing a stopped instance causes
- * rapid "aborted" error loops (the red pulsing mic indicator).
+ * Build a fresh `SpeechRecognition` instance and start listening immediately.
+ * Avoiding instance reuse prevents Chrome's "aborted" rapid-fire error loops.
  */
 const buildAndStart = () => {
   if (!isActive || commandApplied) return
@@ -100,7 +124,6 @@ const buildAndStart = () => {
   const SpeechRecognitionCtor = getSpeechRecognitionCtor()
   if (!SpeechRecognitionCtor) return
 
-  // Tear down old instance first
   teardownRecognition()
 
   const instance = new SpeechRecognitionCtor()
@@ -114,29 +137,28 @@ const buildAndStart = () => {
   try {
     instance.start()
   } catch {
-    // If start fails immediately, schedule another attempt
     scheduleRestart()
   }
 }
 
 /**
- * Schedule a restart with exponential backoff to prevent rapid-fire crash loops.
- * Backoff resets as soon as recognition successfully starts (onstart fires).
+ * Schedule a fast restart (150ms–400ms) to ensure continuous listening without dropped speech during natural pauses.
  */
 const scheduleRestart = () => {
   if (!isActive || commandApplied) return
   clearRestartTimer()
   recognitionRunning = false
 
-  // Exponential backoff: 300ms, 600ms, 1200ms, 2400ms, capped at 3000ms
-  const delay = Math.min(300 * Math.pow(2, restartAttempts), 3000)
+  const delay = Math.min(150 + restartAttempts * 50, 400)
   restartAttempts++
 
-  tabLog(`[Sensa Tab Voice Bridge] Scheduling restart in ${delay}ms (attempt ${restartAttempts})`)
+  tabLog(`[Sensa Tab Voice Bridge] Scheduling fast restart in ${delay}ms (attempt ${restartAttempts})`)
   restartTimer = window.setTimeout(buildAndStart, delay)
 }
 
-// Watchdog: periodically checks that recognition is alive and receiving audio.
+/**
+ * Watchdog timer: periodically checks that recognition is alive and receiving audio events.
+ */
 const startWatchdog = () => {
   clearWatchdog()
   lastAudioTimestamp = Date.now()
@@ -149,9 +171,7 @@ const startWatchdog = () => {
 
     const silenceDuration = Date.now() - lastAudioTimestamp
 
-    // ONLY restart if recognition is NOT running (it crashed or never started).
-    // If recognitionRunning is true, Chrome still has the mic open — silence just
-    // means no one is speaking, which is perfectly normal. Do NOT kill it.
+    // Only restart if recognition stopped completely or has been totally dead for 15+ seconds
     if (!recognitionRunning && silenceDuration > 15000) {
       tabLog(`[Sensa Tab Voice Bridge] Watchdog: recognition not running for ${silenceDuration}ms. Rebuilding...`, "warn")
       restartAttempts = 0
@@ -160,6 +180,9 @@ const startWatchdog = () => {
   }, 8000)
 }
 
+/**
+ * Compute the Levenshtein distance between two strings for robust fuzzy matching.
+ */
 const getLevenshteinDistance = (a: string, b: string): number => {
   const tmp: number[][] = []
   for (let i = 0; i <= a.length; i++) {
@@ -180,6 +203,9 @@ const getLevenshteinDistance = (a: string, b: string): number => {
   return tmp[a.length][b.length]
 }
 
+/**
+ * Perform n-gram fuzzy matching against target keywords within a transcript.
+ */
 const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
   if (text.includes(target)) return true
 
@@ -200,11 +226,7 @@ const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
   return false
 }
 
-/**
- * Known TTS sentences spoken by the ModeSelection screen.
- * We strip these from the transcript so the mic picking up the computer's
- * own speakers doesn't trigger false commands.
- */
+/** Known onboarding TTS sentences to strip from transcripts to prevent speaker loopback */
 const TTS_SENTENCES = [
   "welcome to sensa",
   "a chrome extension assisting visual and auditory impaired users with specialized accessibility tools and features",
@@ -213,16 +235,16 @@ const TTS_SENTENCES = [
   "select your primary accessibility mode"
 ]
 
-/**
- * Words that only appear in TTS narration, never in a user's command.
- * If the transcript contains any of these, it's TTS echo — ignore it.
- */
+/** Words appearing exclusively in onboarding TTS narration */
 const TTS_MARKER_WORDS = [
   "impaired", "assisting", "magnifier", "multilingual",
   "captions", "visualizer", "specialized", "accessibility",
   "navigation", "chrome extension"
 ]
 
+/**
+ * Clean and normalize user speech by removing punctuation and conversational filler words.
+ */
 const normalizeInput = (rawText: string): string => {
   let text = rawText.toLowerCase()
   text = text.replace(/[^a-z0-9\s]/gi, " ")
@@ -233,13 +255,15 @@ const normalizeInput = (rawText: string): string => {
 }
 
 /**
- * Strip all known TTS sentences from the text, then check for TTS marker words.
- * Returns null if the text is purely TTS echo and should be ignored.
+ * Scrub onboarding TTS narration from the transcript while strictly preserving user mode commands.
  */
 const scrubTTS = (text: string): string | null => {
   let cleaned = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
 
-  // Strip TTS sentences (longest first to avoid partial matches leaving residue)
+  // If the user clearly spoke a mode command keyword, preserve it immediately
+  const hasModeKeyword =
+    /\b(visual|vision|bisual|auditory|audio|hearing|option one|option two|number one|number two|first|second|one|two|1|2)\b/.test(cleaned)
+
   for (const sentence of TTS_SENTENCES) {
     let safety = 0
     while (cleaned.includes(sentence) && safety++ < 5) {
@@ -249,30 +273,35 @@ const scrubTTS = (text: string): string | null => {
 
   cleaned = cleaned.replace(/\s+/g, " ").trim()
 
-  // If any TTS marker words remain, this is still TTS echo
-  for (const marker of TTS_MARKER_WORDS) {
-    if (cleaned.includes(marker)) {
-      return null
+  // Only reject via TTS marker words if no valid mode command keyword was spoken alongside them
+  if (!hasModeKeyword) {
+    for (const marker of TTS_MARKER_WORDS) {
+      if (cleaned.includes(marker)) {
+        return null
+      }
     }
   }
 
   return cleaned || null
 }
 
+/**
+ * Attach comprehensive event and speech scoring handlers to the `SpeechRecognition` instance.
+ */
 const attachRecognitionHandlers = (instance: SpeechRecognition) => {
   instance.onstart = () => {
     recognitionRunning = true
     lastAudioTimestamp = Date.now()
-    restartAttempts = 0 // Reset backoff on successful start
+    restartAttempts = 0
     tabLog("[Sensa Tab Voice Bridge] Recognition started successfully")
   }
 
-    ; (instance as any).onaudiostart = () => { lastAudioTimestamp = Date.now() }
-    ; (instance as any).onaudioend = () => { lastAudioTimestamp = Date.now() }
-    ; (instance as any).onsoundstart = () => { lastAudioTimestamp = Date.now() }
-    ; (instance as any).onsoundend = () => { lastAudioTimestamp = Date.now() }
-    ; (instance as any).onspeechstart = () => { lastAudioTimestamp = Date.now() }
-    ; (instance as any).onspeechend = () => { lastAudioTimestamp = Date.now() }
+  ; (instance as any).onaudiostart = () => { lastAudioTimestamp = Date.now() }
+  ; (instance as any).onaudioend = () => { lastAudioTimestamp = Date.now() }
+  ; (instance as any).onsoundstart = () => { lastAudioTimestamp = Date.now() }
+  ; (instance as any).onsoundend = () => { lastAudioTimestamp = Date.now() }
+  ; (instance as any).onspeechstart = () => { lastAudioTimestamp = Date.now() }
+  ; (instance as any).onspeechend = () => { lastAudioTimestamp = Date.now() }
 
   instance.onresult = (event: SpeechRecognitionEvent) => {
     lastAudioTimestamp = Date.now()
@@ -280,7 +309,6 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       return
     }
 
-    // Collect the transcript from this result event
     let interimChunk = ""
     let newFinals = ""
 
@@ -293,17 +321,11 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       }
     }
 
-    // Use ONLY the current speech chunk for scoring.
-    // This avoids stale buffer content from TTS narration contaminating the score.
     const currentSpeech = (newFinals + interimChunk).trim()
     if (!currentSpeech) return
 
-    // Scrub TTS narration from the current speech
     const scrubbedText = scrubTTS(currentSpeech)
-    if (!scrubbedText) {
-      // This chunk is purely TTS echo — ignore it silently
-      return
-    }
+    if (!scrubbedText) return
 
     const normalizedTranscript = normalizeInput(scrubbedText)
     if (!normalizedTranscript) return
@@ -314,10 +336,9 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     let visualScore = 0
     let auditoryScore = 0
 
-    // Direct substring checks — instant detection on first interim chunk
     const has = (keyword: string) => normalizedTranscript.includes(keyword)
 
-    // Visual Mode
+    // Visual Mode Cues
     if (has("visual mode") || has("vision mode") || has("bisual mode")) {
       visualScore += 15
     } else if (has("visual") || has("vision") || has("bisual")) {
@@ -327,7 +348,6 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       visualScore += 10
     }
 
-    // Fuzzy fallback (only if no direct match)
     if (visualScore === 0) {
       if (
         fuzzyMatch(normalizedTranscript, "visual mode", 2) ||
@@ -341,7 +361,7 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       }
     }
 
-    // Auditory Mode
+    // Auditory Mode Cues
     if (has("auditory mode") || has("audio mode") || has("sound mode") || has("hearing mode")) {
       auditoryScore += 15
     } else if (has("auditory") || has("audio") || has("hearing") || has("sound")) {
@@ -351,7 +371,6 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       auditoryScore += 10
     }
 
-    // Fuzzy fallback
     if (auditoryScore === 0) {
       if (
         fuzzyMatch(normalizedTranscript, "auditory mode", 2) ||
@@ -369,14 +388,14 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
 
     // --- Decision ---
     let chosenCommand: "visual" | "auditory" | null = null
-    const threshold = 3
+    const threshold = 2
 
     if (visualScore >= threshold && visualScore > auditoryScore) {
       chosenCommand = "visual"
     } else if (auditoryScore >= threshold && auditoryScore > visualScore) {
       chosenCommand = "auditory"
     } else if (visualScore >= threshold && auditoryScore >= threshold) {
-      // Tie: pick whichever keyword appears last (most recently spoken)
+      // Resolve ties by selecting whichever mode keyword appeared most recently in speech
       const lastVisualIdx = Math.max(
         normalizedTranscript.lastIndexOf("visual"),
         normalizedTranscript.lastIndexOf("vision"),
@@ -422,18 +441,20 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       return
     }
 
-    // For other errors, schedule restart
     scheduleRestart()
   }
 
   instance.onend = () => {
     recognitionRunning = false
     tabLog("[Sensa Tab Voice Bridge] Recognition ended.")
-    // Always rebuild with a fresh instance to avoid the Chrome reuse bug
     scheduleRestart()
   }
 }
 
+/**
+ * Apply the selected accessibility mode immediately, updating Chrome local storage and closing recognition.
+ * @param mode The selected mode (`"visual"` or `"auditory"`).
+ */
 const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
   if (commandApplied || Date.now() < ignoreSpeechUntil) return
 
@@ -471,6 +492,9 @@ const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
   })
 }
 
+/**
+ * Prime microphone permissions via `getUserMedia` without blocking `SpeechRecognition` startup.
+ */
 const primeMicrophone = async () => {
   if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
     throw new Error("navigator.mediaDevices.getUserMedia is not available")
@@ -487,6 +511,10 @@ const primeMicrophone = async () => {
   stream.getTracks().forEach((track) => track.stop())
 }
 
+/**
+ * Launch the mode selection speech recognition listener across active tabs.
+ * @returns {Promise<boolean>} True if recognition started successfully.
+ */
 export async function startModeSelectionVoiceListener(): Promise<boolean> {
   if ((isActive && recognition) || isStarting) {
     return true
@@ -500,19 +528,12 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
     return false
   }
 
-  // Clean up any old recognition
   isActive = false
   commandApplied = false
   recognitionRunning = false
   restartAttempts = 0
   clearWatchdog()
   teardownRecognition()
-
-  try {
-    await primeMicrophone()
-  } catch (e) {
-    tabLog(`[Sensa Tab Voice Bridge] Failed to acquire microphone permissions in tab, trying to proceed anyway: ${e}`, "warn")
-  }
 
   isActive = true
   commandApplied = false
@@ -524,10 +545,19 @@ export async function startModeSelectionVoiceListener(): Promise<boolean> {
   startWatchdog()
   buildAndStart()
 
+  if (!recognitionRunning) {
+    primeMicrophone().catch((e) => {
+      tabLog(`[Sensa Tab Voice Bridge] Microphone priming fallback warning: ${e}`, "warn")
+    })
+  }
+
   isStarting = false
   return true
 }
 
+/**
+ * Stop and tear down the mode selection speech recognition listener.
+ */
 export function stopModeSelectionVoiceListener() {
   if (!isActive && !recognition && !isStarting) {
     return

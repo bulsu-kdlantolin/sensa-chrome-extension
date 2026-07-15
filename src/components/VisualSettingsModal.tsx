@@ -567,7 +567,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     const loadVoices = () => {
       const availableVoices = window.speechSynthesis.getVoices()
       if (availableVoices.length > 0) {
-        const defaultVoice = availableVoices.find((v) => v.name.includes("Google US English")) || availableVoices.find((v) => v.lang === "en-US" || v.lang.startsWith("en")) || availableVoices[0]
+        const defaultVoice = availableVoices.find((v) => v.name.includes("Google US English")) || availableVoices.find((v) => (v.lang === "en-US" || v.lang.startsWith("en")) && !v.name.includes("David")) || availableVoices.find((v) => v.lang === "en-US" || v.lang.startsWith("en")) || availableVoices[0]
         defaultVoiceURIRef.current = defaultVoice?.voiceURI || ""
         defaultVoiceLabelRef.current = defaultVoice?.name || ""
         setVoices(availableVoices)
@@ -577,8 +577,12 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
         })
         if (defaultVoice?.voiceURI && !defaultVoiceAppliedRef.current) {
           chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (stored) => {
-            const hasStored = typeof stored.sensa_visual_voice_uri === "string" && stored.sensa_visual_voice_uri.length > 0
-            if (!hasStored) {
+            const hasValidStored =
+              typeof stored.sensa_visual_voice_uri === "string" &&
+              stored.sensa_visual_voice_uri.length > 0 &&
+              !stored.sensa_visual_voice_uri.includes("David") &&
+              !stored.sensa_visual_voice_name?.includes("David")
+            if (!hasValidStored && defaultVoice.voiceURI && !defaultVoice.name.includes("David")) {
               chrome.storage.local.set({ sensa_visual_voice_uri: defaultVoice.voiceURI, sensa_visual_voice_name: defaultVoice.name || "" })
             }
             defaultVoiceAppliedRef.current = true
@@ -855,7 +859,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
               const allVoices = window.speechSynthesis.getVoices()
               const defaultUri = selectedVoiceURIRef.current || defaultVoiceURIRef.current
-              const defaultVoiceObj = (defaultUri ? allVoices.find((v) => v.voiceURI === defaultUri) : undefined) || allVoices.find((v) => v.name.includes("Google US English")) || allVoices.find((v) => v.lang === "en-US" || v.lang.startsWith("en")) || allVoices[0]
+              const defaultVoiceObj = (defaultUri ? allVoices.find((v) => v.voiceURI === defaultUri) : undefined) || allVoices.find((v) => v.name.includes("Google US English")) || allVoices.find((v) => (v.lang === "en-US" || v.lang.startsWith("en")) && !v.name.includes("David")) || allVoices.find((v) => v.lang === "en-US" || v.lang.startsWith("en")) || allVoices[0]
 
               const intro = new SpeechSynthesisUtterance("Voice selection opened. You can choose from:")
               if (defaultVoiceObj) {
@@ -1032,7 +1036,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const handleResetToDefault = () => {
     playClickSfx()
     const currentVoices = overlayStateRef.current.voices
-    const defaultVoice = currentVoices.find((voice) => voice.name.includes("Google US English")) || currentVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) || currentVoices[0]
+    const defaultVoice = currentVoices.find((voice) => voice.name.includes("Google US English")) || currentVoices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) || currentVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) || currentVoices[0]
     const defaultVoiceURI = defaultVoice?.voiceURI || ""
     setShowColorPicker(false)
     setIsVoiceDropdownOpen(false)

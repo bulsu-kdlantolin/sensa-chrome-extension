@@ -207,10 +207,11 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     const checkReady = () => {
       const voices = window.speechSynthesis.getVoices()
       const readyVoice =
-        voices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
-        voices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
-        voices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
+        voices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current) ||
+        voices.find((voice) => !voice.name.includes("David") && voice.name === selectedVoiceNameRef.current) ||
+        voices.find((voice) => !voice.name.includes("David") && selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
         voices.find((voice) => voice.name.includes("Google US English")) ||
+        voices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
         voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
         voices[0]
 
@@ -323,10 +324,11 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     }
     const utterance = new SpeechSynthesisUtterance(text)
     const preferredVoice =
-      voices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
-      voices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
-      voices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
+      voices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current) ||
+      voices.find((voice) => !voice.name.includes("David") && voice.name === selectedVoiceNameRef.current) ||
+      voices.find((voice) => !voice.name.includes("David") && selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
       voices.find((voice) => voice.name.includes("Google US English")) ||
+      voices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
       voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
       voices[0]
 
@@ -344,10 +346,11 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
 
           const refreshedVoices = window.speechSynthesis.getVoices()
           const readyVoice =
-            refreshedVoices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
-            refreshedVoices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
-            refreshedVoices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
+            refreshedVoices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current) ||
+            refreshedVoices.find((voice) => !voice.name.includes("David") && voice.name === selectedVoiceNameRef.current) ||
+            refreshedVoices.find((voice) => !voice.name.includes("David") && selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
             refreshedVoices.find((voice) => voice.name.includes("Google US English")) ||
+            refreshedVoices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
             refreshedVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
             refreshedVoices[0]
 
@@ -383,6 +386,19 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
   }
 
   useEffect(() => {
+    if (isSkipping) {
+      narrationCanceledRef.current = true
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        window.speechSynthesis.cancel()
+      }
+      if (descriptionFallbackRef.current !== null) {
+        window.clearTimeout(descriptionFallbackRef.current)
+        descriptionFallbackRef.current = null
+      }
+    }
+  }, [isSkipping])
+
+  useEffect(() => {
     if (isSkipping) return
     if (narrationActiveRef.current) return
     if (!voiceSettingsLoaded) return
@@ -396,7 +412,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
       descriptionFallbackRef.current = null
     }
 
-    // Safety: ensure the visual flow continues even if speech blocks.
+    // Safety: ensure the visual flow continues even if speech blocks or voices change.
     descriptionFallbackRef.current = window.setTimeout(() => {
       if (!isSkipping) setStartDescription(true)
     }, 1200)
@@ -404,18 +420,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     speakWithResolvedVoice(titleText, () => {
       setStartDescription(true)
     })
-
-    return () => {
-      narrationCanceledRef.current = true
-      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
-        window.speechSynthesis.cancel()
-      }
-      if (descriptionFallbackRef.current !== null) {
-        window.clearTimeout(descriptionFallbackRef.current)
-        descriptionFallbackRef.current = null
-      }
-    }
-  }, [features, isSkipping, titleText, voiceReady, voiceSettingsLoaded])
+  }, [isSkipping, titleText, voiceReady, voiceSettingsLoaded])
 
   useEffect(() => {
     if (isSkipping) return

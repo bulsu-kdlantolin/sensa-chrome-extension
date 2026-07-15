@@ -144,21 +144,32 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
 
   const waitForVoices = () =>
     new Promise<SpeechSynthesisVoice[]>((resolve) => {
-      const existingVoices = window.speechSynthesis.getVoices()
-      if (existingVoices.length > 0) {
-        resolve(existingVoices)
-        return
+      const checkAndResolve = () => {
+        const voices = window.speechSynthesis.getVoices()
+        if (voices.length === 0) return false
+        const hasPreferredOrGoogle =
+          (selectedVoiceURIRef.current && voices.some((v) => v.voiceURI === selectedVoiceURIRef.current && !v.name.includes("David"))) ||
+          (selectedVoiceNameRef.current && voices.some((v) => (v.name === selectedVoiceNameRef.current || v.name?.includes(selectedVoiceNameRef.current)) && !v.name.includes("David"))) ||
+          voices.some((v) => v.name.includes("Google US English"))
+        if (hasPreferredOrGoogle) {
+          resolve(voices)
+          return true
+        }
+        return false
       }
+
+      if (checkAndResolve()) return
 
       const timeoutId = window.setTimeout(() => {
         window.speechSynthesis.removeEventListener("voiceschanged", handleVoicesChanged)
         resolve(window.speechSynthesis.getVoices())
-      }, 1200)
+      }, 800)
 
       const handleVoicesChanged = () => {
-        window.clearTimeout(timeoutId)
-        window.speechSynthesis.removeEventListener("voiceschanged", handleVoicesChanged)
-        resolve(window.speechSynthesis.getVoices())
+        if (checkAndResolve()) {
+          window.clearTimeout(timeoutId)
+          window.speechSynthesis.removeEventListener("voiceschanged", handleVoicesChanged)
+        }
       }
 
       window.speechSynthesis.addEventListener("voiceschanged", handleVoicesChanged)
@@ -194,11 +205,15 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
     }
 
     const availableVoices = await waitForVoices()
-    let preferredVoice = availableVoices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current)
+    let preferredVoice = availableVoices.find(
+      (voice) => voice.voiceURI === selectedVoiceURIRef.current && !voice.name.includes("David")
+    )
 
-    if (!preferredVoice && selectedVoiceNameRef.current) {
+    if (!preferredVoice && selectedVoiceNameRef.current && !selectedVoiceNameRef.current.includes("David")) {
       preferredVoice = availableVoices.find(
-        (voice) => voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current)
+        (voice) =>
+          !voice.name.includes("David") &&
+          (voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current))
       )
     }
 
@@ -207,7 +222,16 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
     }
 
     if (!preferredVoice) {
-      preferredVoice = availableVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) || availableVoices[0]
+      preferredVoice =
+        availableVoices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
+        availableVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
+        availableVoices[0]
+    }
+
+    if (preferredVoice && !preferredVoice.name.includes("David") && (selectedVoiceNameRef.current?.includes("David") || selectedVoiceURIRef.current?.includes("David"))) {
+      chrome.storage.local.set({ sensa_visual_voice_uri: preferredVoice.voiceURI, sensa_visual_voice_name: preferredVoice.name })
+      selectedVoiceURIRef.current = preferredVoice.voiceURI
+      selectedVoiceNameRef.current = preferredVoice.name
     }
 
     if (!preferredVoice) {

@@ -479,12 +479,13 @@ export function useSpeech(
       const availableVoices = window.speechSynthesis.getVoices();
       if (availableVoices.length > 0) {
         // Prefer voiceURI match, fallback to voice name match for compatibility
-        let preferredVoice = availableVoices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current);
-        if (!preferredVoice && selectedVoiceNameRef.current) {
-          preferredVoice = availableVoices.find((voice) => voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current));
+        let preferredVoice = availableVoices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current);
+        if (!preferredVoice && selectedVoiceNameRef.current && !selectedVoiceNameRef.current.includes("David")) {
+          preferredVoice = availableVoices.find((voice) => !voice.name.includes("David") && (voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current)));
         }
         if (!preferredVoice) {
           preferredVoice = availableVoices.find((voice) => voice.name.includes("Google US English")) ||
+            availableVoices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
             availableVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
             availableVoices[0];
         }

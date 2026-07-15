@@ -211,9 +211,10 @@ export default function FloatingDockManager() {
 
       if (availableVoices.length > 0) {
         const preferredVoice =
-          availableVoices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
-          availableVoices.find((voice) => voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current)) ||
+          availableVoices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current) ||
+          availableVoices.find((voice) => !voice.name.includes("David") && (voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current))) ||
           availableVoices.find((voice) => voice.name.includes("Google US English")) ||
+          availableVoices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
           availableVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
           availableVoices[0]
 
@@ -602,12 +603,13 @@ export default function FloatingDockManager() {
       // Apply preferred voice if available (try URI first, then name)
       const availableVoices = window.speechSynthesis.getVoices()
       if (availableVoices.length > 0) {
-        let preferred = availableVoices.find((v) => v.voiceURI === selectedVoiceURIRef.current)
-        if (!preferred && selectedVoiceNameRef.current) {
-          preferred = availableVoices.find((v) => v.name === selectedVoiceNameRef.current || v.name?.includes(selectedVoiceNameRef.current))
+        let preferred = availableVoices.find((v) => !v.name.includes("David") && v.voiceURI === selectedVoiceURIRef.current)
+        if (!preferred && selectedVoiceNameRef.current && !selectedVoiceNameRef.current.includes("David")) {
+          preferred = availableVoices.find((v) => !v.name.includes("David") && (v.name === selectedVoiceNameRef.current || v.name?.includes(selectedVoiceNameRef.current)))
         }
         if (!preferred) {
           preferred = availableVoices.find((v) => v.name.includes("Google US English")) ||
+            availableVoices.find((v) => (v.lang === "en-US" || v.lang.startsWith("en")) && !v.name.includes("David")) ||
             availableVoices.find((v) => v.lang === "en-US" || v.lang.startsWith("en")) ||
             availableVoices[0]
         }
@@ -677,12 +679,13 @@ export default function FloatingDockManager() {
 
             const availableVoices = window.speechSynthesis.getVoices()
             if (availableVoices.length > 0) {
-              let preferred = availableVoices.find((v) => v.voiceURI === selectedVoiceURIRef.current)
-              if (!preferred && selectedVoiceNameRef.current) {
-                preferred = availableVoices.find((v) => v.name === selectedVoiceNameRef.current || v.name?.includes(selectedVoiceNameRef.current))
+              let preferred = availableVoices.find((v) => !v.name.includes("David") && v.voiceURI === selectedVoiceURIRef.current)
+              if (!preferred && selectedVoiceNameRef.current && !selectedVoiceNameRef.current.includes("David")) {
+                preferred = availableVoices.find((v) => !v.name.includes("David") && (v.name === selectedVoiceNameRef.current || v.name?.includes(selectedVoiceNameRef.current)))
               }
               if (!preferred) {
                 preferred = availableVoices.find((v) => v.name.includes("Google US English")) ||
+                  availableVoices.find((v) => (v.lang === "en-US" || v.lang.startsWith("en")) && !v.name.includes("David")) ||
                   availableVoices.find((v) => v.lang === "en-US" || v.lang.startsWith("en")) ||
                   availableVoices[0]
               }

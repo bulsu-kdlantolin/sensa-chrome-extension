@@ -19,6 +19,18 @@
 
 declare var process: any;
 
+import audioInterceptorScript from "url:./lib/audioInterceptorMain"
+
+chrome.scripting.registerContentScripts([
+  {
+    id: "srcLibAudioInterceptorMain",
+    js: [audioInterceptorScript.split("/").pop()?.split("?")[0] || "audioInterceptorMain.js"],
+    matches: ["<all_urls>"],
+    world: "MAIN",
+    runAt: "document_start"
+  }
+]).catch(_ => {})
+
 // Hidden wake-up ping for Render backend (prevents cold start delays)
 const RENDER_BACKEND_URL = "https://sensa-chrome-extension-backend.onrender.com/"
 const pingBackend = () => {

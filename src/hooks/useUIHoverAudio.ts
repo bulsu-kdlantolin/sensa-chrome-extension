@@ -98,10 +98,11 @@ export function useUIHoverAudio() {
 			const utterance = new SpeechSynthesisUtterance(text)
 			const voices = window.speechSynthesis.getVoices()
 			const preferredVoice =
-				voices.find((voice) => voice.voiceURI === selectedVoiceURIRef.current) ||
-				voices.find((voice) => voice.name === selectedVoiceNameRef.current) ||
-				voices.find((voice) => selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
+				voices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current) ||
+				voices.find((voice) => !voice.name.includes("David") && voice.name === selectedVoiceNameRef.current) ||
+				voices.find((voice) => !voice.name.includes("David") && selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
 				voices.find((voice) => voice.name.includes("Google US English")) ||
+				voices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
 				voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
 				voices[0]
 

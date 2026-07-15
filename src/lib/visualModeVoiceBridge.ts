@@ -155,15 +155,15 @@ const speakFeedbackInTab = (text: string) => {
     const voiceName = typeof res.sensa_visual_voice_name === "string" ? res.sensa_visual_voice_name : ""
 
     const speak = (voices: SpeechSynthesisVoice[]) => {
-      let preferredVoice = voices.find((v) => v.voiceURI === voiceURI)
-      if (!preferredVoice && voiceName) {
-        preferredVoice = voices.find((v) => v.name === voiceName || v.name?.includes(voiceName))
+      let preferredVoice = voices.find((v) => !v.name.includes("David") && v.voiceURI === voiceURI)
+      if (!preferredVoice && voiceName && !voiceName.includes("David")) {
+        preferredVoice = voices.find((v) => !v.name.includes("David") && (v.name === voiceName || v.name?.includes(voiceName)))
       }
       if (!preferredVoice) {
         preferredVoice = voices.find((v) => v.name.includes("Google US English"))
       }
       if (!preferredVoice) {
-        preferredVoice = voices.find((v) => v.lang === "en-US" || v.lang.startsWith("en")) || voices[0]
+        preferredVoice = voices.find((v) => (v.lang === "en-US" || v.lang.startsWith("en")) && !v.name.includes("David")) || voices.find((v) => v.lang === "en-US" || v.lang.startsWith("en")) || voices[0]
       }
 
       window.speechSynthesis.cancel()
