@@ -50,8 +50,21 @@ const clearRestartTimer = () => {
   }
 }
 
+const isExtensionContextValid = (): boolean => {
+  try {
+    return typeof chrome !== "undefined" && typeof chrome.runtime !== "undefined" && typeof chrome.runtime.id === "string"
+  } catch {
+    return false
+  }
+}
+
 const buildAndStart = () => {
   if (!isActive) return
+  if (!isExtensionContextValid()) {
+    isActive = false
+    teardownRecognition()
+    return
+  }
   const SpeechRecognitionCtor = getSpeechRecognitionCtor()
   if (!SpeechRecognitionCtor) return
 
@@ -76,6 +89,11 @@ let visualRestartAttempts = 0
 
 const scheduleRestart = () => {
   if (!isActive) return
+  if (!isExtensionContextValid()) {
+    isActive = false
+    teardownRecognition()
+    return
+  }
   clearRestartTimer()
   const delay = Math.min(500 * Math.pow(2, visualRestartAttempts), 5000)
   visualRestartAttempts++

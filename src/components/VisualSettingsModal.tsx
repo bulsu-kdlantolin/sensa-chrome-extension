@@ -618,8 +618,21 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     let recognition: any = null
     let isPermanentlyDead = false
 
+    const isExtensionContextValid = (): boolean => {
+      try {
+        return typeof chrome !== "undefined" && typeof chrome.runtime !== "undefined" && typeof chrome.runtime.id === "string"
+      } catch {
+        return false
+      }
+    }
+
     const scheduleRestart = () => {
       if (!isComponentMounted || isPermanentlyDead) return
+      if (!isExtensionContextValid()) {
+        isPermanentlyDead = true
+        teardownRecognition()
+        return
+      }
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
         if (!recognition || !isComponentMounted) return

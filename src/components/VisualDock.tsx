@@ -959,6 +959,11 @@ export default function VisualDock({
 
     const buildAndStart = () => {
       if (!isComponentMounted || isPermanentlyDead || isVoiceCommandsSuspended || !isTabVisible) return
+      if (!isExtensionContextValid()) {
+        isPermanentlyDead = true
+        teardownRecognition()
+        return
+      }
       teardownRecognition()
 
       const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -1233,8 +1238,21 @@ export default function VisualDock({
       voiceToggleLockUntil = Date.now() + 1800
     }
 
+    const isExtensionContextValid = (): boolean => {
+      try {
+        return typeof chrome !== "undefined" && typeof chrome.runtime !== "undefined" && typeof chrome.runtime.id === "string"
+      } catch {
+        return false
+      }
+    }
+
     const scheduleRestart = () => {
       if (!isComponentMounted || isPermanentlyDead) return
+      if (!isExtensionContextValid()) {
+        isPermanentlyDead = true
+        teardownRecognition()
+        return
+      }
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
         buildAndStart()
@@ -1242,6 +1260,11 @@ export default function VisualDock({
     }
 
     const reviveEngine = () => {
+      if (!isExtensionContextValid()) {
+        isPermanentlyDead = true
+        teardownRecognition()
+        return
+      }
       if (isPermanentlyDead && !isVoiceCommandsSuspended) {
         isPermanentlyDead = false
         buildAndStart()

@@ -114,12 +114,25 @@ const teardownRecognition = () => {
   recognition = null
 }
 
+const isExtensionContextValid = (): boolean => {
+  try {
+    return typeof chrome !== "undefined" && typeof chrome.runtime !== "undefined" && typeof chrome.runtime.id === "string"
+  } catch {
+    return false
+  }
+}
+
 /**
  * Build a fresh `SpeechRecognition` instance and start listening immediately.
  * Avoiding instance reuse prevents Chrome's "aborted" rapid-fire error loops.
  */
 const buildAndStart = () => {
   if (!isActive || commandApplied) return
+  if (!isExtensionContextValid()) {
+    isActive = false
+    teardownRecognition()
+    return
+  }
 
   const SpeechRecognitionCtor = getSpeechRecognitionCtor()
   if (!SpeechRecognitionCtor) return
@@ -146,6 +159,11 @@ const buildAndStart = () => {
  */
 const scheduleRestart = () => {
   if (!isActive || commandApplied) return
+  if (!isExtensionContextValid()) {
+    isActive = false
+    teardownRecognition()
+    return
+  }
   clearRestartTimer()
   recognitionRunning = false
 
