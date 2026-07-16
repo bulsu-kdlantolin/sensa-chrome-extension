@@ -77,13 +77,15 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
     const lerp = (start: number, end: number, amt: number) => (1 - amt) * start + amt * end
 
     const handleMessage = (event: MessageEvent) => {
-      if (event.source !== window || !event.data || event.data.type !== 'SENSA_GAME_AUDIO_FREQUENCY') return
-      if (!gameAudioArray || gameAudioArray.length !== event.data.frequencies.length) {
-        gameAudioArray = new Uint8Array(event.data.frequencies)
-      } else {
-        gameAudioArray.set(event.data.frequencies)
+      if (!event.data) return
+      if (event.data.type === 'SENSA_GAME_AUDIO_FREQUENCY' || event.data.type === 'AUDIO_FREQUENCY_UPDATE') {
+        if (!gameAudioArray || gameAudioArray.length !== event.data.frequencies.length) {
+          gameAudioArray = new Uint8Array(event.data.frequencies)
+        } else {
+          gameAudioArray.set(event.data.frequencies)
+        }
+        lastGameAudioTick = Date.now()
       }
-      lastGameAudioTick = Date.now()
     }
 
     const handleRuntimeMessage = (message: any) => {
@@ -163,6 +165,10 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
       if ((document.visibilityState === 'visible' || document.hasFocus()) && isActive) {
         if (audioCtx && audioCtx.state === 'suspended') {
           audioCtx.resume().catch(() => { })
+        }
+        scanAndAttachMedia()
+        if (!isCaptionsActive) {
+          chrome.runtime.sendMessage({ type: "START_RADAR_CAPTURE" }).catch(() => { })
         }
       }
     }

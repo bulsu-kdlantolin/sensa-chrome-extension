@@ -19,6 +19,7 @@
 import cssText from "data-text:~style.css"
 import type { PlasmoCSConfig } from "plasmo"
 import { useState, useRef, useEffect } from "react"
+import { createPortal } from "react-dom"
 import VisualDock from "./components/VisualDock"
 import AuditoryDock from "./components/AuditoryDock"
 import VisualSettingsModal from "./components/VisualSettingsModal"
@@ -113,6 +114,68 @@ const getSpeechRate = (readingSpeed: number) => {
   if (clamped <= 1) return clamped
 
   return 1 + (clamped - 1) * 0.4
+}
+
+function CaptionFullscreenPortal({ children }: { children: React.ReactNode }) {
+  const [fsTarget, setFsTarget] = useState<Element | null>(() => {
+    return document.fullscreenElement || (document as any).webkitFullscreenElement || null
+  })
+
+  useEffect(() => {
+    const updateFs = () => {
+      const fsEl = document.fullscreenElement || (document as any).webkitFullscreenElement || null
+      setFsTarget(fsEl)
+      if (!fsEl) {
+        document.querySelectorAll("#sensa-fullscreen-caption-host").forEach((el) => el.remove())
+      }
+    }
+    document.addEventListener("fullscreenchange", updateFs, true)
+    document.addEventListener("webkitfullscreenchange", updateFs, true)
+    return () => {
+      document.removeEventListener("fullscreenchange", updateFs, true)
+      document.removeEventListener("webkitfullscreenchange", updateFs, true)
+    }
+  }, [])
+
+  if (!fsTarget) {
+    return <>{children}</>
+  }
+
+  if (fsTarget.tagName.toUpperCase() === "IFRAME") {
+    return null
+  }
+
+  const targetContainer =
+    fsTarget.tagName.toUpperCase() === "VIDEO" && fsTarget.parentElement
+      ? fsTarget.parentElement
+      : fsTarget
+
+  let hostEl = targetContainer.querySelector("#sensa-fullscreen-caption-host") as HTMLDivElement
+  if (!hostEl) {
+    hostEl = document.createElement("div")
+    hostEl.id = "sensa-fullscreen-caption-host"
+    hostEl.style.cssText =
+      "position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2147483647;"
+    targetContainer.appendChild(hostEl)
+  }
+
+  if (!hostEl.shadowRoot) {
+    const shadow = hostEl.attachShadow({ mode: "open" })
+    const style = document.createElement("style")
+    style.textContent = cssText
+    shadow.appendChild(style)
+    const rootDiv = document.createElement("div")
+    rootDiv.id = "sensa-fullscreen-caption-root"
+    rootDiv.style.cssText = "pointer-events: auto; width: 100%; height: 100%;"
+    shadow.appendChild(rootDiv)
+  }
+
+  const portalRoot = hostEl.shadowRoot.querySelector("#sensa-fullscreen-caption-root")
+  if (!portalRoot) {
+    return <>{children}</>
+  }
+
+  return createPortal(children, portalRoot)
 }
 
 export default function FloatingDockManager() {
@@ -251,6 +314,28 @@ export default function FloatingDockManager() {
     sourceLanguage,
     isPopupOpen        // Pass isPopupOpen so clicking the toolbar icon instantly triggers capture!
   )
+
+  useEffect(() => {
+    const payload = {
+      type: "SENSA_IFRAME_CAPTIONS_UPDATE",
+      active: Boolean(isAuditoryModeActive && isCaptionsActive),
+      captions,
+      captionsError,
+      textSize,
+      auditorySettings,
+      captionTransparency,
+      sourceLanguage,
+      targetLanguage
+    }
+
+    try {
+      document.querySelectorAll("iframe").forEach((ifr) => {
+        ifr.contentWindow?.postMessage(payload, "*")
+      })
+    } catch { }
+
+    chrome.runtime.sendMessage({ type: "SENSA_BROADCAST_TO_ALL_FRAMES", payload }).catch(() => { })
+  }, [isAuditoryModeActive, isCaptionsActive, captions, captionsError, textSize, auditorySettings, captionTransparency, sourceLanguage, targetLanguage])
 
   useEffect(() => {
     // Load saved voice preferences and keep in sync
@@ -737,21 +822,23 @@ export default function FloatingDockManager() {
       {isAuditoryActive && isFocusMode && <FocusModeOverlay intensity={0.7} />}
 
       {isAuditoryActive && isCaptionsActive && (
-        <LiveCaptionBox
-          captions={captions}
-          error={captionsError}
-          fontSize={textSize}
-          textColor={auditorySettings.textColor || DEFAULT_AUDITORY_SETTINGS.textColor}
-          bgColor={colorWithOpacity(
-            auditorySettings.captionBgColor || DEFAULT_AUDITORY_SETTINGS.captionBgColor,
-            captionTransparency / 100
-          )}
-          fontFamily={auditorySettings.fontFamily || DEFAULT_AUDITORY_SETTINGS.fontFamily}
-          showOriginalText={auditorySettings.translationEnabled === false ? true : auditorySettings.showOriginalText}
-          translationEnabled={auditorySettings.translationEnabled !== false}
-          sourceLanguage={sourceLanguage}
-          targetLanguage={targetLanguage}
-        />
+        <CaptionFullscreenPortal>
+          <LiveCaptionBox
+            captions={captions}
+            error={captionsError}
+            fontSize={textSize}
+            textColor={auditorySettings.textColor || DEFAULT_AUDITORY_SETTINGS.textColor}
+            bgColor={colorWithOpacity(
+              auditorySettings.captionBgColor || DEFAULT_AUDITORY_SETTINGS.captionBgColor,
+              captionTransparency / 100
+            )}
+            fontFamily={auditorySettings.fontFamily || DEFAULT_AUDITORY_SETTINGS.fontFamily}
+            showOriginalText={auditorySettings.translationEnabled === false ? true : auditorySettings.showOriginalText}
+            translationEnabled={auditorySettings.translationEnabled !== false}
+            sourceLanguage={sourceLanguage}
+            targetLanguage={targetLanguage}
+          />
+        </CaptionFullscreenPortal>
       )}
 
       <div className="sensa-ui-root">

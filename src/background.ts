@@ -299,6 +299,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false
   }
 
+  // Relay live caption state to all child/nested iframes within the active tab
+  if (message?.type === "SENSA_BROADCAST_TO_ALL_FRAMES") {
+    const tabId = sender.tab?.id
+    if (tabId && message.payload) {
+      if (chrome.webNavigation && chrome.webNavigation.getAllFrames) {
+        chrome.webNavigation.getAllFrames({ tabId }, (frames) => {
+          frames?.forEach(f => {
+            if (f.frameId !== 0) {
+              chrome.tabs.sendMessage(tabId, message.payload, { frameId: f.frameId }).catch(() => { })
+            }
+          })
+        })
+      } else {
+        chrome.tabs.sendMessage(tabId, message.payload).catch(() => { })
+      }
+    }
+    sendResponse({ ok: true })
+    return false
+  }
+
+
   // --- FETCH GOOGLE FONTS (Bypasses YouTube's strict CSP!) ---
   if (message?.type === "FETCH_GOOGLE_FONTS") {
     ; (async () => {
