@@ -14,7 +14,7 @@ export const config: PlasmoCSConfig = {
 if (window !== window.top) {
   let audioCtx: AudioContext | null = null
   let analyser: AnalyserNode | null = null
-  let dataArray: Uint8Array<ArrayBuffer> | null = null
+  let dataArray: Uint8Array | null = null
   const connectedInThisSession = new Map<HTMLMediaElement, string>()
 
   const findAllMediaElements = (root: any = document): HTMLMediaElement[] => {

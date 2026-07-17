@@ -73,18 +73,18 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
   useEffect(() => {
     if (!isActive) return
     setCaptions([])
-    chrome.runtime.sendMessage({ type: "UPDATE_CAPTION_LANGUAGE", targetLang: targetLanguage })
+    chrome.runtime.sendMessage({ type: "UPDATE_CAPTION_LANGUAGE", targetLang: targetLanguage }, () => void chrome.runtime.lastError)
   }, [targetLanguage, isActive])
 
   useEffect(() => {
     if (!isActive) return
     setCaptions([])
-    chrome.runtime.sendMessage({ type: "UPDATE_SOURCE_LANGUAGE", sourceLang: sourceLanguage })
+    chrome.runtime.sendMessage({ type: "UPDATE_SOURCE_LANGUAGE", sourceLang: sourceLanguage }, () => void chrome.runtime.lastError)
   }, [sourceLanguage, isActive])
 
   useEffect(() => {
     if (!isActive) {
-      chrome.runtime.sendMessage({ type: "STOP_CAPTURE" })
+      chrome.runtime.sendMessage({ type: "STOP_CAPTURE" }, () => void chrome.runtime.lastError)
       return
     }
 
@@ -194,7 +194,7 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
       document.removeEventListener("visibilitychange", handleVisibilityOrFocus)
       window.removeEventListener("focus", handleVisibilityOrFocus)
       chrome.runtime.onMessage.removeListener(handleMessage)
-      chrome.runtime.sendMessage({ type: "STOP_CAPTURE" })
+      chrome.runtime.sendMessage({ type: "STOP_CAPTURE" }, () => void chrome.runtime.lastError)
     }
   }, [isActive]) 
 

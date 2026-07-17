@@ -255,7 +255,7 @@ export default function AudioProxy() {
                   source: "original",
                   isFinal
                 }
-              })
+              }).catch(() => { })
             }
 
             socket.onmessage = (event) => {
@@ -281,6 +281,7 @@ export default function AudioProxy() {
                       chrome.runtime.sendMessage(
                         { type: "TRANSLATE_TEXT", text: trimmed, targetLang: currentTargetLang },
                         (res) => {
+                          if (chrome.runtime.lastError) return
                           if (res?.ok && res.translated) {
                             chrome.runtime.sendMessage({
                               type: "FORWARD_TO_TAB",
