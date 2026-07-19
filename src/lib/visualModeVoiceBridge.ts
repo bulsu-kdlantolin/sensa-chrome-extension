@@ -368,6 +368,10 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       activateScore += 4
     }
 
+    if (check("deactivate", "stop", "disable", "turn off")) {
+      activateScore -= 15
+    }
+
     // Match deactivate cues
     deactivateScore += count("deactivate visual mode") * 5
     deactivateScore += count("stop visual mode") * 5

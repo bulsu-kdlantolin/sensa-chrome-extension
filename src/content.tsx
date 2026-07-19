@@ -188,13 +188,16 @@ export default function FloatingDockManager() {
   const [isVisualSettingsOpenViaVoice, setIsVisualSettingsOpenViaVoice] = useState(false)
   const [isAuditorySettingsOpen, setIsAuditorySettingsOpen] = useState(false)
   const [isPopupOpen, setIsPopupOpen] = useState(false)
+  const isPopupOpenRef = useRef(false)
 
   useEffect(() => {
     const handleConnect = (port: chrome.runtime.Port) => {
       if (port.name === "sensa-popup") {
         setIsPopupOpen(true)
+        isPopupOpenRef.current = true
         port.onDisconnect.addListener(() => {
           setIsPopupOpen(false)
+          isPopupOpenRef.current = false
           stopVisualModeVoiceListener()
           stopWelcomeVoiceListener()
           stopModeSelectionVoiceListener()
@@ -270,31 +273,72 @@ export default function FloatingDockManager() {
         selectedVoiceNameRef.current = res.sensa_visual_voice_name
       }
 
-      window.speechSynthesis.resume()
-      window.speechSynthesis.cancel()
+      const resolveVoice = (voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined => {
+        return (
+          voices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current) ||
+          voices.find((voice) => !voice.name.includes("David") && (voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current))) ||
+          voices.find((voice) => voice.name.includes("Google US English")) ||
+          voices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David") && !voice.name.includes("Mark")) ||
+          voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
+          voices[0]
+        )
+      }
 
-      const utterance = new SpeechSynthesisUtterance(message)
-      const availableVoices = window.speechSynthesis.getVoices()
+      const isGoodVoice = (voice: SpeechSynthesisVoice | undefined): boolean => {
+        if (!voice) return false
+        // Accept Google voices or explicitly stored user preference
+        if (voice.name.includes("Google")) return true
+        if (selectedVoiceURIRef.current && voice.voiceURI === selectedVoiceURIRef.current) return true
+        if (selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) return true
+        return false
+      }
 
-      if (availableVoices.length > 0) {
-        const preferredVoice =
-          availableVoices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current) ||
-          availableVoices.find((voice) => !voice.name.includes("David") && (voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current))) ||
-          availableVoices.find((voice) => voice.name.includes("Google US English")) ||
-          availableVoices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
-          availableVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
-          availableVoices[0]
+      const doSpeak = (preferredVoice: SpeechSynthesisVoice | undefined) => {
+        window.speechSynthesis.resume()
+        window.speechSynthesis.cancel()
 
+        const utterance = new SpeechSynthesisUtterance(message)
         if (preferredVoice) {
           utterance.voice = preferredVoice
           utterance.lang = preferredVoice.lang
         }
+        utterance.rate = 1
+        utterance.pitch = 1
+        utterance.volume = 1
+        window.speechSynthesis.speak(utterance)
       }
 
-      utterance.rate = 1
-      utterance.pitch = 1
-      utterance.volume = 1
-      window.speechSynthesis.speak(utterance)
+      const availableVoices = window.speechSynthesis.getVoices()
+      const preferred = resolveVoice(availableVoices)
+
+      // If we already found a good voice (Google or user's stored preference), speak immediately
+      if (isGoodVoice(preferred)) {
+        doSpeak(preferred)
+        return
+      }
+
+      // Otherwise wait for network voices (Google) to load
+      let resolved = false
+      const timeoutId = window.setTimeout(() => {
+        if (resolved) return
+        resolved = true
+        window.speechSynthesis.removeEventListener("voiceschanged", onVoicesChanged)
+        doSpeak(resolveVoice(window.speechSynthesis.getVoices()))
+      }, 1500)
+
+      const onVoicesChanged = () => {
+        if (resolved) return
+        const freshVoices = window.speechSynthesis.getVoices()
+        const freshPreferred = resolveVoice(freshVoices)
+        if (isGoodVoice(freshPreferred)) {
+          resolved = true
+          window.clearTimeout(timeoutId)
+          window.speechSynthesis.removeEventListener("voiceschanged", onVoicesChanged)
+          doSpeak(freshPreferred)
+        }
+      }
+
+      window.speechSynthesis.addEventListener("voiceschanged", onVoicesChanged)
     })
   }
 
@@ -370,7 +414,6 @@ export default function FloatingDockManager() {
   }
 
   const deactivateDock = () => {
-    setActiveMode(null)
     chrome.storage.local.set({
       sensa_visual_active: false,
       sensa_auditory_active: false,
@@ -514,6 +557,9 @@ export default function FloatingDockManager() {
           : (activeModeRef.current === "auditory")
 
         if (nextVisual && !prevVisual) {
+          // Stop the popup's voice bridge so the VisualDock's own
+          // SpeechRecognition engine can cleanly claim the microphone
+          stopVisualModeVoiceListener()
           setActiveMode("visual")
           setIsAuditorySettingsOpen(false)
           setIsCaptionLanguageOpen(false)
@@ -525,6 +571,10 @@ export default function FloatingDockManager() {
           setIsVisualSettingsOpen(false)
           setIsReadingSpeedOpen(false)
           setIsVoiceCommandActive(false)
+          // Restart the popup's voice bridge so the user can say "activate" again
+          if (isPopupOpenRef.current) {
+            startVisualModeVoiceListener()
+          }
           if (!nextAuditory) {
             speakOverlayFeedback("Visual mode deactivated")
           }
@@ -961,7 +1011,7 @@ export default function FloatingDockManager() {
               isPaused={isPaused}              // <-- NEW PROP
               isVoiceCommandActive={isVoiceCommandActive}
               canRestart={isPlaying || isPaused}
-              isVoiceCommandsSuspended={isSettingsOverlayOpen || isReadingSpeedOpen || isModeSelectionVoiceActive || isPopupOpen}
+              isVoiceCommandsSuspended={isSettingsOverlayOpen || isReadingSpeedOpen || isModeSelectionVoiceActive}
               onTogglePlay={togglePlayPause}   // <-- NEW PROP
               onToggleVoiceCommand={() => {
                 setIsVoiceCommandActive(prev => {

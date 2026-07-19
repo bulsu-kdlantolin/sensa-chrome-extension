@@ -22,12 +22,14 @@
   },
   "devDependencies": {
     "@ianvs/prettier-plugin-sort-imports": "4.1.1",
+    "@playwright/test": "^1.61.1",
     "@types/annyang": "^2.6.5",
     "@types/chrome": "0.0.258",
     "@types/node": "20.11.5",
     "@types/react": "18.2.48",
     "@types/react-dom": "18.2.18",
     "patch-package": "^8.0.1",
+    "playwright": "^1.61.1",
     "postcss": "8.4.33",
     "prettier": "3.2.4",
     "typescript": "5.3.3"

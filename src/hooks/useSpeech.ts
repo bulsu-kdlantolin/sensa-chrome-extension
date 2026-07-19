@@ -121,6 +121,13 @@ const shouldSplitAtDot = (text: string, dotIndex: number) => {
 
   // Handles dotted abbreviations/initialisms like U.S. and U.S.A.
   if (/^(?:[A-Za-z]\.){2,}$/.test(token)) {
+    const remainder = text.slice(dotIndex + 1);
+    const nextNonSpace = remainder.match(/\S/)?.[0] ?? "";
+    if (/[A-Z]/.test(nextNonSpace)) {
+      if (remainder.startsWith(" ") && /[A-Z]/.test(remainder.trim()[0])) {
+         return true; 
+      }
+    }
     return false;
   }
 
@@ -128,6 +135,10 @@ const shouldSplitAtDot = (text: string, dotIndex: number) => {
   if (/^[A-Za-z]\.$/.test(token)) {
     const remainder = text.slice(dotIndex + 1);
     const nextNonSpace = remainder.match(/\S/)?.[0] ?? "";
+    
+    if (tokenLower === "e." && remainder.toLowerCase().startsWith("g.")) return false;
+    if (tokenLower === "i." && remainder.toLowerCase().startsWith("e.")) return false;
+
     if (/[A-Z]/.test(nextNonSpace)) {
       return false;
     }
