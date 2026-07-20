@@ -96,7 +96,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const springTransition = "transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)]"
 
   const titleText = "Welcome to Sensa"
-  const descriptionText = "A Chrome extension assisting visual and auditory impaired users with specialized accessibility tools and features."
+  const descriptionText = "A browser extension assisting visual and auditory impaired users with specialized accessibility tools and features."
   const subtitleText = "Select your primary accessibility mode"
   const descriptionWords = useMemo(() => descriptionText.split(" "), [descriptionText])
   const subtitleWords = useMemo(() => subtitleText.split(" "), [subtitleText])

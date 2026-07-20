@@ -247,8 +247,8 @@ const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
 /** Known onboarding TTS sentences to strip from transcripts to prevent speaker loopback */
 const TTS_SENTENCES = [
   "welcome to sensa",
-  "a chrome extension assisting visual and auditory impaired users with specialized accessibility tools and features",
-  "chrome extension assisting visual and auditory impaired users",
+  "a browser extension assisting visual and auditory impaired users with specialized accessibility tools and features",
+  "browser extension assisting visual and auditory impaired users",
   "specialized accessibility tools and features",
   "select your primary accessibility mode"
 ]
@@ -257,7 +257,7 @@ const TTS_SENTENCES = [
 const TTS_MARKER_WORDS = [
   "impaired", "assisting", "magnifier", "multilingual",
   "captions", "visualizer", "specialized", "accessibility",
-  "navigation", "chrome extension"
+  "navigation", "browser extension"
 ]
 
 /**

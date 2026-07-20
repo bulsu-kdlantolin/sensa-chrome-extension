@@ -12,7 +12,8 @@
   "compilerOptions": {
     "ignoreDeprecations": "5.0",
     "types": [
-      "chrome"
+      "chrome",
+      "node"
     ],
     "paths": {
       "~*": [

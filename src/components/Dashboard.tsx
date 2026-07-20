@@ -535,12 +535,14 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
           </div>
         </div>
 
-        <button
-          onClick={onReset}
-          className={`self-center text-[12px] font-semibold tracking-wide transition-colors ${isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'} focus:outline-none`}
-        >
-          Reset Environment (Dev)
-        </button>
+        {process.env.NODE_ENV === "development" && (
+          <button
+            onClick={onReset}
+            className={`self-center text-[12px] font-semibold tracking-wide transition-colors ${isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'} focus:outline-none`}
+          >
+            Reset Environment (Dev)
+          </button>
+        )}
 
       </div>
 

@@ -28,6 +28,7 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
   const audioCtxRef = useRef<AudioContext | null>(null)
   const isSoundEffectsEnabledRef = useRef(true)
   const hoverSpeakLockRef = useRef(0)
+  const lastClickTimeRef = useRef(0)
   const isActiveViewRef = useRef(isActiveView)
 
   useEffect(() => {
@@ -223,7 +224,7 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
 
     if (!preferredVoice) {
       preferredVoice =
-        availableVoices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
+        availableVoices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David") && !voice.name.includes("Mark") && !voice.name.includes("Zira")) ||
         availableVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
         availableVoices[0]
     }
@@ -342,6 +343,7 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
   }, [])
 
   const handleToggle = () => {
+    lastClickTimeRef.current = Date.now()
     if (isListening) {
       playDeactivateSfx()
     } else {
@@ -359,6 +361,7 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
 
   const speakWithHoverLock = (message: string) => {
     const now = Date.now()
+    if (now - lastClickTimeRef.current < 1000) return
     if (now - hoverSpeakLockRef.current < 900) return
     hoverSpeakLockRef.current = now
     void speakFeedback(message)
