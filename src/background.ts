@@ -185,7 +185,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const targetTabId = await resolveTargetTabId(sender)
         if (targetTabId === null) return
 
-        await chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => { })
+        await chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE", force: true }).catch(() => { })
         await new Promise(resolve => setTimeout(resolve, 200))
 
         await ensureOffscreen()
@@ -195,14 +195,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const storageRes = await chrome.storage.local.get(["sensa_auditory_settings"])
         const deviceId = storageRes?.sensa_auditory_settings?.outputDevice || "default"
 
-        chrome.runtime.sendMessage({
-          type: "EXECUTE_OFFSCREEN_CAPTURE",
-          streamId,
-          targetLang: "EN",
-          targetTabId,
-          deviceId,
-          enableSTT: false
-        }).catch(() => { })
+        let executeSuccess = false
+        for (let i = 0; i < 5; i++) {
+          const delivered = await new Promise((resolve) => {
+            chrome.runtime.sendMessage({
+              type: "EXECUTE_OFFSCREEN_CAPTURE",
+              streamId,
+              targetLang: "EN",
+              targetTabId,
+              deviceId,
+              enableSTT: false
+            }, (res) => {
+              resolve(!!res?.ok)
+            })
+          })
+          if (delivered) {
+            executeSuccess = true
+            break
+          }
+          await new Promise(resolve => setTimeout(resolve, 300))
+        }
+        if (!executeSuccess) {
+          throw new Error("Failed to connect to background audio processor.")
+        }
       } catch (err) {
         // Quietly ignore if activeTab wasn't invoked on this reload
       }
@@ -221,7 +236,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             throw new Error("No Tab ID (could not resolve active tab)")
           }
 
-          await chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => { })
+          const isAlreadyCapturing = await new Promise((resolve) => {
+            chrome.runtime.sendMessage({ type: "PING_OFFSCREEN_CAPTURE", targetTabId }, (res) => {
+              resolve(res?.isCapturing === true)
+            })
+            setTimeout(() => resolve(false), 250)
+          })
+
+          if (isAlreadyCapturing) {
+            return
+          }
+
+          await chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE", force: true }).catch(() => { })
           await new Promise(resolve => setTimeout(resolve, 200))
 
           await ensureOffscreen()
@@ -231,15 +257,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const storageRes = await chrome.storage.local.get(["sensa_auditory_settings"])
           const deviceId = storageRes?.sensa_auditory_settings?.outputDevice || "default"
 
-          chrome.runtime.sendMessage({
-            type: "EXECUTE_OFFSCREEN_CAPTURE",
-            streamId,
-            targetLang: message.targetLang,
-            sourceLang: message.sourceLang,
-            targetTabId,
-            deviceId,
-            enableSTT: true
-          }).catch(() => { })
+          let executeSuccess = false
+          for (let i = 0; i < 5; i++) {
+            const delivered = await new Promise((resolve) => {
+              chrome.runtime.sendMessage({
+                type: "EXECUTE_OFFSCREEN_CAPTURE",
+                streamId,
+                targetLang: message.targetLang,
+                sourceLang: message.sourceLang,
+                targetTabId,
+                deviceId,
+                enableSTT: true
+              }, (res) => {
+                resolve(!!res?.ok)
+              })
+            })
+            if (delivered) {
+              executeSuccess = true
+              break
+            }
+            await new Promise(resolve => setTimeout(resolve, 300))
+          }
+          if (!executeSuccess) {
+            throw new Error("Failed to connect to background audio processor.")
+          }
         } catch (err: any) {
           if (targetTabId) {
             chrome.tabs.sendMessage(targetTabId, { type: "CAPTION_ERROR", error: String(err?.message || err) }).catch(() => { })
@@ -253,7 +294,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "STOP_CAPTURE") {
     ; (async () => {
       try {
-        chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => { })
+        const senderTabId = await resolveTargetTabId(sender)
+        chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE", senderTabId }).catch(() => { })
         sendResponse({ ok: true })
       } catch (err) {
         sendResponse({ ok: false, error: String(err) })

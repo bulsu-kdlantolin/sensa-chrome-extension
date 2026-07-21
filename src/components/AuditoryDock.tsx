@@ -161,8 +161,12 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
       )
     }
 
+    let lastRequestTime = 0
     const handleVisibilityOrFocus = () => {
       if ((document.visibilityState === 'visible' || document.hasFocus()) && isActive) {
+        if (Date.now() - lastRequestTime < 1000) return
+        lastRequestTime = Date.now()
+
         if (audioCtx && audioCtx.state === 'suspended') {
           audioCtx.resume().catch(() => { })
         }
@@ -293,7 +297,7 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
               slowEnergyRef.current = slowEnergyRef.current * 0.97 + rawEnergy * 0.03
               // Only check spikes AFTER baseline is seeded (second frame onward)
               const spikeRatio = rawEnergy / slowEnergyRef.current
-              if (spikeRatio > 2.0 && rawEnergy > 0.10) {
+              if (spikeRatio > 2.5 && rawEnergy > 0.40) {
                 flashIntensityRef.current = Math.min(1, flashIntensityRef.current + 0.6)
               }
             }
@@ -433,7 +437,7 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
         chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => { })
       }
     }
-  }, [isActive])
+  }, [isActive, isCaptionsActive])
 
   return (
     <div className="flex items-center justify-center gap-[2.5px] !w-[28px] !h-[20px] shrink-0">

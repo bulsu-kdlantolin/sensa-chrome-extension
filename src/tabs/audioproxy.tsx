@@ -40,16 +40,41 @@ export default function AudioProxy() {
     let visualizerInterval: ReturnType<typeof setInterval> | null = null
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
     let activeStream: MediaStream | null = null
+    let globalMediaStreamSource: MediaStreamAudioSourceNode | null = null
     let intentionalStop = false
+    let currentCaptureSessionId = 0
 
     let currentTargetLang = "EN"
     let currentSourceLang = "en"
+    let currentCapturedTabId: number | null = null
     let reconnectWebSocketFn: (() => void) | null = null
     let debounceLangTimeout: ReturnType<typeof setTimeout> | null = null
 
     const stopCapture = () => {
       intentionalStop = true
+      currentCaptureSessionId++
+      currentCapturedTabId = null
       reconnectWebSocketFn = null
+      
+      try {
+        if (activeStream) {
+          activeStream.getTracks().forEach((track) => track.stop())
+          activeStream = null
+          globalStream = null
+        }
+        if (globalMediaStreamSource) {
+          globalMediaStreamSource.disconnect()
+          globalMediaStreamSource = null
+        }
+      } catch (err) { }
+
+      try {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.close()
+        }
+        socket = null
+      } catch (err) { }
+
       try {
         if (debounceLangTimeout) {
           clearTimeout(debounceLangTimeout)
@@ -59,7 +84,6 @@ export default function AudioProxy() {
           clearTimeout(reconnectTimeout)
           reconnectTimeout = null
         }
-
         if (visualizerInterval) {
           clearInterval(visualizerInterval)
           visualizerInterval = null
@@ -74,37 +98,27 @@ export default function AudioProxy() {
           analyser.disconnect()
           analyser = null
         }
-        if (audioCtx && audioCtx.state === 'running') {
-          audioCtx.suspend().catch(() => { })
-        }
         if (audioEl) {
           audioEl.pause()
           audioEl.srcObject = null
           audioEl = null
           globalAudioEl = null
         }
-        if (activeStream) {
-          activeStream.getTracks().forEach((track) => track.stop())
-          activeStream = null
-          globalStream = null
-        }
-        if (socket && socket.readyState === WebSocket.OPEN) {
-          socket.close()
-        }
-        socket = null
       } catch (err) { }
     }
 
     const handleMessage = async (msg: any) => {
       if (msg.type === "STOP_OFFSCREEN_CAPTURE") {
+        if (!msg.force && msg.senderTabId && msg.senderTabId !== currentCapturedTabId) {
+          // A different tab is asking to stop (e.g. it was refreshed), ignore it!
+          return
+        }
         stopCapture()
         return
       }
 
       if (msg.type === "EXECUTE_OFFSCREEN_CAPTURE") {
         const { streamId, targetLang, sourceLang, targetTabId, deviceId } = msg
-        currentTargetLang = targetLang || "EN"
-        currentSourceLang = sourceLang || "en"
 
         const log = (message: string) => {
           chrome.runtime.sendMessage({
@@ -116,13 +130,25 @@ export default function AudioProxy() {
 
         try {
           log("1. Starting offscreen capture sequence...")
-          stopCapture()
+          stopCapture() // Call stopCapture FIRST to clean up old streams and increment session ID
+          
+          const sessionId = currentCaptureSessionId
           intentionalStop = false
+          currentTargetLang = targetLang || "EN"
+          currentSourceLang = sourceLang || "en"
+          currentCapturedTabId = targetTabId
 
           log("2. Requesting getUserMedia from Chrome...")
           const stream = await navigator.mediaDevices.getUserMedia({
             audio: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: streamId } } as any
           })
+          
+          if (intentionalStop || sessionId !== currentCaptureSessionId) {
+            log("-> Stream aborted because a newer capture request preempted this one.")
+            stream.getTracks().forEach((track) => track.stop())
+            return
+          }
+          
           activeStream = stream
           globalStream = stream
           log("3. Audio stream acquired successfully!")
@@ -154,6 +180,7 @@ export default function AudioProxy() {
           }
 
           const source = audioCtx.createMediaStreamSource(stream)
+          globalMediaStreamSource = source
           analyser = audioCtx.createAnalyser()
           analyser.fftSize = 256
           analyser.smoothingTimeConstant = 0.05
@@ -407,7 +434,16 @@ export default function AudioProxy() {
       }
     }
 
-    const listener = (msg: any) => {
+    const listener = (msg: any, sender: any, sendResponse: any) => {
+      if (msg.type === "PING_OFFSCREEN_CAPTURE") {
+        sendResponse({ isCapturing: !intentionalStop && currentCapturedTabId === msg.targetTabId })
+        return false
+      }
+      if (msg.type === "EXECUTE_OFFSCREEN_CAPTURE" || msg.type === "STOP_OFFSCREEN_CAPTURE") {
+        sendResponse({ ok: true })
+        handleMessage(msg)
+        return false
+      }
       handleMessage(msg)
       return false
     }

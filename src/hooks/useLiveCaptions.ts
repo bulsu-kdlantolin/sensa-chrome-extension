@@ -94,25 +94,33 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
     let cancelled = false
     let captureRunning = false
     const startCapture = (attempt = 1) => {
-      chrome.runtime.sendMessage({ type: "START_CAPTURE", targetLang: targetLanguageRef.current, sourceLang: sourceLanguageRef.current }, (res) => {
-        if (cancelled) return
-        const combinedError = chrome.runtime.lastError?.message || (typeof res?.error === "string" ? res.error : "")
-        if (res?.ok) {
-          captureRunning = true
+      try {
+        chrome.runtime.sendMessage({ type: "START_CAPTURE", targetLang: targetLanguageRef.current, sourceLang: sourceLanguageRef.current }, (res) => {
+          if (cancelled) return
+          const combinedError = chrome.runtime.lastError?.message || (typeof res?.error === "string" ? res.error : "")
+          if (res?.ok) {
+            captureRunning = true
+            return
+          }
+          
+          if (/receiving end does not exist|message port closed|No Tab ID|Failed to get stream ID|offscreen|already exists|active stream|Cannot capture|invalid state/i.test(combinedError) && attempt < 5) {
+            setTimeout(() => startCapture(attempt + 1), 250)
+            return
+          }
+          captureRunning = false
+          if (/Extension has not been invoked|Chrome pages cannot be captured|activeTab|Failed to get stream ID|permission|not allowed|authorization/i.test(combinedError)) {
+            setError("👆 Chrome requires authorization: please click the Sensa extension icon in your top Chrome toolbar once to enable live captions on this tab!")
+            return
+          }
+          setError(combinedError || "Failed to start capture.")
+        })
+      } catch (err: any) {
+        if (/Extension context invalidated/i.test(String(err))) {
+          setError("🔄 Sensa was updated! Please refresh this page to reconnect.")
           return
         }
-        
-        if (/receiving end does not exist|message port closed|No Tab ID|Failed to get stream ID|offscreen|already exists|active stream|Cannot capture|invalid state/i.test(combinedError) && attempt < 5) {
-          setTimeout(() => startCapture(attempt + 1), 250)
-          return
-        }
-        captureRunning = false
-        if (/Extension has not been invoked|Chrome pages cannot be captured|activeTab|Failed to get stream ID|permission|not allowed|authorization/i.test(combinedError)) {
-          setError("👆 Chrome requires authorization: please click the Sensa extension icon in your top Chrome toolbar once to enable live captions on this tab!")
-          return
-        }
-        setError(combinedError || "Failed to start capture.")
-      })
+        setError(String(err) || "Failed to start capture.")
+      }
     }
     startCapture()
 
@@ -181,8 +189,11 @@ export function useLiveCaptions(isActive: boolean, targetLanguage: string, showO
       }
     }
 
+    let lastRequestTime = 0
     const handleVisibilityOrFocus = () => {
-      if ((document.visibilityState === "visible" || document.hasFocus()) && !cancelled && !captureRunning) {
+      if ((document.visibilityState === "visible" || document.hasFocus()) && !cancelled) {
+        if (Date.now() - lastRequestTime < 1000) return
+        lastRequestTime = Date.now()
         startCapture()
       }
     }
