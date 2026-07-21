@@ -21,6 +21,12 @@ import { useEffect } from "react"
 
 const STT_WS_URL = "wss://sensa-chrome-extension-backend.onrender.com"
 
+// Global references to prevent aggressive garbage collection in Chrome MV3 production builds.
+let globalAudioCtx: AudioContext | null = null
+let globalAudioEl: HTMLAudioElement | null = null
+let globalProcessor: ScriptProcessorNode | null = null
+let globalStream: MediaStream | null = null
+
 /**
  * Offscreen audio proxy component. Runs invisibly in the background.
  */
@@ -62,6 +68,7 @@ export default function AudioProxy() {
           processor.disconnect()
           processor.onaudioprocess = null
           processor = null
+          globalProcessor = null
         }
         if (analyser) {
           analyser.disconnect()
@@ -74,10 +81,12 @@ export default function AudioProxy() {
           audioEl.pause()
           audioEl.srcObject = null
           audioEl = null
+          globalAudioEl = null
         }
         if (activeStream) {
           activeStream.getTracks().forEach((track) => track.stop())
           activeStream = null
+          globalStream = null
         }
         if (socket && socket.readyState === WebSocket.OPEN) {
           socket.close()
@@ -115,12 +124,14 @@ export default function AudioProxy() {
             audio: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: streamId } } as any
           })
           activeStream = stream
+          globalStream = stream
           log("3. Audio stream acquired successfully!")
 
           log("4. Setting up Audio element to unmute the tab...")
           audioEl = new Audio()
           audioEl.srcObject = stream
           audioEl.autoplay = true
+          globalAudioEl = audioEl
 
           if (deviceId && deviceId !== "default" && typeof (audioEl as any).setSinkId === "function") {
             (audioEl as any).setSinkId(deviceId).then(() => {
@@ -133,8 +144,13 @@ export default function AudioProxy() {
           if (!audioCtx) {
             log("-> Building Audio Graph...")
             audioCtx = new window.AudioContext({ sampleRate: 16000 })
+            globalAudioCtx = audioCtx
           } else if (audioCtx.state === 'suspended') {
-            audioCtx.resume().catch(() => { })
+            audioCtx.resume().then(() => {
+              log("-> AudioContext resumed successfully.")
+            }).catch((err) => {
+              log(`-> AudioContext resume error: ${err.message}`)
+            })
           }
 
           const source = audioCtx.createMediaStreamSource(stream)
@@ -198,14 +214,16 @@ export default function AudioProxy() {
                 if (processor) {
                   try { processor.disconnect(); processor.onaudioprocess = null; } catch (e) {}
                   processor = null
+                  globalProcessor = null
                 }
                 if (audioCtx.state === 'suspended') {
-                  audioCtx.resume().catch(() => {})
+                  audioCtx.resume().catch((err) => log(`-> AudioContext resume error on WS open: ${err.message}`))
                 }
                 processor = audioCtx.createScriptProcessor(4096, 1, 1)
+                globalProcessor = processor
                 source.connect(processor)
                 const silentGain = audioCtx.createGain()
-                silentGain.gain.value = 0
+                silentGain.gain.value = 0.00001 // Use a non-zero value to prevent Chrome's silence optimization (which drops onaudioprocess events)
                 processor.connect(silentGain)
                 silentGain.connect(audioCtx.destination)
 
@@ -339,6 +357,7 @@ export default function AudioProxy() {
                 processor.onaudioprocess = null
               } catch (e) {}
               processor = null
+              globalProcessor = null
             }
             if (socket) {
               socket.onclose = null
@@ -346,7 +365,7 @@ export default function AudioProxy() {
               socket = null
             }
             if (audioCtx && audioCtx.state === 'suspended') {
-              audioCtx.resume().catch(() => {})
+              audioCtx.resume().catch((err) => log(`-> Reconnect resume error: ${err.message}`))
             }
             connectWebSocket()
           }
