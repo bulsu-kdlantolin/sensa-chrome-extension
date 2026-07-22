@@ -342,7 +342,7 @@ export default function FloatingDockManager() {
     })
   }
 
-  const { isPlaying, isPaused, togglePlayPause, next, prev, restart } = useSpeech(
+  const { isPlaying, isPaused, togglePlayPause, pauseSpeech, playSpeech, next, prev, restart } = useSpeech(
     readingSpeed,
     highlightColor,
     isSettingsOverlayOpen,
@@ -1013,6 +1013,8 @@ export default function FloatingDockManager() {
               canRestart={isPlaying || isPaused}
               isVoiceCommandsSuspended={isSettingsOverlayOpen || isReadingSpeedOpen || isModeSelectionVoiceActive}
               onTogglePlay={togglePlayPause}   // <-- NEW PROP
+              onPausePlay={pauseSpeech}
+              onPlaySpeech={playSpeech}
               onToggleVoiceCommand={() => {
                 setIsVoiceCommandActive(prev => {
                   const next = !prev

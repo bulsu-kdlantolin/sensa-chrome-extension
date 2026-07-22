@@ -177,6 +177,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  // --- CAPTURE VISIBLE TAB FOR SCREEN MAGNIFIER ---
+  if (message?.action === "CAPTURE_VISIBLE_TAB") {
+    const windowId = sender.tab?.windowId;
+    if (windowId !== undefined) {
+      chrome.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 90 }, (dataUrl) => {
+        sendResponse({ dataUrl });
+      });
+    } else {
+      chrome.tabs.captureVisibleTab({ format: "jpeg", quality: 90 }, (dataUrl) => {
+        sendResponse({ dataUrl });
+      });
+    }
+    return true; // Keep message channel open for async response
+  }
+
   // --- START AUDITORY RADAR CAPTURE ---
   if (message?.type === "START_RADAR_CAPTURE") {
     sendResponse({ ok: true })

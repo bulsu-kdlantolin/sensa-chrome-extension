@@ -286,6 +286,10 @@ interface VisualDockProps {
   canRestart: boolean
   /** Callback to toggle play/pause state */
   onTogglePlay: () => void
+  /** Explicit callback to stop/pause reading */
+  onPausePlay?: () => void
+  /** Explicit callback to start/resume reading */
+  onPlaySpeech?: () => void
   /** Callback to toggle voice command recognition */
   onToggleVoiceCommand: () => void
   /** Callback to jump to next paragraph/section */
@@ -339,15 +343,11 @@ function checkIsOverPanelRect(clientX: number, clientY: number): boolean {
 function ScreenMagnifierOverlay({ isDark, onClose }: { isDark: boolean; onClose: () => void }) {
   const [lensSize, setLensSize] = useState(240)
   const [zoomLevel, setZoomLevel] = useState(2.0)
-  const [isHiddenOverUI, setIsHiddenOverUI] = useState(() => checkIsOverPanelRect(globalLastMousePos.x, globalLastMousePos.y))
-  const [pos, setPos] = useState(() => ({
-    x: globalLastMousePos.x,
-    y: globalLastMousePos.y,
-    scrollX: window.scrollX || 0,
-    scrollY: window.scrollY || 0
-  }))
-  const lastClientRef = useRef({ x: globalLastMousePos.x, y: globalLastMousePos.y })
+  const lensRef = useRef<HTMLDivElement>(null)
+  const contentOuterRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  const lastScrollYRef = useRef(0)
 
   useEffect(() => {
     chrome.storage.local.get(["sensa_visual_magnifier_size", "sensa_visual_magnifier_zoom"], res => {
@@ -365,30 +365,105 @@ function ScreenMagnifierOverlay({ isDark, onClose }: { isDark: boolean; onClose:
 
   const updateSnapshot = useCallback(() => {
     if (!contentRef.current) return
+
+    const vHeight = window.innerHeight
+    const currentScrollY = window.scrollY || document.documentElement.scrollTop || 0
+    lastScrollYRef.current = currentScrollY
+    const buffer = 600 // 600px buffer zone for seamless scrolling
+
     const bodyClone = document.body.cloneNode(true) as HTMLElement
-    bodyClone.querySelectorAll("plasmo-csui, .sensa-ui-root, [data-sensa-visual-dock], script, iframe, [data-sensa-magnifier-lens]").forEach(e => e.remove())
+
+    // Preserve site's true background color & image from documentElement / body
+    try {
+      const htmlStyle = window.getComputedStyle(document.documentElement)
+      const bodyStyle = window.getComputedStyle(document.body)
+
+      let realBg = bodyStyle.backgroundColor
+      if (!realBg || realBg === "rgba(0, 0, 0, 0)" || realBg === "transparent") {
+        realBg = htmlStyle.backgroundColor
+      }
+      if (realBg && realBg !== "rgba(0, 0, 0, 0)" && realBg !== "transparent") {
+        bodyClone.style.backgroundColor = realBg
+        if (lensRef.current) lensRef.current.style.backgroundColor = realBg
+      }
+
+      if (bodyStyle.backgroundImage && bodyStyle.backgroundImage !== "none") {
+        bodyClone.style.backgroundImage = bodyStyle.backgroundImage
+        bodyClone.style.backgroundSize = bodyStyle.backgroundSize
+        bodyClone.style.backgroundRepeat = bodyStyle.backgroundRepeat
+        bodyClone.style.backgroundPosition = bodyStyle.backgroundPosition
+      } else if (htmlStyle.backgroundImage && htmlStyle.backgroundImage !== "none") {
+        bodyClone.style.backgroundImage = htmlStyle.backgroundImage
+        bodyClone.style.backgroundSize = htmlStyle.backgroundSize
+        bodyClone.style.backgroundRepeat = htmlStyle.backgroundRepeat
+        bodyClone.style.backgroundPosition = htmlStyle.backgroundPosition
+      }
+    } catch (e) { }
+
+    // O(1) lightning-fast tag/class removals instead of slow O(N^2) querySelectorAll
+    Array.from(bodyClone.getElementsByTagName("script")).forEach(e => e.remove())
+    Array.from(bodyClone.getElementsByTagName("iframe")).forEach(e => e.remove())
+    Array.from(bodyClone.getElementsByClassName("sensa-ui-root")).forEach(e => e.remove())
+    Array.from(bodyClone.querySelectorAll("[data-sensa-visual-dock], [data-sensa-magnifier-lens]")).forEach(e => e.remove())
+
+    // Preserve body margin and padding to ensure 100% pixel-perfect alignment with original page layout
     bodyClone.style.pointerEvents = "none"
-    bodyClone.style.overflow = "hidden"
-    bodyClone.style.margin = "0"
+    try {
+      const bodyStyle = window.getComputedStyle(document.body)
+      bodyClone.style.margin = bodyStyle.margin
+      bodyClone.style.padding = bodyStyle.padding
+    } catch (e) { }
 
-    const scrollY = window.scrollY || document.documentElement?.scrollTop || 0
-    const scrollX = window.scrollX || document.documentElement?.scrollLeft || 0
+    // Ultra-Fast Recursive Viewport Pruning: Drills into massive containers (like Wikipedia's #content)
+    // and applies layout-skipping to offscreen paragraphs without destroying exact structural layout.
+    const applyDeepViewportPruning = (cloneParent: HTMLElement, realParent: HTMLElement, bufferY: number) => {
+      const cChildren = Array.from(cloneParent.children) as HTMLElement[]
+      const rChildren = Array.from(realParent.children) as HTMLElement[]
 
-    // Fix position:fixed and position:sticky elements (like Wikipedia sidebars/TOC) inside transformed lens
-    const origElements = document.body.querySelectorAll("header, nav, aside, div, section, table, ul, main, footer")
-    const clonedElements = bodyClone.querySelectorAll("header, nav, aside, div, section, table, ul, main, footer")
-    for (let i = 0; i < origElements.length && i < clonedElements.length; i++) {
-      const origEl = origElements[i] as HTMLElement
-      const clonedEl = clonedElements[i] as HTMLElement
-      try {
-        const style = window.getComputedStyle(origEl)
-        if (style.position === "fixed" || style.position === "sticky") {
-          clonedEl.style.translate = `${scrollX}px ${scrollY}px`
+      for (let i = 0; i < cChildren.length && i < rChildren.length; i++) {
+        const cChild = cChildren[i]
+        const rChild = rChildren[i]
+
+        let pos = ""
+        try {
+          pos = window.getComputedStyle(rChild).position
+        } catch (e) { }
+
+        if (pos === "fixed" || pos === "absolute") continue
+
+        const rect = rChild.getBoundingClientRect()
+
+        if (rect.bottom < -bufferY || rect.top > window.innerHeight + bufferY) {
+          // Offscreen: Physically delete the thousands of child nodes inside to bypass CSS selector matching completely (0ms freeze)
+          cChild.innerHTML = ""
+          // Hardcode its exact dimensions so flexbox/grid/margins stay perfectly aligned
+          cChild.style.minWidth = `${rect.width}px`
+          cChild.style.minHeight = `${rect.height}px`
+          cChild.style.width = `${rect.width}px`
+          cChild.style.height = `${rect.height}px`
+          cChild.style.visibility = "hidden"
+          cChild.style.overflow = "hidden"
+        } else {
+          // Onscreen/Intersecting: Keep visible
+          cChild.style.visibility = "visible"
+
+          // Drill down recursively ONLY if this container is massive and overflows the viewport
+          if (rChild.children.length > 0 && rect.height > window.innerHeight * 1.5) {
+            applyDeepViewportPruning(cChild, rChild, bufferY)
+          }
         }
-      } catch (e) { }
+      }
     }
 
-    // Copy canvases (charts, animations)
+    applyDeepViewportPruning(bodyClone, document.body, buffer)
+
+    // Async lazy load images in remaining visible clone nodes
+    Array.from(bodyClone.getElementsByTagName("img")).forEach(img => {
+      img.setAttribute("loading", "lazy")
+      img.setAttribute("decoding", "async")
+    })
+
+    // Copy live canvases
     const origCanvases = document.body.getElementsByTagName("canvas")
     const clonedCanvases = bodyClone.getElementsByTagName("canvas")
     for (let i = 0; i < origCanvases.length && i < clonedCanvases.length; i++) {
@@ -403,46 +478,120 @@ function ScreenMagnifierOverlay({ isDark, onClose }: { isDark: boolean; onClose:
   }, [])
 
   useEffect(() => {
-    updateSnapshot()
-    const intervalTimer = window.setInterval(updateSnapshot, 2000)
-    let clickTimeout: any = null
-    const handleClick = () => {
-      if (clickTimeout) clearTimeout(clickTimeout)
-      clickTimeout = setTimeout(updateSnapshot, 250)
-    }
-    window.addEventListener("click", handleClick, { passive: true })
+    // Defer snapshot generation to an idle frame so clicking the dock icon responds with 0ms latency
+    const timer = setTimeout(() => {
+      if ('requestIdleCallback' in window) {
+        (window as any).requestIdleCallback(updateSnapshot, { timeout: 500 })
+      } else {
+        updateSnapshot()
+      }
+    }, 20)
+    // Live DOM Tracking: Watch for popups, modals, dropdowns, and JS overlays
+    let lastUpdate = 0
+    let throttleTimer: any = null
+
+    const observer = new MutationObserver((mutations) => {
+      let shouldUpdate = false
+      for (const m of mutations) {
+        if (m.target instanceof Element) {
+          // Ignore mutations originating from our own extension UI to prevent infinite loops
+          if (m.target.tagName === "PLASMO-CSUI" || m.target.closest('.sensa-ui-root') || m.target.hasAttribute('data-sensa-magnifier-lens')) {
+             continue
+          }
+        }
+        shouldUpdate = true
+        break
+      }
+
+      if (shouldUpdate) {
+        const now = performance.now()
+        if (now - lastUpdate > 100) { // Max 10 updates per second (10fps) for smooth tracking
+          updateSnapshot()
+          lastUpdate = performance.now()
+        } else {
+          if (throttleTimer) clearTimeout(throttleTimer)
+          throttleTimer = setTimeout(() => {
+            updateSnapshot()
+            lastUpdate = performance.now()
+          }, 100 - (now - lastUpdate))
+        }
+      }
+    })
+
+    // Wait a brief moment for the initial load before observing to avoid startup noise
+    const observerTimer = setTimeout(() => {
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        characterData: true
+      })
+    }, 500)
+
     return () => {
-      window.clearInterval(intervalTimer)
-      if (clickTimeout) clearTimeout(clickTimeout)
-      window.removeEventListener("click", handleClick)
+      clearTimeout(timer)
+      clearTimeout(observerTimer)
+      if (throttleTimer) clearTimeout(throttleTimer)
+      observer.disconnect()
     }
   }, [updateSnapshot])
 
   useEffect(() => {
-    const updatePos = (cx: number, cy: number) => {
-      setPos({
-        x: cx,
-        y: cy,
-        scrollX: window.scrollX || document.documentElement?.scrollLeft || 0,
-        scrollY: window.scrollY || document.documentElement?.scrollTop || 0
-      })
+    // Hide default OS mouse cursor while magnifier is active as requested by user
+    const origBodyCursor = document.body.style.cursor
+    const origHtmlCursor = document.documentElement.style.cursor
+    document.body.style.cursor = "none"
+    document.documentElement.style.cursor = "none"
+
+    return () => {
+      document.body.style.cursor = origBodyCursor
+      document.documentElement.style.cursor = origHtmlCursor
+    }
+  }, [])
+
+  useEffect(() => {
+    let animationFrameId: number | null = null
+
+    const renderLensPosition = (cx: number, cy: number) => {
+      if (!lensRef.current || !contentOuterRef.current || !contentRef.current) return
+      const isOverUI = checkIsOverPanelRect(cx, cy)
+      const scrollX = window.scrollX || document.documentElement?.scrollLeft || 0
+      const scrollY = window.scrollY || document.documentElement?.scrollTop || 0
+
+      // 1. Move the Lens (Outer Circle)
+      lensRef.current.style.transform = `translate3d(${cx - lensSize / 2}px, ${cy - lensSize / 2}px, 0)`
+      lensRef.current.style.opacity = isOverUI ? "0" : "1"
+      lensRef.current.style.visibility = isOverUI ? "hidden" : "visible"
+
+      // 2. Position the Viewport Layer (scales and centers the content under the mouse)
+      contentOuterRef.current.style.transform = `translate3d(${lensSize / 2 - cx * zoomLevel}px, ${lensSize / 2 - cy * zoomLevel}px, 0) scale(${zoomLevel})`
+
+      // 3. Sync Cloned DOM's scroll position matching real document viewport exact layout
+      contentRef.current.style.transform = `translate3d(${-scrollX}px, ${-scrollY}px, 0)`
     }
 
     const handleMouseMove = (e: MouseEvent) => {
-      lastClientRef.current = { x: e.clientX, y: e.clientY }
-      updatePos(e.clientX, e.clientY)
-      setIsHiddenOverUI(checkIsOverPanelRect(e.clientX, e.clientY))
+      globalLastMousePos = { x: e.clientX, y: e.clientY }
+      if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
+      animationFrameId = requestAnimationFrame(() => {
+        renderLensPosition(e.clientX, e.clientY)
+      })
     }
 
-    let scrollTimeout: any = null
+    let scrollDebounceTimer: any = null
     const handleScroll = () => {
-      updatePos(lastClientRef.current.x, lastClientRef.current.y)
-      setIsHiddenOverUI(checkIsOverPanelRect(lastClientRef.current.x, lastClientRef.current.y))
-      if (!scrollTimeout) {
-        scrollTimeout = setTimeout(() => {
+      if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
+      animationFrameId = requestAnimationFrame(() => {
+        renderLensPosition(globalLastMousePos.x, globalLastMousePos.y)
+      })
+
+      // If user scrolls beyond the buffer zone, refresh the DOM slice smoothly
+      const currentScrollY = window.scrollY || document.documentElement?.scrollTop || 0
+      if (Math.abs(currentScrollY - lastScrollYRef.current) > 400) {
+        if (scrollDebounceTimer) clearTimeout(scrollDebounceTimer)
+        scrollDebounceTimer = setTimeout(() => {
           updateSnapshot()
-          scrollTimeout = null
-        }, 150)
+        }, 100)
       }
     }
 
@@ -450,27 +599,31 @@ function ScreenMagnifierOverlay({ isDark, onClose }: { isDark: boolean; onClose:
       if (e.key === "Escape") onClose()
     }
 
+    renderLensPosition(globalLastMousePos.x, globalLastMousePos.y)
+
     window.addEventListener("mousemove", handleMouseMove, { passive: true })
     window.addEventListener("scroll", handleScroll, { passive: true })
     window.addEventListener("keydown", handleKeyDown)
     return () => {
-      if (scrollTimeout) clearTimeout(scrollTimeout)
+      if (animationFrameId !== null) cancelAnimationFrame(animationFrameId)
+      if (scrollDebounceTimer) clearTimeout(scrollDebounceTimer)
       window.removeEventListener("mousemove", handleMouseMove)
       window.removeEventListener("scroll", handleScroll)
       window.removeEventListener("keydown", handleKeyDown)
     }
-  }, [onClose, updateSnapshot])
+  }, [lensSize, zoomLevel, onClose, updateSnapshot])
 
   const bodyEl = document.body
   if (!bodyEl) return null
 
   return ReactDOM.createPortal(
     <div
+      ref={lensRef}
       data-sensa-magnifier-lens="true"
       style={{
         position: "fixed",
-        left: `${pos.x - lensSize / 2}px`,
-        top: `${pos.y - lensSize / 2}px`,
+        top: 0,
+        left: 0,
         width: `${lensSize}px`,
         height: `${lensSize}px`,
         borderRadius: "50%",
@@ -480,24 +633,47 @@ function ScreenMagnifierOverlay({ isDark, onClose }: { isDark: boolean; onClose:
         pointerEvents: "none",
         zIndex: 2147483647,
         backgroundColor: isDark ? "#1C1C1E" : "#FFFFFF",
-        opacity: isHiddenOverUI ? 0 : 1,
-        visibility: isHiddenOverUI ? "hidden" : "visible",
-        transition: "opacity 150ms ease-out, visibility 150ms ease-out"
+        willChange: "transform, opacity"
       }}
     >
       <div
-        ref={contentRef}
+        ref={contentOuterRef}
         style={{
-          position: "absolute",
-          left: `${lensSize / 2 - (pos.x + pos.scrollX) * zoomLevel}px`,
-          top: `${lensSize / 2 - (pos.y + pos.scrollY) * zoomLevel}px`,
-          transform: `scale(${zoomLevel})`,
+          position: "fixed",
+          top: 0,
+          left: 0,
+          width: `${window.innerWidth}px`,
+          height: `${window.innerHeight}px`,
+          overflow: "hidden",
           transformOrigin: "0 0",
-          width: `${document.body.scrollWidth}px`,
-          height: `${document.body.scrollHeight}px`,
-          pointerEvents: "none"
+          pointerEvents: "none",
+          willChange: "transform"
         }}
-      />
+      >
+        <div
+          ref={scrollRef}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: `${window.innerWidth}px`,
+            height: `${window.innerHeight}px`,
+            overflow: "hidden",
+            pointerEvents: "none"
+          }}
+        >
+          <div
+            ref={contentRef}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              willChange: "transform"
+            }}
+          />
+        </div>
+      </div>
       <div
         style={{
           position: "absolute",
@@ -524,6 +700,8 @@ export default function VisualDock({
   isVoiceCommandActive,
   canRestart,
   onTogglePlay,
+  onPausePlay,
+  onPlaySpeech,
   onToggleVoiceCommand,
   onNext,
   onPrev,
@@ -544,6 +722,10 @@ export default function VisualDock({
   const resetSilenceTimerRef = useRef<(() => void) | null>(null)
   const lastUISpeechTimeRef = useRef(0)
   const lastUISpeechDurationRef = useRef(0)
+
+  useEffect(() => {
+    setIsPlayOptimistic(isPlaying && !isPaused)
+  }, [isPlaying, isPaused])
 
   const wrappedPlayClickAudio = useCallback((text: string, rate: number = 1) => {
     lastUISpeechTimeRef.current = Date.now()
@@ -794,6 +976,30 @@ export default function VisualDock({
     onTogglePlay()
   }
 
+  const handleStopReading = () => {
+    setIsPlayOptimistic(false)
+    playClickSfx()
+    if (onPausePlay) {
+      onPausePlay()
+    } else {
+      if (isPlaying && !isPaused) {
+        onTogglePlay()
+      }
+    }
+  }
+
+  const handleStartReading = () => {
+    setIsPlayOptimistic(true)
+    playClickSfx()
+    if (onPlaySpeech) {
+      onPlaySpeech()
+    } else {
+      if (!isPlaying || isPaused) {
+        onTogglePlay()
+      }
+    }
+  }
+
   const handleToggleVoiceCommand = () => {
     playClickSfx()
     wrappedPlayClickAudio(isVoiceCommandActive ? `Voice commands deactivated. You can say ${wakeWordRef.current} to activate voice commands.` : "Voice commands activated. You can say 'commands' when you want to know the list of commands for the visual dock.")
@@ -805,10 +1011,15 @@ export default function VisualDock({
     isMinimized,
     isPlaying,
     isPaused,
+    isPlayOptimistic,
     isVoiceCommandsSuspended,
     isSoundEffectsEnabled,
     onToggleVoiceCommand,
     onTogglePlay,
+    onPausePlay,
+    onPlaySpeech,
+    handleStopReading,
+    handleStartReading,
     onNext,
     onPrev,
     onRestart,
@@ -828,9 +1039,14 @@ export default function VisualDock({
       isMinimized,
       isPlaying,
       isPaused,
+      isPlayOptimistic,
       isVoiceCommandsSuspended,
       isSoundEffectsEnabled,
       onTogglePlay,
+      onPausePlay,
+      onPlaySpeech,
+      handleStopReading,
+      handleStartReading,
       onToggleVoiceCommand,
       onNext,
       onPrev,
@@ -847,9 +1063,12 @@ export default function VisualDock({
     isMinimized,
     isPlaying,
     isPaused,
+    isPlayOptimistic,
     isVoiceCommandsSuspended,
     isSoundEffectsEnabled,
     onTogglePlay,
+    onPausePlay,
+    onPlaySpeech,
     onToggleVoiceCommand,
     onNext,
     onPrev,
@@ -913,10 +1132,12 @@ export default function VisualDock({
     let lastProcessedFinalIndex = -1
     let consumedKeywords: { word: string; expires: number }[] = []
 
+    let lastExecutedTokenCount = 0
+
     const getKeywordsForCommand = (cmd: string) => {
       switch (cmd) {
-        case "play": return ["play", "resume", "continue", "start reading", "read"]
-        case "stop": return ["stop", "pause", "halt", "stop reading", "stop playing", "pass", "post", "pose", "boss", "paused", "wait", "hold on", "shut up", "hush", "shh", "stop it", "pause reading", "polls", "pulse", "paws"]
+        case "play": return ["play", "resume", "continue", "start reading", "read", "red", "reed", "rid", "ready", "reading", "start", "go", "speak", "begin"]
+        case "stop": return ["stop", "pause", "halt", "stop reading", "stop playing", "pause reading", "shut up", "hush", "shh", "stop it", "stahp", "cease", "freeze", "silence", "quiet"]
         case "next": return ["next", "skip", "forward", "necks", "neck", "nex", "nix"]
         case "previous": return ["previous", "prev", "previ", "preevi", "back", "go back", "preveous", "previus", "privious", "preview"]
         case "restart": return ["repeat", "restart", "start over", "reset", "refresh", "re start", "re-start", "from the top", "from the beginning", "begin again", "restore", "replay", "rewind", "again"]
@@ -946,15 +1167,16 @@ export default function VisualDock({
         commandTimeout = null
       }
       if (!recognition) return
-      try {
-        recognition.stop()
-      } catch (e) { }
-      recognition.onresult = null
-      recognition.onerror = null
-      recognition.onend = null
-      recognition.onsoundstart = null
-      recognition.onstart = null
+      const rec = recognition
       recognition = null
+      try {
+        rec.onresult = null
+        rec.onerror = null
+        rec.onend = null
+        rec.onsoundstart = null
+        rec.onstart = null
+        rec.stop()
+      } catch (e) { }
     }
 
     const buildAndStart = () => {
@@ -979,7 +1201,6 @@ export default function VisualDock({
         currentResultIndex = 0
         lastCommandResultIndex = -1
         lastCommandTranscript = ""
-        lastProcessedFinalIndex = -1
         consumedKeywords = []
         lastCommandName = ""
         lastCommandTime = 0
@@ -1000,30 +1221,21 @@ export default function VisualDock({
           lastCommandTranscript = ""
         }
 
-        // Rule 1: STOP HISTORICAL STACKING: Do not iterate through all event.results from index 0. 
-        // Strictly use event.resultIndex to only process the newest, unhandled transcript segment.
-        let activeTranscript = ""
-        let isSegmentFinal = false
+        let rawTranscript = ""
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          activeTranscript += event.results[i][0].transcript + " "
-          if (event.results[i].isFinal) {
-            isSegmentFinal = true
-          }
+          rawTranscript += event.results[i][0].transcript + " "
         }
-
-        if (currentResultIndex === lastCommandResultIndex && Date.now() - lastCommandTime < 1500) {
-          if (event.results[currentResultIndex]) {
-            lastCommandTranscript = event.results[currentResultIndex][0].transcript.trim()
-          }
-        }
-
-        const rawTranscript = activeTranscript.trim()
+        rawTranscript = rawTranscript.trim()
         if (!rawTranscript) return
+
+        if (rawTranscript === lastCommandTranscript) {
+          return
+        }
 
         // Prevent Chrome memory leak from prolonged continuous speech recognition
         if (event.results.length > 40) {
           teardownRecognition()
-          scheduleRestart()
+          scheduleRestart(150)
           return
         }
 
@@ -1036,15 +1248,6 @@ export default function VisualDock({
             cleanText = cleanText.replace(/\b(help|commands|commands list|list commands|help me|what can i say|read commands|show commands)\b/gi, " ")
           }
 
-          const now = Date.now()
-          if (consumedKeywords.length > 0) {
-            consumedKeywords.forEach(k => {
-              const escapedKw = k.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-              cleanText = cleanText.replace(new RegExp(`\\b${escapedKw}\\b`, "g"), " ")
-            })
-            cleanText = cleanText.replace(/\s+/g, " ").trim()
-          }
-
           if (!cleanText) return false
 
           const paddedSpeech = ` ${cleanText} `
@@ -1054,34 +1257,26 @@ export default function VisualDock({
           const canToggleVoiceMode = Date.now() >= voiceToggleLockUntil
           const currentWakeWord = (wakeWordRef.current || DEFAULT_WAKE_WORD).toLowerCase().trim()
 
-          // Rule 2: IMPLEMENT COMMAND COOLDOWN (THROTTLING): Once a command is successfully recognized and executed,
-          // lock the execution pipeline for 1500ms so that lingering interimResults do not trigger the same command 3 times in a row.
           const nowTime = Date.now()
-          if (nowTime - lastCommandTime < 1500) {
-            return false
-          }
+          const timeSinceLastCommand = nowTime - lastCommandTime
 
           let shouldProcessCommands = callbacksRef.current.isVoiceCommandActive
 
           const applyCommand = (commandName: string, action: () => void) => {
+            // Only apply micro-cooldown if repeating the EXACT same command within 250ms.
+            // Allow 0ms instant execution when switching to a DIFFERENT command (read -> stop -> read).
+            if (commandName === lastCommandName && timeSinceLastCommand < 250) {
+              return
+            }
             if (commandTimeout) {
               window.clearTimeout(commandTimeout)
               commandTimeout = null
             }
             if (commandName !== "activate-voice") {
-              const keywords = getKeywordsForCommand(commandName)
-              keywords.forEach(word => {
-                consumedKeywords.push({ word, expires: Number.MAX_SAFE_INTEGER })
-              })
-              cleanText.split(" ").forEach(w => {
-                if (w && w.length > 1) {
-                  consumedKeywords.push({ word: w, expires: Number.MAX_SAFE_INTEGER })
-                }
-              })
               lastCommandName = commandName
               lastCommandTime = Date.now()
               lastCommandResultIndex = currentResultIndex
-              lastCommandTranscript = event.results[currentResultIndex] ? event.results[currentResultIndex][0].transcript.trim() : ""
+              lastCommandTranscript = rawTranscript
             }
             action()
           }
@@ -1160,25 +1355,22 @@ export default function VisualDock({
               })
               return true
             }
-            else if (callbacksRef.current.isPlaying && !callbacksRef.current.isPaused && /\b(stop|stuff|step|top|pause|halt|stop reading|stop playing|paused|wait|hold on|shut up|hush|shh|stop it|pause reading|stahp)\b/i.test(cleanText)) {
+            else if (((callbacksRef.current.isPlaying && !callbacksRef.current.isPaused) || callbacksRef.current.isPlayOptimistic || /\b(stop reading|stop playing|pause reading|stop it)\b/i.test(cleanText)) && /\b(stop|pause|halt|stop reading|stop playing|paused|shut up|hush|shh|stop it|pause reading|stahp|cease|freeze|silence|quiet)\b/i.test(cleanText)) {
               applyCommand("stop", () => {
-                callbacksRef.current.onTogglePlay()
-                callbacksRef.current.playClickAudio?.('Stop')
+                callbacksRef.current.handleStopReading()
               })
               return true
             }
-            else if ((!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) && /\b(read|red|reed|rid|ready|play|resume|continue|start reading)\b/i.test(cleanText)) {
-              if (/\b(read|red|reed|rid|ready|reading)\b/i.test(cleanText) && !/\b(play|resume|continue|start reading)\b/i.test(cleanText)) {
-                if (!isSegmentFinal || check("speed", "rate")) {
-                  return false
-                }
+            else if (((!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) || !callbacksRef.current.isPlayOptimistic || /\b(start reading|read page|read text|read out|start play)\b/i.test(cleanText)) && /\b(read|red|reed|rid|ready|reading|play|resume|continue|start reading|start|go|speak|begin)\b/i.test(cleanText)) {
+              if (check("speed", "rate", "reading speed", "voice speed")) {
+                return false
               }
               if (commandTimeout) {
                 window.clearTimeout(commandTimeout)
                 commandTimeout = null
               }
               applyCommand("play", () => {
-                callbacksRef.current.onTogglePlay()
+                callbacksRef.current.handleStartReading()
               })
               return true
             }
@@ -1213,6 +1405,7 @@ export default function VisualDock({
 
       instance.onerror = (event: any) => {
         if (event.error === "aborted" || event.error === "no-speech") {
+          scheduleRestart(50)
           return
         }
         console.error("[Sensa VisualDock SpeechRecognition Error]", event.error)
@@ -1220,17 +1413,17 @@ export default function VisualDock({
           isPermanentlyDead = true
           return
         }
-        scheduleRestart()
+        scheduleRestart(100)
       }
 
       instance.onend = () => {
-        scheduleRestart()
+        scheduleRestart(50)
       }
 
       try {
         instance.start()
       } catch (e: any) {
-        scheduleRestart()
+        scheduleRestart(50)
       }
     }
 
@@ -1246,7 +1439,7 @@ export default function VisualDock({
       }
     }
 
-    const scheduleRestart = () => {
+    const scheduleRestart = (delay = 50) => {
       if (!isComponentMounted || isPermanentlyDead) return
       if (!isExtensionContextValid()) {
         isPermanentlyDead = true
@@ -1256,7 +1449,7 @@ export default function VisualDock({
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
         buildAndStart()
-      }, 300)
+      }, delay)
     }
 
     const reviveEngine = () => {

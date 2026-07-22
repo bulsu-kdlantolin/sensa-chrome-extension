@@ -707,5 +707,25 @@ export function useSpeech(
     speakAtSegment(0, 0, true);
   }, [extractReadableContent, speakAtSegment]);
 
-  return { isPlaying, isPaused, togglePlayPause, next, prev, restart };
+  const pauseSpeech = useCallback(() => {
+    speechSessionRef.current += 1;
+    window.speechSynthesis.resume();
+    window.speechSynthesis.cancel();
+    clearSentenceOverlay();
+    setIsPaused(true);
+  }, [clearSentenceOverlay]);
+
+  const playSpeech = useCallback(() => {
+    if (!segmentsRef.current.length) extractReadableContent();
+    if (!segmentsRef.current.length) return;
+
+    if (isPlaying && isPaused) {
+      speakAtSegment(currentSegmentIndexRef.current, currentCharOffsetRef.current, false);
+      return;
+    }
+
+    speakAtSegment(currentSegmentIndexRef.current, currentCharOffsetRef.current, true);
+  }, [extractReadableContent, isPaused, isPlaying, speakAtSegment]);
+
+  return { isPlaying, isPaused, togglePlayPause, pauseSpeech, playSpeech, next, prev, restart };
 }
