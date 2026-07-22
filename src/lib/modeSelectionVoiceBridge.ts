@@ -327,6 +327,11 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       return
     }
 
+    // Anti-Feedback Loop: Do not process audio captured while our own TTS is speaking
+    if (typeof window !== "undefined" && window.speechSynthesis && window.speechSynthesis.speaking) {
+      return
+    }
+
     let interimChunk = ""
     let newFinals = ""
 

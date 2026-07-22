@@ -228,7 +228,6 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
       sensa_voice_command_active: false
     }, () => {
       chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: "visual" }, () => void chrome.runtime.lastError)
-      speakFeedbackInTab("Visual mode activated")
       tabLog("[Sensa Tab Voice Bridge] Visual mode activated via voice.")
     })
   } else if (command === "deactivate") {
@@ -237,7 +236,6 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
       sensa_voice_command_active: false
     }, () => {
       chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null }, () => void chrome.runtime.lastError)
-      speakFeedbackInTab("Visual mode deactivated")
       tabLog("[Sensa Tab Voice Bridge] Visual mode deactivated via voice.")
     })
   } else if (command === "auditory") {
@@ -305,6 +303,13 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       consumedString = ""
       currentResultIndex = event.resultIndex
       globalBuffer = ""
+    }
+
+    // Anti-Feedback Loop: Do not process audio captured while our own TTS is speaking
+    if (typeof window !== "undefined" && window.speechSynthesis && window.speechSynthesis.speaking) {
+      // Clear the buffer so the echoed text isn't processed after TTS finishes
+      globalBuffer = ""
+      return
     }
 
     let interimChunk = ""
