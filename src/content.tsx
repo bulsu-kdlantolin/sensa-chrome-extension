@@ -47,12 +47,12 @@ import {
   stopVisualModeVoiceListener
 } from "./lib/visualModeVoiceBridge"
 
-// Hidden wake-up ping for Azure backend
+// Hidden wake-up ping for Render backend
 try {
   const lastPing = sessionStorage.getItem("sensa_backend_ping")
   if (!lastPing || Date.now() - Number(lastPing) > 5 * 60 * 1000) {
     sessionStorage.setItem("sensa_backend_ping", String(Date.now()))
-    fetch("https://sensa-backend-api-d8brhwhufsb0cpbu.japaneast-01.azurewebsites.net/").catch(() => { })
+    fetch("https://sensa-chrome-extension-backend.onrender.com/").catch(() => { })
   }
 } catch { }
 

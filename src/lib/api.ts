@@ -17,7 +17,7 @@ export interface STTConnection {
   close: () => void
 }
 
-const STT_WS_URL = "wss://sensa-backend-api-d8brhwhufsb0cpbu.japaneast-01.azurewebsites.net"
+const STT_WS_URL = "wss://sensa-chrome-extension-backend.onrender.com"
 
 export function connectToLocalServer(
   mediaStream: MediaStream,

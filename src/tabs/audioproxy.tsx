@@ -19,7 +19,7 @@
 
 import { useEffect } from "react"
 
-const STT_WS_URL = "wss://sensa-backend-api-d8brhwhufsb0cpbu.japaneast-01.azurewebsites.net"
+const STT_WS_URL = "wss://sensa-chrome-extension-backend.onrender.com"
 
 // Global references to prevent aggressive garbage collection in Chrome MV3 production builds.
 let globalAudioCtx: AudioContext | null = null

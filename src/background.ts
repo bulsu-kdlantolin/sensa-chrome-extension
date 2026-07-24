@@ -31,8 +31,8 @@ chrome.scripting.registerContentScripts([
   }
 ]).catch(_ => {})
 
-// Hidden wake-up ping for Azure backend
-const RENDER_BACKEND_URL = "https://sensa-backend-api-d8brhwhufsb0cpbu.japaneast-01.azurewebsites.net/"
+// Hidden wake-up ping for Render backend
+const RENDER_BACKEND_URL = "https://sensa-chrome-extension-backend.onrender.com/"
 const pingBackend = () => {
   fetch(RENDER_BACKEND_URL).catch(() => { })
 }
