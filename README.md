@@ -6,9 +6,9 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.3-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![Deepgram AI](https://img.shields.io/badge/AI_STT-Deepgram_Nova--3-13EF93?style=for-the-badge)](https://deepgram.com/)
-[![DeepL AI](https://img.shields.io/badge/AI_Translation-DeepL_API-0F2B46?style=for-the-badge)](https://www.deepl.com/)
+[![Azure Translator AI](https://img.shields.io/badge/AI_Translation-Azure_Translator-0089D6?style=for-the-badge&logo=microsoftazure&logoColor=white)](https://azure.microsoft.com/en-us/products/cognitive-services/translator)
 
-**Sensa** is an architectural-grade, dual-mode Google Chrome browser extension designed to empower deaf, hard-of-hearing, and visually impaired individuals. By bridging cutting-edge Web APIs (Speech Recognition, Speech Synthesis, Web Audio API, Tab Capture) with real-time cloud AI (Deepgram Nova-3 & DeepL), Sensa transforms standard web browsing into a fully responsive, tailored sensory experience.
+**Sensa** is an architectural-grade, dual-mode Google Chrome browser extension designed to empower deaf, hard-of-hearing, and visually impaired individuals. By bridging cutting-edge Web APIs (Speech Recognition, Speech Synthesis, Web Audio API, Tab Capture) with real-time cloud AI (Deepgram Nova-3 & Azure Translator), Sensa transforms standard web browsing into a fully responsive, tailored sensory experience.
 
 ---
 
@@ -31,7 +31,7 @@ The modern web is primarily designed for unimpaired audio-visual consumption. Us
   * Supports real-time transcription across **45+ languages** (including English, Spanish, Filipino, Hebrew, Arabic, Japanese, Korean, French, German, and more).
   * Implements a zero-gain `GainNode` audio routing architecture to prevent feedback loops while keeping audio audible to the user.
 * **🌐 Instant AI Translation (`server.js`):**
-  * Integrates **DeepL API** server-side to translate finalized speech utterances on-the-fly into the user's target language without exposing API keys to the browser client.
+  * Integrates **Azure Translator API** server-side to translate finalized speech utterances on-the-fly into the user's target language without exposing API keys to the browser client.
 * **📊 60fps Audio Visualizer (`Visualizer.tsx`):**
   * Leverages Web Audio API (`AnalyserNode`) to generate responsive, high-framerate frequency bar animations that allow deaf users to "see" audio dynamics and pacing.
 * **🚨 Sudden Noise & Loudness Alerts (`NoiseAlert.tsx`):**
@@ -80,12 +80,12 @@ graph TD
     subgraph Backend Server [Server: Node.js / Express / WebSocket]
         WSS[WebSocket Bridge Server]
         REST[REST /health & /translate]
-        DeepL_Proxy[DeepL API Proxy]
+        Azure_Proxy[Azure Translator API Proxy]
     end
 
     subgraph Cloud AI Services
         DG[Deepgram Nova-3 API]
-        DL[DeepL Translation API]
+        AZ[Azure Translator API]
     end
 
     TC -->|Tab Audio| AC
@@ -93,8 +93,8 @@ graph TD
     STT_Client <==>|Bi-directional WebSocket| WSS
     WSS <==>|Audio Packets| DG
     DG -->|Live Transcription| WSS
-    WSS -->|Finalized Utterances| DeepL_Proxy
-    DeepL_Proxy <==>|Text / Target Lang| DL
+    WSS -->|Finalized Utterances| Azure_Proxy
+    Azure_Proxy <==>|Text / Target Lang| AZ
     WSS -->|TRANSCRIPT + Translation| STT_Client
     STT_Client -->|Render Subtitles| UI
     DOM <==>|Voice Commands / Fuzzy Match| TTS
@@ -102,7 +102,7 @@ graph TD
 
 ### Key Architectural Highlights:
 1. **Feedback Loop Prevention:** When capturing browser tab audio for STT, `api.ts` routes the audio through a zero-gain `GainNode` before connecting to the destination, ensuring clean audio capture without echoing or howling.
-2. **Server-Side API Isolation:** Cloud credentials (`DEEPGRAM_API_KEY` and `DEEPL_API_KEY`) reside strictly within the Node.js backend (`server.js`), protecting sensitive tokens from client-side inspection.
+2. **Server-Side API Isolation:** Cloud credentials (`DEEPGRAM_API_KEY`, `AZURE_TRANSLATOR_KEY`, and `AZURE_REGION`) reside strictly within the Node.js backend (`server.js`), protecting sensitive tokens from client-side inspection.
 3. **High-Performance DOM Tracking:** In `FocusModeOverlay.tsx`, DOM measurements bypass React state updates inside scroll loops, modifying SVG `<rect>` attributes directly via refs to guarantee 60fps performance without frame drops.
 
 ---
@@ -212,4 +212,4 @@ This codebase adheres to rigorous software engineering and documentation standar
 
 ## 📄 License & Acknowledgments
 * Built by **BSIT 4H-G1 Group 2 — Bulacan State University (BulSU)**.
-* Powered by [Plasmo](https://docs.plasmo.com/), [Deepgram](https://deepgram.com/), and [DeepL](https://www.deepl.com/).
+* Powered by [Plasmo](https://docs.plasmo.com/), [Deepgram](https://deepgram.com/), and [Azure Translator](https://azure.microsoft.com/).

@@ -1,15 +1,15 @@
 /**
  * @file CaptionLanguageOverlay.tsx
- * @description Interactive modal overlay for selecting source audio language (Deepgram Nova-3) and target translation language (DeepL).
+ * @description Interactive modal overlay for selecting source audio language (Deepgram Nova-3) and target translation language (Azure Translator).
  *
- * Architectural Overview:
- * 1. Internationalization Support:
- *    - Exports `SOURCE_LANGUAGE_OPTIONS` supporting 45+ languages transcribed via Deepgram's Nova-3 AI model.
- *    - Exports `LANGUAGE_OPTIONS` supporting 120+ translation target locales powered by DeepL API.
+ * Key Capabilities:
+ * 1. Target Language Selection:
+ *    - Exports `LANGUAGE_OPTIONS` supporting 120+ translation target locales powered by Azure Translator API.
+ *    - Provides search filtering across language names and ISO codes.
  *
- * 2. User Experience & Navigation:
- *    - Provides real-time search filtering across language codes and full names.
- *    - Persists selections to Chrome local storage (`sensa_caption_language` / `sensa_source_language`) and supports draggable viewport positioning.
+ * 2. Accessibility Controls:
+ *    - Fully keyboard-accessible modal supporting Esc key dismissal.
+ *    - Styled with high-contrast, accessible UI controls matching user theme preferences.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from "react"
@@ -21,134 +21,110 @@ interface CaptionLanguageOverlayProps {
   onLanguageChange?: (language: string) => void
 }
 
-// All DeepL languages (123 total) sorted by global popularity
+// All Azure Translator supported target languages sorted by global popularity
 const LANGUAGE_OPTIONS = [
   // Top tier: most widely spoken globally
-  { code: "EN-US", label: "English (American)" },
-  { code: "EN-GB", label: "English (British)" },
-  { code: "ES", label: "Spanish" },
-  { code: "ES-419", label: "Spanish (Latin American)" },
-  { code: "ZH-HANS", label: "Chinese (Simplified)" },
-  { code: "ZH-HANT", label: "Chinese (Traditional)" },
-  { code: "HI", label: "Hindi" },
-  { code: "AR", label: "Arabic" },
-  { code: "FR", label: "French" },
-  { code: "FR-CA", label: "French (Canadian)" },
-  { code: "PT-BR", label: "Portuguese (Brazilian)" },
-  { code: "PT-PT", label: "Portuguese (European)" },
-  { code: "RU", label: "Russian" },
-  { code: "JA", label: "Japanese" },
-  { code: "DE", label: "German" },
-  { code: "DE-CH", label: "German (Swiss)" },
-  { code: "BN", label: "Bengali" },
-  { code: "KO", label: "Korean" },
-  { code: "IT", label: "Italian" },
-  { code: "ID", label: "Indonesian" },
-  { code: "TR", label: "Turkish" },
-  { code: "VI", label: "Vietnamese" },
-  { code: "PA", label: "Punjabi" },
-  { code: "TA", label: "Tamil" },
-  { code: "TE", label: "Telugu" },
-  { code: "MR", label: "Marathi" },
-  { code: "GU", label: "Gujarati" },
-  { code: "ML", label: "Malayalam" },
-  // Second tier: regional & moderately widespread
-  { code: "TH", label: "Thai" },
-  { code: "NL", label: "Dutch" },
-  { code: "EL", label: "Greek" },
-  { code: "PL", label: "Polish" },
-  { code: "UK", label: "Ukrainian" },
-  { code: "CS", label: "Czech" },
-  { code: "SV", label: "Swedish" },
-  { code: "NB", label: "Norwegian Bokmål" },
-  { code: "FI", label: "Finnish" },
-  { code: "DA", label: "Danish" },
-  { code: "HU", label: "Hungarian" },
-  { code: "RO", label: "Romanian" },
-  { code: "BG", label: "Bulgarian" },
-  { code: "SK", label: "Slovak" },
-  { code: "SL", label: "Slovenian" },
-  { code: "HR", label: "Croatian" },
-  { code: "SR", label: "Serbian" },
-  { code: "HE", label: "Hebrew" },
-  { code: "FA", label: "Persian" },
-  { code: "KA", label: "Georgian" },
-  // Third tier: less common but supported
-  { code: "KK", label: "Kazakh" },
-  { code: "UZ", label: "Uzbek" },
-  { code: "AZ", label: "Azerbaijani" },
-  { code: "MS", label: "Malay" },
-  { code: "TL", label: "Tagalog (Filipino)" },
-  { code: "JV", label: "Javanese" },
-  { code: "SW", label: "Swahili" },
-  { code: "MY", label: "Burmese" },
-  { code: "KMR", label: "Kurdish (Kurmanji)" },
-  { code: "CKB", label: "Kurdish (Sorani)" },
-  { code: "KY", label: "Kyrgyz" },
-  { code: "TK", label: "Turkmen" },
-  { code: "TG", label: "Tajik" },
-  { code: "MN", label: "Mongolian" },
-  { code: "LV", label: "Latvian" },
-  { code: "LT", label: "Lithuanian" },
-  { code: "ET", label: "Estonian" },
-  { code: "MK", label: "Macedonian" },
-  { code: "BE", label: "Belarusian" },
-  { code: "HY", label: "Armenian" },
-  { code: "UR", label: "Urdu" },
-  { code: "AS", label: "Assamese" },
-  { code: "BHO", label: "Bhojpuri" },
-  { code: "GOM", label: "Konkani" },
-  { code: "MAI", label: "Maithili" },
-  { code: "IS", label: "Icelandic" },
-  { code: "CA", label: "Catalan" },
-  { code: "GL", label: "Galician" },
-  { code: "EU", label: "Basque" },
-  { code: "AF", label: "Afrikaans" },
-  { code: "LB", label: "Luxembourgish" },
-  { code: "GA", label: "Irish" },
-  { code: "CY", label: "Welsh" },
-  { code: "OC", label: "Occitan" },
-  { code: "BR", label: "Breton" },
-  { code: "LMO", label: "Lombard" },
-  { code: "SCN", label: "Sicilian" },
-  { code: "SU", label: "Sundanese" },
-  { code: "CEB", label: "Cebuano" },
-  { code: "PAM", label: "Kapampangan" },
-  { code: "PAG", label: "Pangasinan" },
-  { code: "ACE", label: "Acehnese" },
-  // Rare/specialized languages
-  { code: "BA", label: "Bashkir" },
-  { code: "SQ", label: "Albanian" },
-  { code: "AN", label: "Aragonese" },
-  { code: "AY", label: "Aymara" },
-  { code: "BS", label: "Bosnian" },
-  { code: "YUE", label: "Cantonese" },
-  { code: "LA", label: "Latin" },
-  { code: "EO", label: "Esperanto" },
-  { code: "GN", label: "Guarani" },
-  { code: "HT", label: "Haitian Creole" },
-  { code: "HA", label: "Hausa" },
-  { code: "IG", label: "Igbo" },
-  { code: "MG", label: "Malagasy" },
-  { code: "MT", label: "Maltese" },
-  { code: "MI", label: "Maori" },
-  { code: "NE", label: "Nepali" },
-  { code: "OM", label: "Oromo" },
-  { code: "PS", label: "Pashto" },
-  { code: "QU", label: "Quechua" },
-  { code: "SA", label: "Sanskrit" },
-  { code: "ST", label: "Sesotho" },
-  { code: "TS", label: "Tsonga" },
-  { code: "TN", label: "Tswana" },
-  { code: "WO", label: "Wolof" },
-  { code: "XH", label: "Xhosa" },
-  { code: "YI", label: "Yiddish" },
-  { code: "ZU", label: "Zulu" },
-  { code: "LN", label: "Lingala" },
-  { code: "PRS", label: "Dari" }
+  { code: "en", label: "English" },
+  { code: "es", label: "Spanish" },
+  { code: "zh-Hans", label: "Chinese (Simplified)" },
+  { code: "zh-Hant", label: "Chinese (Traditional)" },
+  { code: "hi", label: "Hindi" },
+  { code: "ar", label: "Arabic" },
+  { code: "fr", label: "French" },
+  { code: "fr-ca", label: "French (Canadian)" },
+  { code: "pt", label: "Portuguese" },
+  { code: "pt-pt", label: "Portuguese (European)" },
+  { code: "ru", label: "Russian" },
+  { code: "ja", label: "Japanese" },
+  { code: "de", label: "German" },
+  { code: "bn", label: "Bengali" },
+  { code: "ko", label: "Korean" },
+  { code: "it", label: "Italian" },
+  { code: "id", label: "Indonesian" },
+  { code: "tr", label: "Turkish" },
+  { code: "vi", label: "Vietnamese" },
+  { code: "pa", label: "Punjabi" },
+  { code: "ta", label: "Tamil" },
+  { code: "te", label: "Telugu" },
+  { code: "mr", label: "Marathi" },
+  { code: "gu", label: "Gujarati" },
+  { code: "ml", label: "Malayalam" },
+  // Regional & Asian / Philippine languages
+  { code: "fil", label: "Filipino / Tagalog" },
+  { code: "ceb", label: "Cebuano" },
+  { code: "ilo", label: "Ilocano" },
+  { code: "th", label: "Thai" },
+  { code: "nl", label: "Dutch" },
+  { code: "el", label: "Greek" },
+  { code: "pl", label: "Polish" },
+  { code: "uk", label: "Ukrainian" },
+  { code: "cs", label: "Czech" },
+  { code: "sv", label: "Swedish" },
+  { code: "nb", label: "Norwegian" },
+  { code: "fi", label: "Finnish" },
+  { code: "da", label: "Danish" },
+  { code: "hu", label: "Hungarian" },
+  { code: "ro", label: "Romanian" },
+  { code: "bg", label: "Bulgarian" },
+  { code: "sk", label: "Slovak" },
+  { code: "sl", label: "Slovenian" },
+  { code: "hr", label: "Croatian" },
+  { code: "sr-Latn", label: "Serbian (Latin)" },
+  { code: "he", label: "Hebrew" },
+  { code: "fa", label: "Persian" },
+  { code: "ka", label: "Georgian" },
+  { code: "kk", label: "Kazakh" },
+  { code: "uz", label: "Uzbek" },
+  { code: "az", label: "Azerbaijani" },
+  { code: "ms", label: "Malay" },
+  { code: "sw", label: "Swahili" },
+  { code: "my", label: "Burmese" },
+  { code: "kmr", label: "Kurdish" },
+  { code: "ky", label: "Kyrgyz" },
+  { code: "tk", label: "Turkmen" },
+  { code: "tg", label: "Tajik" },
+  { code: "mn-Cyrl", label: "Mongolian" },
+  { code: "lv", label: "Latvian" },
+  { code: "lt", label: "Lithuanian" },
+  { code: "et", label: "Estonian" },
+  { code: "mk", label: "Macedonian" },
+  { code: "be", label: "Belarusian" },
+  { code: "hy", label: "Armenian" },
+  { code: "ur", label: "Urdu" },
+  { code: "as", label: "Assamese" },
+  { code: "bho", label: "Bhojpuri" },
+  { code: "gom", label: "Konkani" },
+  { code: "mai", label: "Maithili" },
+  { code: "is", label: "Icelandic" },
+  { code: "ca", label: "Catalan" },
+  { code: "gl", label: "Galician" },
+  { code: "eu", label: "Basque" },
+  { code: "af", label: "Afrikaans" },
+  { code: "lb", label: "Luxembourgish" },
+  { code: "ga", label: "Irish" },
+  { code: "cy", label: "Welsh" },
+  { code: "sq", label: "Albanian" },
+  { code: "bs", label: "Bosnian" },
+  { code: "yue", label: "Cantonese" },
+  { code: "eo", label: "Esperanto" },
+  { code: "ht", label: "Haitian Creole" },
+  { code: "ha", label: "Hausa" },
+  { code: "ig", label: "Igbo" },
+  { code: "mg", label: "Malagasy" },
+  { code: "mt", label: "Maltese" },
+  { code: "mi", label: "Maori" },
+  { code: "ne", label: "Nepali" },
+  { code: "ps", label: "Pashto" },
+  { code: "qu", label: "Quechua" },
+  { code: "so", label: "Somali" },
+  { code: "ti", label: "Tigrinya" },
+  { code: "yo", label: "Yoruba" },
+  { code: "zu", label: "Zulu" },
+  { code: "ln", label: "Lingala" },
+  { code: "prs", label: "Dari" }
 ]
 
-// Deepgram Nova-2 supported speech recognition languages
+// Deepgram Nova-3 supported speech recognition languages
 export const SOURCE_LANGUAGE_OPTIONS = [
   { code: "en", label: "English" },
   { code: "ko", label: "Korean" },
@@ -183,10 +159,13 @@ export const SOURCE_LANGUAGE_OPTIONS = [
 ]
 
 const normalizeTargetCode = (code: string | undefined): string => {
-  if (!code) return "EN-US"
-  const clean = code.trim().toUpperCase()
-  if (clean === "US-ENGLISH" || clean === "EN-US" || clean === "EN" || clean === "ENGLISH" || clean === "US ENGLISH") {
-    return "EN-US"
+  if (!code) return "en"
+  const clean = code.trim().toLowerCase()
+  if (clean === "us-english" || clean === "en-us" || clean === "en" || clean === "english" || clean === "us english") {
+    return "en"
+  }
+  if (clean === "tl" || clean === "tagalog" || clean === "filipino") {
+    return "fil"
   }
   return clean
 }

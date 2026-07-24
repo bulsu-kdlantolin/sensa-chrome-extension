@@ -13,7 +13,7 @@
  *    - Implements retry logic with exponential backoff for tab capture stream acquisition.
  *
  * 3. Secure API Proxies:
- *    - `TRANSLATE_TEXT`: Proxies translation requests through the Render backend first, falling back to direct DeepL API calls.
+ *    - `TRANSLATE_TEXT`: Proxies translation requests through the Render backend first, falling back to direct Azure Translator API calls.
  *    - `FETCH_GOOGLE_FONTS`: Fetches font lists server-side to bypass strict Content Security Policies (CSP) on sites like YouTube.
  */
 
@@ -123,12 +123,12 @@ async function getStreamIdWithRetry(targetTabId: number, attempts = 6): Promise<
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  // --- TRANSLATION PROXY (backend-first, with direct DeepL fallback) ---
+  // --- TRANSLATION PROXY (backend-first, with direct Azure Translator fallback) ---
   if (message?.type === "TRANSLATE_TEXT") {
     ; (async () => {
       try {
         const text = typeof message?.text === "string" ? message.text : ""
-        const targetLang = typeof message?.targetLang === "string" ? message.targetLang : "EN"
+        const targetLang = typeof message?.targetLang === "string" ? message.targetLang : "es"
         if (!text.trim()) return sendResponse({ ok: true, translated: "" })
 
         // Try backend /translate endpoint first (keeps API keys server-side)
@@ -144,30 +144,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               return sendResponse({ ok: true, translated: backendPayload.translated })
             }
           }
-        } catch (_) { /* backend unavailable, fall through to direct DeepL */ }
+        } catch (_) { /* backend unavailable, fall through to direct Azure Translator */ }
 
-        // Fallback: call DeepL directly using local .env key
-        const deeplKey = process.env.PLASMO_PUBLIC_DEEPL_API_KEY
-        if (!deeplKey) {
+        // Fallback: call Azure Translator directly using local env key
+        const azureKey = process.env.PLASMO_PUBLIC_AZURE_TRANSLATOR_KEY
+        if (!azureKey) {
           return sendResponse({ ok: false, error: "Translation service unavailable" })
         }
 
-        const params = new URLSearchParams()
-        params.append("text", text)
-        params.append("target_lang", targetLang)
-
-        const response = await fetch("https://api-free.deepl.com/v2/translate", {
+        const azureRegion = process.env.PLASMO_PUBLIC_AZURE_REGION || "eastasia"
+        const response = await fetch(`https://api.cognitive.microsofttranslator.com/translate?api-version=3.0&to=${targetLang.toLowerCase()}`, {
           method: "POST",
           headers: {
-            Authorization: `DeepL-Auth-Key ${deeplKey}`,
-            "Content-Type": "application/x-www-form-urlencoded"
+            "Ocp-Apim-Subscription-Key": azureKey,
+            "Ocp-Apim-Subscription-Region": azureRegion,
+            "Content-Type": "application/json"
           },
-          body: params.toString()
+          body: JSON.stringify([{ text }])
         })
 
-        if (!response.ok) throw new Error(`DeepL failed: ${response.status}`)
+        if (!response.ok) throw new Error(`Azure Translator failed: ${response.status}`)
         const payload = await response.json()
-        const translated = payload?.translations?.[0]?.text
+        const translated = payload?.[0]?.translations?.[0]?.text
         if (typeof translated !== "string") throw new Error("Translation failed.")
         sendResponse({ ok: true, translated })
       } catch (error) {

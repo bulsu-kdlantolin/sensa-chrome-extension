@@ -5,7 +5,7 @@
  * Architectural Overview:
  * 1. Communicates with Chrome Extension Background Script (`background.ts`) via runtime messages (`START_CAPTURE`, `STOP_CAPTURE`).
  * 2. Background script opens an offscreen document or tab capture stream, routing audio via WebSocket to the Sensa Backend (`sensa-backend`).
- * 3. Backend streams audio to Deepgram (speech-to-text) and DeepL (translation), returning `CAPTION_UPDATE` messages.
+ * 3. Backend streams audio to Deepgram (speech-to-text) and Azure Translator (translation), returning `CAPTION_UPDATE` messages.
  * 4. This hook merges interim and final transcription blocks, pairing original text with translated subtitles in real-time.
  */
 

@@ -13,7 +13,7 @@
  *
  * 3. Speech-to-Text WebSocket Streaming:
  *    - When STT is enabled, extracts 16kHz mono linear16 PCM audio buffers using `ScriptProcessorNode`.
- *    - Streams raw PCM packets over WebSocket (`wss://sensa-chrome-extension-backend.onrender.com`) to Deepgram / DeepL.
+ *    - Streams raw PCM packets over WebSocket (`wss://sensa-chrome-extension-backend.onrender.com`) to Deepgram / Azure Translator.
  *    - Forwards returned transcription packets back to `background.ts` -> active tab via `FORWARD_TO_TAB`.
  */
 
