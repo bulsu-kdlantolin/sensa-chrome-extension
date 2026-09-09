@@ -1216,7 +1216,7 @@ export default function VisualDock({
         case "play": return ["play", "resume", "continue", "start reading", "read", "red", "reed", "reading", "start", "go", "speak", "begin"]
         case "stop": return ["stop", "pause", "halt", "stop reading", "stop playing", "pause reading", "shut up", "hush", "shh", "stop it", "stahp", "cease", "freeze", "silence", "quiet"]
         case "next": return ["next", "skip", "forward", "necks", "neck", "nex", "nix"]
-        case "previous": return ["previous", "prev", "previ", "preevi", "back", "go back", "preveous", "previus", "privious", "preview"]
+        case "previous": return ["previous", "prev", "previ", "preevi", "back", "go back", "preveous", "previus", "privious", "preview", "previews", "review", "reviews"]
         case "restart": return ["repeat", "restart", "start over", "reset", "refresh", "re start", "re-start", "from the top", "from the beginning", "begin again", "restore", "replay", "rewind", "again"]
         case "speed": return ["speed", "rate", "reading speed", "voice speed"]
         case "settings": return ["setting", "settings", "options", "open settings"]
@@ -1292,12 +1292,6 @@ export default function VisualDock({
 
         if (event.resultIndex !== currentResultIndex) {
           currentResultIndex = event.resultIndex
-          // Do NOT clear consumedKeywords here — Chrome echoes previously-spoken words
-          // into new phrases, so consumed keywords must persist across phrase boundaries
-          // and expire naturally via their 5-second timestamp.
-          lastCommandName = ""
-          lastCommandTime = 0
-          lastCommandTranscript = ""
         }
 
         let rawTranscript = ""
@@ -1379,13 +1373,13 @@ export default function VisualDock({
           const applyCommand = (commandName: string, action: () => void) => {
             matchedAnyCommand = true
 
-            // Apply a global 600ms buffer flush lock so trailing audio doesn't trigger false positives
-            ignoreSpeechUntil = Date.now() + 600
+            // Apply a global 800ms buffer flush lock so trailing audio doesn't trigger false positives
+            ignoreSpeechUntil = Date.now() + 800
 
-            // Only apply micro-cooldown if repeating the EXACT same command within 250ms.
-            if (commandName === lastCommandName && timeSinceLastCommand < 250) {
+            // Only apply cooldown if repeating the EXACT same command within 850ms.
+            if (commandName === lastCommandName && timeSinceLastCommand < 850) {
               const ts = new Date().toISOString().substring(11, 23)
-              console.log(`%c[Sensa Dock Voice] ⏸️ Ignored duplicate command: "${commandName}" (within 250ms cooldown)`, "color: #f59e0b; font-weight: bold;")
+              console.log(`%c[Sensa Dock Voice] ⏸️ Ignored duplicate command: "${commandName}" (within 850ms cooldown)`, "color: #f59e0b; font-weight: bold;")
               return
             }
             if (commandTimeout) {
@@ -1398,15 +1392,14 @@ export default function VisualDock({
               lastCommandResultIndex = currentResultIndex
               lastCommandTranscript = rawTranscript
 
-              // Strip executed keywords from the interim transcript for 1.2s to prevent Chrome from re-triggering on the same breath
-              const expires = Date.now() + 1200
+              // Strip all keywords and aliases for this command from the interim transcript for 1.5s to prevent Chrome from re-triggering on the same breath
+              const expires = Date.now() + 1500
+              getKeywordsForCommand(commandName).forEach(kw => {
+                consumedKeywords.push({ word: kw, expires })
+              })
               if (currentMatchedKeyword) {
                 consumedKeywords.push({ word: currentMatchedKeyword, expires })
                 currentMatchedKeyword = null // reset for next execution
-              } else {
-                getKeywordsForCommand(commandName).forEach(kw => {
-                  consumedKeywords.push({ word: kw, expires })
-                })
               }
             }
             const ts = new Date().toISOString().substring(11, 23)
@@ -1479,7 +1472,7 @@ export default function VisualDock({
             // Rule 1 & 2 & 3: EAGER INTERIM EXECUTION + HOMOPHONE DICTIONARY MAPPING + EARLY REGEX BOUNDARIES
             const restartMatch = cleanText.match(/\b(restart|repeat|re start|re-start|replay|rewind|i start|first start|let s start)\b/i)
             const nextMatch = cleanText.match(/\b(next|necks|net|nex|nix|next page|next sentence)\b/i)
-            const prevMatch = cleanText.match(/\b(previous|preview|previews|previs|prev|previ|preevi|preveous|previus|privious|previous page|previous sentence|go back|back)\b/i)
+            const prevMatch = cleanText.match(/\b(previous|preview|previews|review|reviews|previs|prev|previ|preevi|preveous|previus|privious|previous page|previous sentence|go back|back)\b/i)
             const stopMatch = cleanText.match(/\b(stop|pause|stop reading|stop playing|paused|pause reading|stahp)\b/i)
             const readMatch = cleanText.match(/\b(read|red|reed|reading|play|resume|continue|start reading)\b/i)
 
