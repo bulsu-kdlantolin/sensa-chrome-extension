@@ -33,6 +33,7 @@ import FocusModeOverlay from "./components/FocusModeOverlay"
 import LiveCaptionBox from "./components/LiveCaptionBox"
 import type { SensaUserProfile } from "./lib/storage"
 import { useSpeech } from "./hooks/useSpeech"
+import { resolveVoice } from "./lib/voiceResolver"
 import { useLiveCaptions } from "./hooks/useLiveCaptions"
 import {
   startModeSelectionVoiceListener,
@@ -275,26 +276,6 @@ export default function FloatingDockManager() {
         selectedVoiceNameRef.current = res.sensa_visual_voice_name
       }
 
-      const resolveVoice = (voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined => {
-        return (
-          voices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current) ||
-          voices.find((voice) => !voice.name.includes("David") && (voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current))) ||
-          voices.find((voice) => voice.name.includes("Google US English")) ||
-          voices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David") && !voice.name.includes("Mark")) ||
-          voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
-          voices[0]
-        )
-      }
-
-      const isGoodVoice = (voice: SpeechSynthesisVoice | undefined): boolean => {
-        if (!voice) return false
-        // Accept Google voices or explicitly stored user preference
-        if (voice.name.includes("Google")) return true
-        if (selectedVoiceURIRef.current && voice.voiceURI === selectedVoiceURIRef.current) return true
-        if (selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) return true
-        return false
-      }
-
       const doSpeak = (preferredVoice: SpeechSynthesisVoice | undefined) => {
         window.speechSynthesis.resume()
         window.speechSynthesis.cancel()
@@ -311,15 +292,13 @@ export default function FloatingDockManager() {
       }
 
       const availableVoices = window.speechSynthesis.getVoices()
-      const preferred = resolveVoice(availableVoices)
+      const preferred = resolveVoice(availableVoices, selectedVoiceURIRef.current, selectedVoiceNameRef.current)
 
-      // If we already found a good voice (Google or user's stored preference), speak immediately
-      if (isGoodVoice(preferred)) {
+      if (preferred) {
         doSpeak(preferred)
         return
       }
 
-      // Otherwise wait for network voices (Google) to load
       let resolved = false
       let attempts = 0
       let intervalId: number
@@ -327,8 +306,8 @@ export default function FloatingDockManager() {
       const checkAndSpeak = () => {
         if (resolved) return true
         const freshVoices = window.speechSynthesis.getVoices()
-        const freshPreferred = resolveVoice(freshVoices)
-        if (isGoodVoice(freshPreferred)) {
+        const freshPreferred = resolveVoice(freshVoices, selectedVoiceURIRef.current, selectedVoiceNameRef.current)
+        if (freshPreferred) {
           resolved = true
           if (intervalId !== undefined) window.clearInterval(intervalId)
           window.speechSynthesis.removeEventListener("voiceschanged", checkAndSpeak)
@@ -340,9 +319,6 @@ export default function FloatingDockManager() {
 
       window.speechSynthesis.addEventListener("voiceschanged", checkAndSpeak)
 
-      // KICKSTART CHROME TTS ENGINE:
-      // Chrome on Windows often fails to load network voices (like Google US English)
-      // until a speech utterance is actually requested. This dummy utterance forces it.
       try {
         const dummy = new SpeechSynthesisUtterance("");
         dummy.volume = 0;
@@ -356,7 +332,7 @@ export default function FloatingDockManager() {
           resolved = true
           window.clearInterval(intervalId)
           window.speechSynthesis.removeEventListener("voiceschanged", checkAndSpeak)
-          doSpeak(resolveVoice(window.speechSynthesis.getVoices()))
+          doSpeak(resolveVoice(window.speechSynthesis.getVoices(), selectedVoiceURIRef.current, selectedVoiceNameRef.current))
         }
       }, 200)
     })
@@ -592,12 +568,10 @@ export default function FloatingDockManager() {
           setIsVisualSettingsOpen(false)
           setIsReadingSpeedOpen(false)
           setIsVoiceCommandActive(false)
+          window.speechSynthesis.cancel()
           // Restart the popup's voice bridge so the user can say "activate" again
           if (isPopupOpenRef.current) {
             startVisualModeVoiceListener()
-          }
-          if (!nextAuditory) {
-            speakOverlayFeedback("Visual mode deactivated")
           }
         }
       }
@@ -763,16 +737,7 @@ export default function FloatingDockManager() {
       // Apply preferred voice if available (try URI first, then name)
       const availableVoices = window.speechSynthesis.getVoices()
       if (availableVoices.length > 0) {
-        let preferred = availableVoices.find((v) => !v.name.includes("David") && v.voiceURI === selectedVoiceURIRef.current)
-        if (!preferred && selectedVoiceNameRef.current && !selectedVoiceNameRef.current.includes("David")) {
-          preferred = availableVoices.find((v) => !v.name.includes("David") && (v.name === selectedVoiceNameRef.current || v.name?.includes(selectedVoiceNameRef.current)))
-        }
-        if (!preferred) {
-          preferred = availableVoices.find((v) => v.name.includes("Google US English")) ||
-            availableVoices.find((v) => (v.lang === "en-US" || v.lang.startsWith("en")) && !v.name.includes("David")) ||
-            availableVoices.find((v) => v.lang === "en-US" || v.lang.startsWith("en")) ||
-            availableVoices[0]
-        }
+        const preferred = resolveVoice(availableVoices, selectedVoiceURIRef.current, selectedVoiceNameRef.current)
         if (preferred) utterance.voice = preferred
       }
 
@@ -839,16 +804,7 @@ export default function FloatingDockManager() {
 
             const availableVoices = window.speechSynthesis.getVoices()
             if (availableVoices.length > 0) {
-              let preferred = availableVoices.find((v) => !v.name.includes("David") && v.voiceURI === selectedVoiceURIRef.current)
-              if (!preferred && selectedVoiceNameRef.current && !selectedVoiceNameRef.current.includes("David")) {
-                preferred = availableVoices.find((v) => !v.name.includes("David") && (v.name === selectedVoiceNameRef.current || v.name?.includes(selectedVoiceNameRef.current)))
-              }
-              if (!preferred) {
-                preferred = availableVoices.find((v) => v.name.includes("Google US English")) ||
-                  availableVoices.find((v) => (v.lang === "en-US" || v.lang.startsWith("en")) && !v.name.includes("David")) ||
-                  availableVoices.find((v) => v.lang === "en-US" || v.lang.startsWith("en")) ||
-                  availableVoices[0]
-              }
+              const preferred = resolveVoice(availableVoices, selectedVoiceURIRef.current, selectedVoiceNameRef.current)
               if (preferred) utterance.voice = preferred
             }
             window.speechSynthesis.speak(utterance)

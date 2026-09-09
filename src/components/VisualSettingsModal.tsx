@@ -20,6 +20,7 @@ import ColorPickerPopup from "./ColorPickerPopup"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 import { startVisualModeVoiceListener, stopVisualModeVoiceListener } from "../lib/visualModeVoiceBridge"
 import { isBraveBrowser } from "../lib/browserUtils"
+import { resolveVoice, updateSelectedVoice, speakWithUserVoice, simplifyVoiceName } from "../lib/voiceResolver"
 
 const getLevenshteinDistance = (a: string, b: string): number => {
   const tmp: number[][] = []
@@ -65,57 +66,6 @@ const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
   return false
 }
 
-const simplifyVoiceName = (name: string): string => {
-  let simplified = name
-  simplified = simplified.replace(/Deutsch/gi, "German")
-  simplified = simplified.replace(/français/gi, "French")
-  simplified = simplified.replace(/português do brasil/gi, "Portuguese")
-  simplified = simplified.replace(/português/gi, "Portuguese")
-  simplified = simplified.replace(/español.*españa.*/gi, "Spanish Male")
-  simplified = simplified.replace(/español.*estados unidos.*/gi, "Spanish Female")
-  simplified = simplified.replace(/español/gi, "Spanish")
-  simplified = simplified.replace(/italiano/gi, "Italian")
-  simplified = simplified.replace(/nederlands/gi, "Dutch")
-  simplified = simplified.replace(/Nederland/gi, "")
-  simplified = simplified.replace(/polski/gi, "Polish")
-  simplified = simplified.replace(/русский/gi, "Russian")
-  simplified = simplified.replace(/普通话.*中国大陆.*/gi, "Mainland Mandarin")
-  simplified = simplified.replace(/普通话/gi, "Mandarin")
-  simplified = simplified.replace(/[粵粤]語.*香港.*/gi, "Cantonese")
-  simplified = simplified.replace(/[粵粤]語/gi, "Cantonese")
-  simplified = simplified.replace(/國語.*臺灣.*/gi, "Taiwanese Mandarin")
-  simplified = simplified.replace(/國語.*台湾.*/gi, "Taiwanese Mandarin")
-  simplified = simplified.replace(/國語/gi, "Taiwanese Mandarin")
-  simplified = simplified.replace(/国语/gi, "Taiwanese Mandarin")
-  simplified = simplified.replace(/中文.*香港.*/gi, "Cantonese")
-  simplified = simplified.replace(/中文.*台灣.*/gi, "Taiwanese Mandarin")
-  simplified = simplified.replace(/中文.*台湾.*/gi, "Taiwanese Mandarin")
-  simplified = simplified.replace(/中文.*中国.*/gi, "Mainland Mandarin")
-  simplified = simplified.replace(/中文/gi, "Chinese")
-  simplified = simplified.replace(/日本語/gi, "Japanese")
-  simplified = simplified.replace(/한국어/gi, "Korean")
-  simplified = simplified.replace(/hanguge/gi, "Korean")
-  simplified = simplified.replace(/한국의/gi, "Korean")
-  simplified = simplified.replace(/हिन्दी/gi, "Hindi")
-  simplified = simplified.replace(/suomi/gi, "Finnish")
-  simplified = simplified.replace(/svenska/gi, "Swedish")
-  simplified = simplified.replace(/dansk/gi, "Danish")
-  simplified = simplified.replace(/norsk/gi, "Norwegian")
-
-  simplified = simplified.replace(/ - English \([^)]+\)/i, "")
-  simplified = simplified.replace(/ English \([^)]+\)/i, "")
-  simplified = simplified.replace(/ \([a-z]{2}-[A-Z]{2}\)/i, "")
-  simplified = simplified.replace(/ Desktop/i, "")
-  simplified = simplified.replace(/[\(\)]/g, "")
-  simplified = simplified.replace(/\s+/g, " ")
-
-  // Custom user requests for specific Google voices
-  simplified = simplified.replace(/Google Taiwanese Mandarin/gi, "Google Taiwanese")
-  simplified = simplified.replace(/Google Mainland Mandarin/gi, "Google Mandarin")
-  simplified = simplified.replace(/Google Bahasa Indonesia/gi, "Google Indonesia")
-
-  return simplified.trim() || name
-}
 
 const DEFAULT_HIGHLIGHT_COLOR = "#FFFE00"
 
@@ -186,6 +136,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const resumeSettingsRecognitionRef = useRef<(() => void) | null>(null)
   const settingsRecognitionArmedRef = useRef(false)
   const isVoiceCommandActiveRef = useRef(isVoiceCommandActive)
+  const startReadingVoiceListRef = useRef<() => void>(() => {})
 
   const [isMounted, setIsMounted] = useState(false)
   const onCloseRef = useRef(onClose)
@@ -312,30 +263,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const speakSettingsGuide = React.useCallback((message: string) => {
     if (!message.trim()) return
     lastUISpeechTimeRef.current = Date.now()
-    const speakNow = () => {
-      const voices = window.speechSynthesis.getVoices()
-      if (!voices.length) return false
-      window.speechSynthesis.cancel()
-      const utterance = new SpeechSynthesisUtterance(message)
-      const uri = selectedVoiceURIRef.current || defaultVoiceURIRef.current
-      const preferred =
-        (uri ? voices.find((voice) => voice.voiceURI === uri) : undefined) ||
-        voices.find((voice) => voice.name.includes("Google US English")) ||
-        voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
-        voices[0]
-      if (preferred) {
-        utterance.voice = preferred
-        utterance.lang = preferred.lang
-      }
-      window.speechSynthesis.speak(utterance)
-      return true
-    }
-    if (speakNow()) return
-    const onVoicesChanged = () => {
-      window.speechSynthesis.removeEventListener("voiceschanged", onVoicesChanged)
-      speakNow()
-    }
-    window.speechSynthesis.addEventListener("voiceschanged", onVoicesChanged)
+    speakWithUserVoice(message, { cancelPrevious: true })
   }, [])
 
   useEffect(() => {
@@ -556,6 +484,17 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
   useEffect(() => {
     const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      if (changes.sensa_visual_voice_uri && typeof changes.sensa_visual_voice_uri.newValue === "string") {
+        setSelectedVoiceURI(changes.sensa_visual_voice_uri.newValue)
+        selectedVoiceURIRef.current = changes.sensa_visual_voice_uri.newValue
+      }
+      if (changes.sensa_visual_voice_guide_enabled && typeof changes.sensa_visual_voice_guide_enabled.newValue === "boolean") {
+        setIsVoiceGuideEnabled(changes.sensa_visual_voice_guide_enabled.newValue)
+        isVoiceGuideEnabledRef.current = changes.sensa_visual_voice_guide_enabled.newValue
+      }
+      if (changes.sensa_visual_sound_effects_enabled && typeof changes.sensa_visual_sound_effects_enabled.newValue === "boolean") {
+        setIsSoundEffectsEnabled(changes.sensa_visual_sound_effects_enabled.newValue)
+      }
     }
     chrome.storage.onChanged.addListener(handleStorageChange)
     return () => chrome.storage.onChanged.removeListener(handleStorageChange)
@@ -583,23 +522,24 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
         defaultVoiceURIRef.current = defaultVoice?.voiceURI || ""
         defaultVoiceLabelRef.current = defaultVoice?.name || ""
         setVoices(availableVoices)
-        setSelectedVoiceURI((prev) => {
-          if (prev) return prev
-          return defaultVoice?.voiceURI || ""
-        })
-        if (defaultVoice?.voiceURI && !defaultVoiceAppliedRef.current) {
-          chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (stored) => {
-            const hasValidStored =
-              typeof stored.sensa_visual_voice_uri === "string" &&
-              stored.sensa_visual_voice_uri.length > 0;
-            
-            // Only set a default if there is absolutely NO voice currently selected.
-            if (!hasValidStored) {
+
+        chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (stored) => {
+          const hasValidStored =
+            typeof stored.sensa_visual_voice_uri === "string" &&
+            stored.sensa_visual_voice_uri.length > 0;
+          
+          if (hasValidStored) {
+            setSelectedVoiceURI(stored.sensa_visual_voice_uri)
+            selectedVoiceURIRef.current = stored.sensa_visual_voice_uri
+          } else if (defaultVoice?.voiceURI) {
+            setSelectedVoiceURI(defaultVoice.voiceURI)
+            selectedVoiceURIRef.current = defaultVoice.voiceURI
+            if (!defaultVoiceAppliedRef.current) {
               chrome.storage.local.set({ sensa_visual_voice_uri: defaultVoice.voiceURI, sensa_visual_voice_name: defaultVoice.name || "" })
+              defaultVoiceAppliedRef.current = true
             }
-            defaultVoiceAppliedRef.current = true
-          })
-        }
+          }
+        })
       }
     }
     loadVoices()
@@ -627,6 +567,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
     let ignoreSpeechUntil = 0
     let consumedString = ""
+    let consumedStringExpires = 0
     let currentResultIndex = 0
     let recognition: any = null
     let isPermanentlyDead = false
@@ -694,8 +635,9 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       const nextVoice = state.voices[(currentIndex + step + state.voices.length) % state.voices.length]
       if (!nextVoice) return
       setSelectedVoiceURI(nextVoice.voiceURI)
+      selectedVoiceURIRef.current = nextVoice.voiceURI
       setSpeakingVoiceURI(nextVoice.voiceURI)
-      chrome.storage.local.set({ sensa_visual_voice_uri: nextVoice.voiceURI, sensa_visual_voice_name: nextVoice.name || "" })
+      updateSelectedVoice(nextVoice.voiceURI, nextVoice.name || "")
       setIsVoiceDropdownOpen(true)
       window.speechSynthesis.cancel()
       speakFeedback(`${simplifyVoiceName(nextVoice.name || "")} selected`)
@@ -810,8 +752,9 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       isReadingVoiceListRef.current = false
 
       setSelectedVoiceURI(matchedVoice.voiceURI)
+      selectedVoiceURIRef.current = matchedVoice.voiceURI
       setSpeakingVoiceURI(matchedVoice.voiceURI)
-      chrome.storage.local.set({ sensa_visual_voice_uri: matchedVoice.voiceURI, sensa_visual_voice_name: matchedVoice.name || "" })
+      updateSelectedVoice(matchedVoice.voiceURI, matchedVoice.name || "")
       setIsVoiceDropdownOpen(true)
       speakFeedback(`${simplifyVoiceName(matchedVoice.name || "")} selected`)
       setSettingsState((state) => {
@@ -869,7 +812,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           return
         }
 
-        if (event.resultIndex !== currentResultIndex) {
+        if (Date.now() > consumedStringExpires || event.resultIndex !== currentResultIndex) {
           consumedString = ""
           currentResultIndex = event.resultIndex
         }
@@ -904,7 +847,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
         if (!newSpeech) return
 
         const ts = new Date().toISOString().substring(11, 23)
-        // console.log(`[${ts}] [Sensa Settings Voice Bridge] Heard transcript: "${newSpeech}" (Raw: "${liveText}")`)
+        console.log(`%c[Sensa Settings Voice] 🎤 Heard: "${newSpeech}" %c(Raw: "${liveText}")`, "color: #a855f7; font-weight: bold;", "color: #94a3b8;")
 
         if (Date.now() < ignoreSpeechUntil) {
           consumedString = liveText
@@ -918,7 +861,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           ignoreSpeechUntil = Date.now() + 800
           consumedString = liveText
           const ts = new Date().toISOString().substring(11, 23)
-          // console.log(`[${ts}] [Sensa Settings Voice Bridge] Score results -> Executing command: "deactivate-voice"`)
+          console.log(`%c[Sensa Settings Voice] ⚡ Executing command: "deactivate-voice"`, "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px;")
           playClickAudio("Voice commands deactivated")
           onToggleVoiceCommand?.()
           return
@@ -935,6 +878,9 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             matchedCmdName = "close voice selection"
             setIsVoiceDropdownOpen(false)
             setSettingsState((next) => { next.isVoiceDropdownOpen = false })
+            window.speechSynthesis.cancel()
+            isReadingVoiceListRef.current = false
+            setSpeakingVoiceURI(null)
             speakFeedback("Voice selection closed")
           } else if (check("next voice", "voice next", "next selection")) {
             commandFired = true
@@ -956,6 +902,9 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           } else if (check("close settings", "close", "closed", "clothes") || fuzzyCheck("close", 1)) {
             commandFired = true
             matchedCmdName = "close settings"
+            window.speechSynthesis.cancel()
+            isReadingVoiceListRef.current = false
+            setSpeakingVoiceURI(null)
             setIsMounted(false)
             setTimeout(() => onCloseRef.current(), 300)
           } else if (check("reset default", "reset defaults", "reset settings", "reset", "default") || fuzzyCheck("reset default", 1)) {
@@ -974,51 +923,26 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             setSettingsState((next) => { next.isVoiceDropdownOpen = true })
 
             if (isVoiceGuideEnabledRef.current) {
-              isReadingVoiceListRef.current = true
-              window.speechSynthesis.cancel()
-              window.sensa_utterances = []
-
-              const allVoices = window.speechSynthesis.getVoices()
-              const defaultUri = selectedVoiceURIRef.current || defaultVoiceURIRef.current
-              const defaultVoiceObj = (defaultUri ? allVoices.find((v) => v.voiceURI === defaultUri) : undefined) || allVoices.find((v) => v.name.includes("Google US English")) || allVoices.find((v) => (v.lang === "en-US" || v.lang.startsWith("en")) && !v.name.includes("David")) || allVoices.find((v) => v.lang === "en-US" || v.lang.startsWith("en")) || allVoices[0]
-
-              const intro = new SpeechSynthesisUtterance("Voice selection opened. Reading voices:")
-              if (defaultVoiceObj) {
-                intro.voice = defaultVoiceObj
-                intro.lang = defaultVoiceObj.lang
-              }
-              window.sensa_utterances.push(intro)
-              window.speechSynthesis.speak(intro)
-
-              overlayStateRef.current.voices.forEach((voice) => {
-                const utterance = new SpeechSynthesisUtterance(simplifyVoiceName(voice.name))
-                utterance.voice = voice
-                utterance.lang = voice.lang
-                utterance.onstart = () => setSpeakingVoiceURI(voice.voiceURI)
-                utterance.onend = () => setSpeakingVoiceURI((prev) => prev === voice.voiceURI ? null : prev)
-                window.sensa_utterances!.push(utterance)
-                window.speechSynthesis.speak(utterance)
-              })
-
-              const outro = new SpeechSynthesisUtterance("Just say the name to select it.")
-              if (defaultVoiceObj) {
-                outro.voice = defaultVoiceObj
-                outro.lang = defaultVoiceObj.lang
-              }
-              outro.onend = () => { isReadingVoiceListRef.current = false }
-              window.sensa_utterances.push(outro)
-              window.speechSynthesis.speak(outro)
+              startReadingVoiceListRef.current()
             }
           }
         }
 
         if (commandFired) {
-          consumedString = liveText
+          if (matchedCmdName === "close voice selection") {
+            // Unblock "close" immediately so user can say "close" right away to close settings modal
+            consumedString = ""
+            consumedStringExpires = 0
+            ignoreSpeechUntil = Date.now() + 600
+          } else {
+            consumedString = liveText
+            consumedStringExpires = Date.now() + 1000
+          }
           const ts = new Date().toISOString().substring(11, 23)
-          // console.log(`[${ts}] [Sensa Settings Voice Bridge] Score results -> Executing command: "${matchedCmdName}"`)
+          console.log(`%c[Sensa Settings Voice] ⚡ Executed command: "${matchedCmdName}"`, "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px;")
         } else {
           const ts = new Date().toISOString().substring(11, 23)
-          // console.log(`[${ts}] [Sensa Settings Voice Bridge] Score results -> No command matched for transcript: "${newSpeech}"`)
+          console.log(`%c[Sensa Settings Voice] ❓ No command matched: "${newSpeech}"`, "color: #64748b;")
         }
       }
 
@@ -1151,16 +1075,78 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     }
   }
 
+  const previewVoice = (voice: SpeechSynthesisVoice) => {
+    if (isReadingVoiceListRef.current) return
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(simplifyVoiceName(voice.name))
+    utterance.voice = voice
+    utterance.lang = voice.lang
+    window.speechSynthesis.speak(utterance)
+  }
+
+  const startReadingVoiceList = () => {
+    if (!isVoiceGuideEnabledRef.current) return
+    window.speechSynthesis.cancel()
+    isReadingVoiceListRef.current = true
+    window.sensa_utterances = []
+
+    const currentVoices = overlayStateRef.current.voices
+    if (!currentVoices || currentVoices.length === 0) return
+
+    const userVoice = resolveVoice(currentVoices, selectedVoiceURIRef.current)
+
+    const intro = new SpeechSynthesisUtterance("Voice selection opened. Reading voices:")
+    if (userVoice) {
+      intro.voice = userVoice
+      intro.lang = userVoice.lang
+    }
+    window.sensa_utterances.push(intro)
+    window.speechSynthesis.speak(intro)
+
+    currentVoices.forEach((voice) => {
+      const utterance = new SpeechSynthesisUtterance(simplifyVoiceName(voice.name))
+      utterance.voice = voice
+      utterance.lang = voice.lang
+      utterance.onstart = () => setSpeakingVoiceURI(voice.voiceURI)
+      utterance.onend = () => setSpeakingVoiceURI((prev) => prev === voice.voiceURI ? null : prev)
+      window.sensa_utterances!.push(utterance)
+      window.speechSynthesis.speak(utterance)
+    })
+
+    const outro = new SpeechSynthesisUtterance("Just say the name to select it, or say close to exit.")
+    if (userVoice) {
+      outro.voice = userVoice
+      outro.lang = userVoice.lang
+    }
+    outro.onend = () => {
+      isReadingVoiceListRef.current = false
+      setSpeakingVoiceURI(null)
+    }
+    window.sensa_utterances.push(outro)
+    window.speechSynthesis.speak(outro)
+  }
+
+  useEffect(() => {
+    startReadingVoiceListRef.current = startReadingVoiceList
+  })
+
   const handleVoiceChange = (voiceURI: string) => {
     playClickSfx()
+    window.speechSynthesis.cancel()
+    isReadingVoiceListRef.current = false
+    setSpeakingVoiceURI(null)
     setSelectedVoiceURI(voiceURI)
+    selectedVoiceURIRef.current = voiceURI
     const selected = voices.find((voice) => voice.voiceURI === voiceURI)
-    chrome.storage.local.set({ sensa_visual_voice_uri: voiceURI, sensa_visual_voice_name: selected?.name || "" })
-    playClickAudio(`Voice set to ${selected ? simplifyVoiceName(selected.name) : 'selected voice'}`)
+    updateSelectedVoice(voiceURI, selected?.name || "")
+    speakWithUserVoice(`Voice set to ${selected ? simplifyVoiceName(selected.name) : 'selected voice'}`, { cancelPrevious: true })
   }
 
   const handleResetToDefault = () => {
     playClickSfx()
+    window.speechSynthesis.cancel()
+    isReadingVoiceListRef.current = false
+    setSpeakingVoiceURI(null)
     const currentVoices = overlayStateRef.current.voices
     const defaultVoice = currentVoices.find((voice) => voice.name.includes("Google US English")) || currentVoices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) || currentVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) || currentVoices[0]
     const defaultVoiceURI = defaultVoice?.voiceURI || ""
@@ -1173,6 +1159,8 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     setIsVoiceGuideEnabled(true)
     setIsSoundEffectsEnabled(true)
     setSelectedVoiceURI(defaultVoiceURI)
+    selectedVoiceURIRef.current = defaultVoiceURI
+    updateSelectedVoice(defaultVoiceURI, defaultVoice?.name || "")
     setMagnifierSize(240)
     setMagnifierZoom(2.0)
     chrome.storage.local.set({
@@ -1187,7 +1175,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       sensa_visual_magnifier_size: 240,
       sensa_visual_magnifier_zoom: 2.0
     })
-    playClickAudio("Settings reset to default")
+    speakWithUserVoice("Settings reset to default", { cancelPrevious: true })
   }
 
   const isBackdropMouseDownRef = useRef(false)
@@ -1195,18 +1183,14 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     if (event.target === event.currentTarget && isBackdropMouseDownRef.current) {
       isBackdropMouseDownRef.current = false
       playClickSfx()
+      window.speechSynthesis.cancel()
+      isReadingVoiceListRef.current = false
+      setSpeakingVoiceURI(null)
       setIsMounted(false)
       setTimeout(onClose, 300)
     }
   }
 
-  const previewVoice = (voice: SpeechSynthesisVoice) => {
-    if (isReadingVoiceListRef.current) return
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(simplifyVoiceName(voice.name))
-    utterance.voice = voice
-    window.speechSynthesis.speak(utterance)
-  }
 
   const modalBg = isDark ? "bg-[#141416]/96 backdrop-blur-3xl border-white/10" : "bg-white/95 backdrop-blur-3xl border-white/40"
   const textColor = isDark ? "text-gray-100" : "text-gray-900"
@@ -1471,8 +1455,19 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
                       })
                     }
                   }
-                  setIsVoiceDropdownOpen((prev) => !prev)
-                  playClickAudio("Voice selection")
+                  const willOpen = !isVoiceDropdownOpen
+                  setIsVoiceDropdownOpen(willOpen)
+                  if (willOpen) {
+                    if (isVoiceGuideEnabledRef.current) {
+                      startReadingVoiceList()
+                    } else {
+                      playClickAudio("Voice selection")
+                    }
+                  } else {
+                    window.speechSynthesis.cancel()
+                    isReadingVoiceListRef.current = false
+                    setSpeakingVoiceURI(null)
+                  }
                 }}
                 className={`w-full text-left border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
                 aria-haspopup="listbox"
@@ -1595,41 +1590,64 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
         {isVoiceDropdownOpen && (
           <>
-            <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }} />
+            <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel(); isReadingVoiceListRef.current = false; setSpeakingVoiceURI(null) }} />
             <ul
               style={{
                 position: 'absolute',
                 top: `${voiceMenuPos.top}px`,
                 right: `${voiceMenuPos.right}px`,
-                width: '240px'
+                width: '260px'
               }}
               className={`z-50 max-h-56 overflow-y-auto overflow-x-hidden ${modalBg} border ${inputBorder} rounded-xl shadow-2xl py-2 text-[13px] custom-scrollbar`}
               role="listbox"
             >
-              {voices.map((voice) => (
-                <li
-                  id={`voice-option-${voice.voiceURI.replace(/[^a-zA-Z0-9]/g, '_')}`}
-                  key={voice.voiceURI}
-                  role="option"
-                  aria-selected={selectedVoiceURI === voice.voiceURI}
-                  className={`px-4 py-2.5 cursor-pointer block w-full text-left truncate transition-all font-medium m-1 rounded-lg ${speakingVoiceURI === voice.voiceURI
-                    ? "bg-[#0A44FF]/30 text-[#0A44FF] shadow-inner border border-[#0A44FF]/50"
-                    : selectedVoiceURI === voice.voiceURI
-                      ? "text-white shadow-md"
-                      : isDark
-                        ? "text-gray-200 hover:bg-[#0A44FF]/20 hover:text-[#0A44FF]"
-                        : "text-gray-700 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF]"
-                    }`}
-                  onMouseEnter={() => { playHoverSfx(); previewVoice(voice) }}
-                  onClick={() => { handleVoiceChange(voice.voiceURI); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel() }}
-                  style={selectedVoiceURI === voice.voiceURI 
-                    ? { fontFamily: `"${voice.name}", system-ui, sans-serif`, backgroundImage: "linear-gradient(to right, #0A44FF, #0099FF)" } 
-                    : { fontFamily: `"${voice.name}", system-ui, sans-serif` }
-                  }
-                >
-                  {simplifyVoiceName(voice.name)}{voice.voiceURI === defaultVoiceURIRef.current ? " (Default)" : ""}
-                </li>
-              ))}
+              {voices.map((voice) => {
+                const isSelected = selectedVoiceURI === voice.voiceURI
+                const isSpeaking = speakingVoiceURI === voice.voiceURI
+                const isDefault = voice.voiceURI === defaultVoiceURIRef.current
+                const displayName = simplifyVoiceName(voice.name)
+
+                return (
+                  <li
+                    id={`voice-option-${voice.voiceURI.replace(/[^a-zA-Z0-9]/g, '_')}`}
+                    key={voice.voiceURI}
+                    role="option"
+                    aria-selected={isSelected}
+                    className={`px-3.5 py-2.5 cursor-pointer flex items-center justify-between gap-2 w-full text-left transition-all m-1 rounded-xl ${
+                      isSelected
+                        ? "bg-gradient-to-r from-[#0A44FF] to-[#0080FF] text-white shadow-md font-semibold"
+                        : isSpeaking
+                          ? "bg-[#0A44FF]/25 text-[#0A44FF] dark:text-blue-300 ring-2 ring-[#0A44FF]/50 font-semibold"
+                          : isDark
+                            ? "text-gray-100 hover:bg-white/10 hover:text-white font-medium"
+                            : "text-gray-800 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF] font-medium"
+                    } ${isSpeaking && isSelected ? "ring-2 ring-white/80 shadow-[0_0_12px_rgba(10,68,255,0.5)]" : ""}`}
+                    onMouseEnter={() => { playHoverSfx(); previewVoice(voice) }}
+                    onClick={() => { handleVoiceChange(voice.voiceURI); setIsVoiceDropdownOpen(false) }}
+                    style={{ fontFamily: `"${voice.name}", system-ui, sans-serif` }}
+                  >
+                    <span className="truncate flex-1">
+                      {displayName}
+                    </span>
+                    {isDefault && (
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold shrink-0 ${
+                        isSelected 
+                          ? "bg-white/25 text-white" 
+                          : isDark 
+                            ? "bg-white/10 text-gray-300" 
+                            : "bg-black/5 text-gray-600"
+                      }`}>
+                        Default
+                      </span>
+                    )}
+                    {isSelected && (
+                      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-white shrink-0">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           </>
         )}

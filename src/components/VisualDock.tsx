@@ -52,12 +52,23 @@ const getLevenshteinDistance = (a: string, b: string): number => {
 /**
  * Performs fuzzy string matching using n-gram sliding windows and Levenshtein distance.
  * Prevents false positive matching between antonyms like "activate" and "deactivate".
+ * Dynamically scales maxDistance by word length if not explicitly specified.
  */
-const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
+const fuzzyMatch = (text: string, target: string, maxDistance?: number): boolean => {
   if (target === "activate" && text.includes("deactivate")) return false
   if (target === "deactivate" && text === "activate") return false
 
   if (text.includes(target)) return true
+
+  // Scale allowed edit distance dynamically according to target word length:
+  // 3-4 letters (e.g. "next", "read", "stop") -> strict exact or 0 edit distance
+  // 5-7 letters (e.g. "sensa", "speed", "close") -> max 1 edit distance
+  // 8+ letters (e.g. "deactivate", "settings") -> max 2 edit distances
+  const effectiveMaxDistance = maxDistance !== undefined
+    ? maxDistance
+    : (target.length <= 4 ? 0 : target.length <= 7 ? 1 : 2)
+
+  if (effectiveMaxDistance === 0) return false
 
   const tokens = text.split(/\s+/).filter(Boolean)
   const targetTokens = target.split(/\s+/).filter(Boolean)
@@ -67,13 +78,13 @@ const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
       if ((t === "activate" && target === "deactivate") || (t === "deactivate" && target === "activate")) {
         continue
       }
-      if (getLevenshteinDistance(t, target) <= maxDistance) return true
+      if (getLevenshteinDistance(t, target) <= effectiveMaxDistance) return true
     }
   } else {
     const n = targetTokens.length
     for (let i = 0; i <= tokens.length - n; i++) {
       const ngram = tokens.slice(i, i + n).join(" ")
-      if (getLevenshteinDistance(ngram, target) <= maxDistance) return true
+      if (getLevenshteinDistance(ngram, target) <= effectiveMaxDistance) return true
     }
   }
   return false
@@ -85,7 +96,7 @@ const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
 const normalizeInput = (rawText: string): string => {
   let text = rawText.toLowerCase()
   text = text.replace(/[^a-z0-9\s]/gi, " ")
-  text = text.replace(/\b(?:de|dee|the|to|do|you)\s+activate[d]?\b/g, "deactivate")
+  text = text.replace(/\b(?:de|dee)\s+activate[d]?\b/g, "deactivate")
   text = text.replace(/\bdeactivated\b/g, "deactivate")
   text = text.replace(/\s+/g, " ").trim()
   const fillerWords = new Set(["the", "a", "please", "hey", "can", "you", "change", "set", "to", "my"])
@@ -1202,7 +1213,7 @@ export default function VisualDock({
 
     const getKeywordsForCommand = (cmd: string) => {
       switch (cmd) {
-        case "play": return ["play", "resume", "continue", "start reading", "read", "red", "reed", "rid", "ready", "reading", "start", "go", "speak", "begin"]
+        case "play": return ["play", "resume", "continue", "start reading", "read", "red", "reed", "reading", "start", "go", "speak", "begin"]
         case "stop": return ["stop", "pause", "halt", "stop reading", "stop playing", "pause reading", "shut up", "hush", "shh", "stop it", "stahp", "cease", "freeze", "silence", "quiet"]
         case "next": return ["next", "skip", "forward", "necks", "neck", "nex", "nix"]
         case "previous": return ["previous", "prev", "previ", "preevi", "back", "go back", "preveous", "previus", "privious", "preview"]
@@ -1211,7 +1222,7 @@ export default function VisualDock({
         case "settings": return ["setting", "settings", "options", "open settings"]
         case "minimize": return ["minimize", "collapse", "hide", "mini"]
         case "expand": return ["expand", "maximize", "show", "open", "expend", "span"]
-        case "close": return ["close", "exit", "quit", "dismiss", "duck", "dark", "deactivate", "turn off"]
+        case "close": return ["close", "close dock", "close visual mode", "deactivate", "deactivate visual mode", "turn off", "dismiss"]
         case "deactivate-voice": return ["stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening"]
         default: return []
       }
@@ -1290,11 +1301,26 @@ export default function VisualDock({
         }
 
         let rawTranscript = ""
+        let minConfidence = 1.0
+        let hasConfidence = false
+
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          rawTranscript += event.results[i][0].transcript + " "
+          const item = event.results[i]?.[0]
+          if (item) {
+            rawTranscript += item.transcript + " "
+            if (typeof item.confidence === "number" && item.confidence > 0) {
+              minConfidence = Math.min(minConfidence, item.confidence)
+              hasConfidence = true
+            }
+          }
         }
         rawTranscript = rawTranscript.trim()
         if (!rawTranscript) return
+
+        // Drop ambiguous background audio / low-confidence mumbled noise (below 0.35 confidence on final)
+        if (hasConfidence && minConfidence < 0.35) {
+          return
+        }
 
         if (rawTranscript === lastCommandTranscript && Date.now() - lastCommandTime < 300) {
           return
@@ -1331,7 +1357,7 @@ export default function VisualDock({
           if (!cleanText || Date.now() < ignoreSpeechUntil) return false
 
           const ts = new Date().toISOString().substring(11, 23)
-          // console.log(`[${ts}] [Sensa Dock Voice Bridge] Heard transcript: "${cleanText}" (Raw: "${rawTranscript}")`)
+          console.log(`%c[Sensa Dock Voice] 🎤 Heard: "${cleanText}" %c(Raw: "${rawTranscript}", Conf: ${minConfidence > 0 ? minConfidence.toFixed(2) : "interim"})`, "color: #3b82f6; font-weight: bold;", "color: #94a3b8;")
 
           const paddedSpeech = ` ${cleanText} `
           const rawPaddedSpeech = ` ${rawCleanText} `
@@ -1359,7 +1385,7 @@ export default function VisualDock({
             // Only apply micro-cooldown if repeating the EXACT same command within 250ms.
             if (commandName === lastCommandName && timeSinceLastCommand < 250) {
               const ts = new Date().toISOString().substring(11, 23)
-              // console.log(`[${ts}] [Sensa Dock Voice Bridge] Score results -> Ignored duplicate command: "${commandName}" (within 250ms cooldown)`)
+              console.log(`%c[Sensa Dock Voice] ⏸️ Ignored duplicate command: "${commandName}" (within 250ms cooldown)`, "color: #f59e0b; font-weight: bold;")
               return
             }
             if (commandTimeout) {
@@ -1372,8 +1398,8 @@ export default function VisualDock({
               lastCommandResultIndex = currentResultIndex
               lastCommandTranscript = rawTranscript
 
-              // Strip executed keywords from the interim transcript for 5 seconds to prevent Chrome from re-triggering them
-              const expires = Date.now() + 5000
+              // Strip executed keywords from the interim transcript for 1.2s to prevent Chrome from re-triggering on the same breath
+              const expires = Date.now() + 1200
               if (currentMatchedKeyword) {
                 consumedKeywords.push({ word: currentMatchedKeyword, expires })
                 currentMatchedKeyword = null // reset for next execution
@@ -1384,12 +1410,12 @@ export default function VisualDock({
               }
             }
             const ts = new Date().toISOString().substring(11, 23)
-            // console.log(`[${ts}] [Sensa Dock Voice Bridge] Score results -> Executing command: "${commandName}"`)
+            console.log(`%c[Sensa Dock Voice] ⚡ Executing command: "${commandName}"`, "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px;")
             action()
           }
 
           if (!callbacksRef.current.isVoiceCommandActive) {
-            if (check("deactivate", "deactivate visual mode")) {
+            if (check("deactivate visual mode", "deactivate visual", "close visual mode", "turn off visual mode")) {
               applyCommand("close", () => callbacksRef.current.onClose())
               return true
             }
@@ -1451,11 +1477,11 @@ export default function VisualDock({
               return true
             }
             // Rule 1 & 2 & 3: EAGER INTERIM EXECUTION + HOMOPHONE DICTIONARY MAPPING + EARLY REGEX BOUNDARIES
-            const restartMatch = cleanText.match(/\b(restart|repeat|re start|re-start|replay|rewind|refuse|i start|or start|first start|let s start|her start)\b/i)
+            const restartMatch = cleanText.match(/\b(restart|repeat|re start|re-start|replay|rewind|i start|first start|let s start)\b/i)
             const nextMatch = cleanText.match(/\b(next|necks|net|nex|nix|next page|next sentence)\b/i)
-            const prevMatch = cleanText.match(/\b(previous|preview|previews|previs|prev|previ|preevi|preveous|previus|privious|previous page|previous sentence|maybe|baby|peace|week)\b/i)
+            const prevMatch = cleanText.match(/\b(previous|preview|previews|previs|prev|previ|preevi|preveous|previus|privious|previous page|previous sentence|go back|back)\b/i)
             const stopMatch = cleanText.match(/\b(stop|pause|stop reading|stop playing|paused|pause reading|stahp)\b/i)
-            const readMatch = cleanText.match(/\b(read|red|reed|rid|ready|reading|play|resume|continue|start reading)\b/i)
+            const readMatch = cleanText.match(/\b(read|red|reed|reading|play|resume|continue|start reading)\b/i)
 
             if (restartMatch) {
               currentMatchedKeyword = restartMatch[0].toLowerCase()
@@ -1550,7 +1576,7 @@ export default function VisualDock({
               })
               return true
             }
-            else if (check("close", "exit", "quit", "deactivate")) {
+            else if (check("close", "deactivate", "close dock", "close visual", "close visual mode", "deactivate visual mode", "turn off visual mode")) {
               applyCommand("close", () => {
                 callbacksRef.current.playClickAudio?.('Visual mode deactivated')
                 callbacksRef.current.onClose()
@@ -1561,7 +1587,7 @@ export default function VisualDock({
 
           if (!matchedAnyCommand) {
             const ts = new Date().toISOString().substring(11, 23)
-            // console.log(`[${ts}] [Sensa Dock Voice Bridge] Score results -> No command matched for transcript: "${cleanText}" (isVoiceActive: ${callbacksRef.current.isVoiceCommandActive})`)
+            console.log(`%c[Sensa Dock Voice] ❓ No command matched: "${cleanText}" (isVoiceActive: ${callbacksRef.current.isVoiceCommandActive})`, "color: #64748b;")
           }
 
           return false

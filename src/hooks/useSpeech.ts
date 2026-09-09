@@ -18,6 +18,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Readability } from "@mozilla/readability";
+import { resolveVoice } from "../lib/voiceResolver";
 
 declare global {
   interface Window {
@@ -602,17 +603,7 @@ export function useSpeech(
 
       const availableVoices = window.speechSynthesis.getVoices();
       if (availableVoices.length > 0) {
-        // Prefer voiceURI match, fallback to voice name match for compatibility
-        let preferredVoice = availableVoices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current);
-        if (!preferredVoice && selectedVoiceNameRef.current && !selectedVoiceNameRef.current.includes("David")) {
-          preferredVoice = availableVoices.find((voice) => !voice.name.includes("David") && (voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current)));
-        }
-        if (!preferredVoice) {
-          preferredVoice = availableVoices.find((voice) => voice.name.includes("Google US English")) ||
-            availableVoices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
-            availableVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
-            availableVoices[0];
-        }
+        const preferredVoice = resolveVoice(availableVoices, selectedVoiceURIRef.current, selectedVoiceNameRef.current);
         if (preferredVoice) {
           utterance.voice = preferredVoice;
         }

@@ -442,15 +442,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 // Auto-inject content script into all open HTTP/HTTPS tabs on extension reload or update
 chrome.runtime.onInstalled.addListener(async (details) => {
-  // Clear voice settings on development reloads to simulate fresh installs for testing
-  chrome.management.getSelf((info) => {
-    if (info.installType === "development" || details.reason === "install") {
-      chrome.storage.local.remove([
-        "sensa_visual_voice_uri",
-        "sensa_visual_voice_name"
-      ]).catch(() => {});
-    }
-  });
+  // Clear voice settings only on fresh install
+  if (details.reason === "install") {
+    chrome.storage.local.remove([
+      "sensa_visual_voice_uri",
+      "sensa_visual_voice_name"
+    ]).catch(() => {});
+  }
 
   // Detect Brave and save to storage for content scripts
   try {

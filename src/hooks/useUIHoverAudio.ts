@@ -18,14 +18,16 @@
 
 import { useCallback, useEffect, useRef } from "react"
 import { isBraveBrowser } from "../lib/browserUtils"
+import { resolveVoice, getSelectedVoicePreference } from "../lib/voiceResolver"
 
 export function useUIHoverAudio() {
+	const initialPref = getSelectedVoicePreference()
 	const hoverTimeoutRef = useRef<number | null>(null)
 	const isHoverSpeakingRef = useRef(false)
 	const speechOwnerRef = useRef<"none" | "hover" | "click">("none")
 	const isActiveRef = useRef(true)
-	const selectedVoiceURIRef = useRef<string>("")
-	const selectedVoiceNameRef = useRef<string>("")
+	const selectedVoiceURIRef = useRef<string>(initialPref.uri)
+	const selectedVoiceNameRef = useRef<string>(initialPref.name)
 	const pendingUtteranceRef = useRef<string | null>(null)
 	const voiceRetryTimerRef = useRef<number | null>(null)
 	const voicesChangedHandlerRef = useRef<(() => void) | null>(null)
@@ -127,37 +129,11 @@ export function useUIHoverAudio() {
 			const voices = window.speechSynthesis.getVoices()
 			if (voices.length === 0) return false
 
-			// 1. Explicitly chosen voice takes absolute priority.
-			if (selectedVoiceURIRef.current) {
-				const explicitVoice = voices.find(v => v.voiceURI === selectedVoiceURIRef.current)
-				if (explicitVoice) {
-					speakNow(explicitVoice)
-					return true
-				}
-			} else if (selectedVoiceNameRef.current) {
-				const explicitVoice = voices.find(v => v.name === selectedVoiceNameRef.current)
-				if (explicitVoice) {
-					speakNow(explicitVoice)
-					return true
-				}
-			}
-
-			// 2. Default to Google US English if no explicit choice was made and it's available.
-			const defaultGoogle = voices.find(v => v.name.includes("Google US English") || v.name.includes("Google"))
-			if (defaultGoogle) {
-				speakNow(defaultGoogle)
+			const chosenVoice = resolveVoice(voices, selectedVoiceURIRef.current, selectedVoiceNameRef.current)
+			if (chosenVoice) {
+				speakNow(chosenVoice)
 				return true
 			}
-
-			// 3. Fallback for Brave/Opera (or environments without Google voices). Accept any local English voice.
-			if (isBraveRef.current) {
-				const fallbackBrave = voices.find(v => v.lang.startsWith("en")) || voices[0]
-				if (fallbackBrave) {
-					speakNow(fallbackBrave)
-					return true
-				}
-			}
-
 			return false
 		}
 

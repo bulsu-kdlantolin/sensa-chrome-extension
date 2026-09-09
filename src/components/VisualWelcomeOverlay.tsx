@@ -14,6 +14,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 import { isBraveBrowser } from "../lib/browserUtils"
+import { resolveVoice } from "../lib/voiceResolver"
 
 interface WelcomeProps {
   theme: "light" | "dark"
@@ -329,14 +330,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
       window.speechSynthesis.cancel()
     }
     const utterance = new SpeechSynthesisUtterance(text)
-    const preferredVoice =
-      voices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current) ||
-      voices.find((voice) => !voice.name.includes("David") && voice.name === selectedVoiceNameRef.current) ||
-      voices.find((voice) => !voice.name.includes("David") && selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
-      voices.find((voice) => voice.name.includes("Google US English")) ||
-      voices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
-      voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
-      voices[0]
+    const preferredVoice = resolveVoice(voices, selectedVoiceURIRef.current, selectedVoiceNameRef.current)
 
     // If a specific voice is selected, wait for it to become available.
     if (!preferredVoice && (selectedVoiceURIRef.current || selectedVoiceNameRef.current)) {
@@ -351,14 +345,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
           }
 
           const refreshedVoices = window.speechSynthesis.getVoices()
-          const readyVoice =
-            refreshedVoices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current) ||
-            refreshedVoices.find((voice) => !voice.name.includes("David") && voice.name === selectedVoiceNameRef.current) ||
-            refreshedVoices.find((voice) => !voice.name.includes("David") && selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
-            refreshedVoices.find((voice) => voice.name.includes("Google US English")) ||
-            refreshedVoices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
-            refreshedVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
-            refreshedVoices[0]
+          const readyVoice = resolveVoice(refreshedVoices, selectedVoiceURIRef.current, selectedVoiceNameRef.current)
 
           if (readyVoice || attempts++ >= 20) {
             window.clearInterval(voiceReadyRetryRef.current as number)

@@ -12,6 +12,7 @@
  */
 
 import { isBraveBrowser } from "./browserUtils"
+import { resolveVoice } from "./voiceResolver"
 
 let recognition: SpeechRecognition | null = null
 let isActive = false
@@ -165,7 +166,7 @@ const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
 const normalizeInput = (rawText: string): string => {
   let text = rawText.toLowerCase()
   text = text.replace(/[^a-z0-9\s]/gi, " ")
-  text = text.replace(/\b(?:de|dee|the|to|do|you)\s+activate[d]?\b/g, "deactivate")
+  text = text.replace(/\b(?:de|dee)\s+activate[d]?\b/g, "deactivate")
   text = text.replace(/\b(?:deactivated|deactivating|unactivate|disable|turn off|turn it off)\b/g, "deactivate")
   text = text.replace(/\b(?:activated|activating|reactivate|enable|turn on)\b/g, "activate")
   text = text.replace(/\s+/g, " ").trim()
@@ -188,21 +189,13 @@ const speakFeedbackInTab = (text: string) => {
     const voiceName = typeof res.sensa_visual_voice_name === "string" ? res.sensa_visual_voice_name : ""
 
     const speak = (voices: SpeechSynthesisVoice[]) => {
-      let preferredVoice = voices.find((v) => !v.name.includes("David") && v.voiceURI === voiceURI)
-      if (!preferredVoice && voiceName && !voiceName.includes("David")) {
-        preferredVoice = voices.find((v) => !v.name.includes("David") && (v.name === voiceName || v.name?.includes(voiceName)))
-      }
-      if (!preferredVoice) {
-        preferredVoice = voices.find((v) => v.name.includes("Google US English"))
-      }
-      if (!preferredVoice) {
-        preferredVoice = voices.find((v) => (v.lang === "en-US" || v.lang.startsWith("en")) && !v.name.includes("David")) || voices.find((v) => v.lang === "en-US" || v.lang.startsWith("en")) || voices[0]
-      }
+      const preferredVoice = resolveVoice(voices, voiceURI, voiceName)
 
       window.speechSynthesis.cancel()
       const utterance = new SpeechSynthesisUtterance(text)
       if (preferredVoice) {
         utterance.voice = preferredVoice
+        utterance.lang = preferredVoice.lang
       }
       utterance.rate = 1
       utterance.pitch = 1
@@ -247,6 +240,10 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
       tabLog("[Sensa Tab Voice Bridge] Visual mode activated via voice.")
     })
   } else if (command === "deactivate") {
+    if (!isCurrentlyActive) {
+      tabLog("[Sensa Tab Voice Bridge] Visual mode is already inactive. Ignoring deactivate command.")
+      return
+    }
     chrome.storage.local.set({
       sensa_visual_active: false,
       sensa_voice_command_active: false
@@ -404,19 +401,17 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       activateScore -= 15
     }
 
-    // Match deactivate cues
-    deactivateScore += count("deactivate visual mode") * 5
-    deactivateScore += count("stop visual mode") * 5
-    deactivateScore += count("deactivate") * 3
-
-    if (!isCurrentlyActive) {
+    // Match deactivate cues (only if Visual Mode is actively running)
+    if (isCurrentlyActive) {
+      deactivateScore += count("deactivate visual mode") * 5
+      deactivateScore += count("stop visual mode") * 5
       deactivateScore += count("deactivate") * 3
-    }
 
-    if (check("deactivate", "deactivate visual mode") || (!isCurrentlyActive && check("deactivate"))) {
-      deactivateScore += 6
-    } else if (fuzzyMatch(cleanTranscript, "deactivate", 2) || fuzzyMatch(cleanTranscript, "deactivate visual mode", 2)) {
-      deactivateScore += 4
+      if (check("deactivate", "deactivate visual mode")) {
+        deactivateScore += 6
+      } else if (fuzzyMatch(cleanTranscript, "deactivate", 2) || fuzzyMatch(cleanTranscript, "deactivate visual mode", 2)) {
+        deactivateScore += 4
+      }
     }
 
     // Match auditory cues
@@ -438,10 +433,15 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       if (!isCurrentlyActive) {
         chosenCommand = "activate"
       } else {
-        chosenCommand = "deactivate"
+        // Visual mode is already active. Do not deactivate!
+        chosenCommand = null
       }
     } else if (deactivateScore >= 3 && deactivateScore > activateScore) {
-      chosenCommand = "deactivate"
+      if (isCurrentlyActive) {
+        chosenCommand = "deactivate"
+      } else {
+        chosenCommand = null
+      }
     } else if (
       (activateScore >= 3 && deactivateScore >= 3) ||
       (activateScore >= 3 && auditoryScore >= 3) ||
