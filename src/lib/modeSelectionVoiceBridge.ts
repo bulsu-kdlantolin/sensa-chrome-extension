@@ -56,21 +56,34 @@ export function isModeSelectionVoiceActive(): boolean {
  * @param message Description of the event or error.
  * @param level Severity level (`log`, `warn`, `error`).
  */
-const tabLog = (message: string, level: "log" | "warn" | "error" = "log") => {
-  const tsMessage = `[${new Date().toISOString().substring(11, 23)}] ${message}`
-  console[level](tsMessage)
+const tabLogStyled = (
+  formatStr: string,
+  styles: string[] = [],
+  level: "log" | "warn" | "error" = "log"
+) => {
+  if (typeof console !== "undefined" && console[level]) {
+    if (styles.length > 0) {
+      console[level](formatStr, ...styles)
+    } else {
+      console[level](formatStr)
+    }
+  }
   try {
+    const plainMessage = formatStr.replace(/%c/g, "")
     chrome.runtime.sendMessage({
       type: "sensa-tab-log",
-      message,
+      message: plainMessage,
       level
     }, () => {
-      // Ignore error if popup receiver is currently closed
-      const err = chrome.runtime.lastError
+      const _ = chrome.runtime.lastError
     })
   } catch {
     // Ignore runtime messaging exceptions
   }
+}
+
+const tabLog = (message: string, level: "log" | "warn" | "error" = "log") => {
+  tabLogStyled(message, [], level)
 }
 
 /**
@@ -375,7 +388,15 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     const normalizedTranscript = normalizeInput(scrubbedText)
     if (!normalizedTranscript) return
 
-    tabLog(`[Sensa Mode Selection Voice Bridge] 🎤 Heard transcript: "${normalizedTranscript}" (Raw: "${currentSpeech}")`)
+    tabLogStyled(
+      `%c[Sensa Mode Selection Voice Bridge]%c 🎤 Heard: %c"${normalizedTranscript}" %c(Raw: "${currentSpeech}")`,
+      [
+        "color: #f97316; font-weight: bold; background: rgba(249, 115, 22, 0.1); padding: 1px 5px; border-radius: 3px;",
+        "color: inherit;",
+        "color: #fb923c; font-weight: bold;",
+        "color: #94a3b8; font-size: 0.9em;"
+      ]
+    )
 
     // --- Scoring ---
     let visualScore = 0
@@ -510,10 +531,29 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
 
     if (chosenCommand) {
       globalBuffer = ""
-      tabLog(`[Sensa Mode Selection Voice Bridge] ⚡ Executing command: "${chosenCommand}" (Scores -> Visual: ${visualScore}, Auditory: ${auditoryScore})`)
+      tabLogStyled(
+        `%c[Sensa Mode Selection Voice Bridge]%c ⚡ Executing command: %c"${chosenCommand}"%c (Scores -> Visual: ${visualScore}, Auditory: ${auditoryScore})`,
+        [
+          "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.14); padding: 2px 6px; border-radius: 4px;",
+          "color: inherit;",
+          "color: #10b981; font-weight: bold; text-decoration: underline;",
+          "color: #64748b; font-size: 0.9em;"
+        ]
+      )
       applyModeSelection(chosenCommand)
     } else {
-      tabLog(`[Sensa Mode Selection Voice Bridge] ❓ No command matched: "${normalizedTranscript}" (Scores -> Visual: ${visualScore}, Auditory: ${auditoryScore})`)
+      const isFinal = Boolean(event.results[event.results.length - 1]?.isFinal)
+      if (isFinal || normalizedTranscript.length >= 6) {
+        tabLogStyled(
+          `%c[Sensa Mode Selection Voice Bridge]%c ❓ No command matched: %c"${normalizedTranscript}"%c (Scores -> Visual: ${visualScore}, Auditory: ${auditoryScore})`,
+          [
+            "color: #64748b; font-weight: 600;",
+            "color: inherit;",
+            "color: #94a3b8; font-style: italic;",
+            "color: #64748b; font-size: 0.9em;"
+          ]
+        )
+      }
     }
   }
 
@@ -562,7 +602,11 @@ const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
   commandApplied = true
   ignoreSpeechUntil = Date.now() + 2000
 
-  tabLog(`[Sensa Tab Voice Bridge] Applying chosen mode selection: ${mode}`)
+  tabLogStyled(`%c[Sensa Mode Selection Voice Bridge]%c ✨ Applying chosen mode selection: %c${mode}`, [
+    "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.12); padding: 2px 6px; border-radius: 4px;",
+    "color: inherit;",
+    "color: #10b981; font-weight: bold;"
+  ])
 
   chrome.storage.local.get(["sensa_user_profile"], (res) => {
     const profile = (res.sensa_user_profile as SensaUserProfile | undefined) ?? DEFAULT_PROFILE
@@ -590,7 +634,11 @@ const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
       sensa_last_tab: mode,
       ...extraDefaults
     }, () => {
-      tabLog(`[Sensa Tab Voice Bridge] Storage updated. activeMode is now: ${mode}`)
+      tabLogStyled(`%c[Sensa Mode Selection Voice Bridge]%c ✅ Active mode saved: %c${mode}`, [
+        "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.15); padding: 2px 6px; border-radius: 4px;",
+        "color: inherit;",
+        "color: #10b981; font-weight: bold;"
+      ])
     })
   })
 }

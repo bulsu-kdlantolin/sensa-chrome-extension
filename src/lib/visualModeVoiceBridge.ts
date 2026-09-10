@@ -31,20 +31,34 @@ export function isVisualModeVoiceActive() {
   return isActive
 }
 
-const tabLog = (message: string, level: "log" | "warn" | "error" = "log") => {
-  const tsMessage = `[${new Date().toISOString().substring(11, 23)}] ${message}`
-  console[level](tsMessage)
+const tabLogStyled = (
+  formatStr: string,
+  styles: string[] = [],
+  level: "log" | "warn" | "error" = "log"
+) => {
+  if (typeof console !== "undefined" && console[level]) {
+    if (styles.length > 0) {
+      console[level](formatStr, ...styles)
+    } else {
+      console[level](formatStr)
+    }
+  }
   try {
+    const plainMessage = formatStr.replace(/%c/g, "")
     chrome.runtime.sendMessage({
       type: "sensa-tab-log",
-      message,
+      message: plainMessage,
       level
     }, () => {
-      const err = chrome.runtime.lastError
+      const _ = chrome.runtime.lastError
     })
   } catch {
     // Ignore runtime errors
   }
+}
+
+const tabLog = (message: string, level: "log" | "warn" | "error" = "log") => {
+  tabLogStyled(message, [], level)
 }
 
 const clearRestartTimer = () => {
@@ -225,11 +239,11 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
     }, () => {
       chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: "visual" }, () => void chrome.runtime.lastError)
       speakFeedbackInTab("Visual mode activated")
-      tabLog("[Sensa Tab Voice Bridge] Visual mode activated via voice.")
+      tabLogStyled(`%c[Sensa Visual Voice Bridge]%c ✨ Visual mode activated via voice`, ["color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.12); padding: 2px 6px; border-radius: 4px;", "color: #10b981; font-weight: 600;"])
     })
   } else if (command === "deactivate") {
     if (!isCurrentlyActive) {
-      tabLog("[Sensa Tab Voice Bridge] Visual mode is already inactive. Ignoring deactivate command.")
+      tabLogStyled(`%c[Sensa Visual Voice Bridge]%c ℹ️ Visual mode is already inactive. Ignoring deactivate command.`, ["color: #f59e0b; font-weight: bold; background: rgba(245, 158, 11, 0.12); padding: 2px 6px; border-radius: 4px;", "color: #f59e0b; font-weight: 500;"])
       return
     }
     chrome.storage.local.set({
@@ -238,7 +252,7 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
     }, () => {
       chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null }, () => void chrome.runtime.lastError)
       speakFeedbackInTab("Visual mode deactivated")
-      tabLog("[Sensa Tab Voice Bridge] Visual mode deactivated via voice.")
+      tabLogStyled(`%c[Sensa Visual Voice Bridge]%c 🛑 Visual mode deactivated via voice`, ["color: #ef4444; font-weight: bold; background: rgba(239, 68, 68, 0.12); padding: 2px 6px; border-radius: 4px;", "color: #ef4444; font-weight: 600;"])
     })
   } else if (command === "auditory") {
     chrome.storage.local.set({
@@ -249,7 +263,7 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
     }, () => {
       chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: "auditory" }, () => void chrome.runtime.lastError)
       speakFeedbackInTab("Auditory mode activated")
-      tabLog("[Sensa Tab Voice Bridge] Auditory mode activated via voice.")
+      tabLogStyled(`%c[Sensa Visual Voice Bridge]%c 🎧 Auditory mode activated via voice`, ["color: #f97316; font-weight: bold; background: rgba(249, 115, 22, 0.12); padding: 2px 6px; border-radius: 4px;", "color: #f97316; font-weight: 600;"])
     })
   }
 }
@@ -357,7 +371,15 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     }
     if (!cleanTranscript) return
 
-    tabLog(`[Sensa Visual Voice Bridge] 🎤 Heard: "${cleanTranscript}" (Raw: "${rawTranscript}")`)
+    tabLogStyled(
+      `%c[Sensa Visual Voice Bridge]%c 🎤 Heard: %c"${cleanTranscript}" %c(Raw: "${rawTranscript}")`,
+      [
+        "color: #3b82f6; font-weight: bold; background: rgba(59, 130, 246, 0.1); padding: 1px 5px; border-radius: 3px;",
+        "color: inherit;",
+        "color: #38bdf8; font-weight: bold;",
+        "color: #94a3b8; font-size: 0.9em;"
+      ]
+    )
 
     const words = cleanTranscript.split(" ")
     const padded = ` ${cleanTranscript} `
@@ -435,7 +457,7 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       (activateScore >= 3 && auditoryScore >= 3) ||
       (deactivateScore >= 3 && auditoryScore >= 3)
     ) {
-      tabLog(`[Sensa Visual Voice Bridge] Conflict detected (act: ${activateScore}, deact: ${deactivateScore}, aud: ${auditoryScore}). Clearing buffer.`)
+      tabLogStyled(`%c[Sensa Visual Voice Bridge]%c ⚠️ Conflict detected %c(act: ${activateScore}, deact: ${deactivateScore}, aud: ${auditoryScore})%c. Clearing buffer.`, ["color: #f59e0b; font-weight: bold; background: rgba(245, 158, 11, 0.12); padding: 2px 6px; border-radius: 4px;", "color: inherit;", "color: #cbd5e1; font-weight: 500;", "color: inherit;"])
       globalBuffer = ""
     }
 
@@ -448,10 +470,29 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       } else if (chosenCommand === "auditory") {
         consumedKeywords.push("auditory", "audio", "mode")
       }
-      tabLog(`[Sensa Visual Voice Bridge] ⚡ Executing command: "${chosenCommand}" (Scores -> Act: ${activateScore}, Deact: ${deactivateScore}, Aud: ${auditoryScore})`)
+      tabLogStyled(
+        `%c[Sensa Visual Voice Bridge]%c ⚡ Executing command: %c"${chosenCommand}"%c (Scores -> Act: ${activateScore}, Deact: ${deactivateScore}, Aud: ${auditoryScore})`,
+        [
+          "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.14); padding: 2px 6px; border-radius: 4px;",
+          "color: inherit;",
+          "color: #10b981; font-weight: bold; text-decoration: underline;",
+          "color: #64748b; font-size: 0.9em;"
+        ]
+      )
       applyCommand(chosenCommand)
     } else {
-      tabLog(`[Sensa Visual Voice Bridge] ❓ No command matched: "${cleanTranscript}" (Scores -> Act: ${activateScore}, Deact: ${deactivateScore}, Aud: ${auditoryScore})`)
+      const isFinal = Boolean(event.results[event.results.length - 1]?.isFinal)
+      if (isFinal || cleanTranscript.length >= 6) {
+        tabLogStyled(
+          `%c[Sensa Visual Voice Bridge]%c ❓ No command matched: %c"${cleanTranscript}"%c (Scores -> Act: ${activateScore}, Deact: ${deactivateScore}, Aud: ${auditoryScore})`,
+          [
+            "color: #64748b; font-weight: 600;",
+            "color: inherit;",
+            "color: #94a3b8; font-style: italic;",
+            "color: #64748b; font-size: 0.9em;"
+          ]
+        )
+      }
     }
   }
 

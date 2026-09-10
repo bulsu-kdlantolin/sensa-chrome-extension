@@ -31,20 +31,34 @@ export function isWelcomeVoiceActive() {
   return isActive
 }
 
-const tabLog = (message: string, level: "log" | "warn" | "error" = "log") => {
-  const tsMessage = `[${new Date().toISOString().substring(11, 23)}] ${message}`
-  console[level](tsMessage)
+const tabLogStyled = (
+  formatStr: string,
+  styles: string[] = [],
+  level: "log" | "warn" | "error" = "log"
+) => {
+  if (typeof console !== "undefined" && console[level]) {
+    if (styles.length > 0) {
+      console[level](formatStr, ...styles)
+    } else {
+      console[level](formatStr)
+    }
+  }
   try {
+    const plainMessage = formatStr.replace(/%c/g, "")
     chrome.runtime.sendMessage({
       type: "sensa-tab-log",
-      message,
+      message: plainMessage,
       level
     }, () => {
-      const err = chrome.runtime.lastError
+      const _ = chrome.runtime.lastError
     })
   } catch {
     // Ignore runtime errors
   }
+}
+
+const tabLog = (message: string, level: "log" | "warn" | "error" = "log") => {
+  tabLogStyled(message, [], level)
 }
 
 const clearRestartTimer = () => {
@@ -247,7 +261,15 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     const normalizedTranscript = normalizeInput(rawTranscript)
     if (!normalizedTranscript) return
 
-    tabLog(`[Sensa Welcome Voice Bridge] 🎤 Heard: "${normalizedTranscript}" (Raw: "${rawTranscript}")`)
+    tabLogStyled(
+      `%c[Sensa Welcome Voice Bridge]%c 🎤 Heard: %c"${normalizedTranscript}" %c(Raw: "${rawTranscript}")`,
+      [
+        "color: #8b5cf6; font-weight: bold; background: rgba(139, 92, 246, 0.1); padding: 1px 5px; border-radius: 3px;",
+        "color: inherit;",
+        "color: #a78bfa; font-weight: bold;",
+        "color: #94a3b8; font-size: 0.9em;"
+      ]
+    )
 
     // Score "Enter / Proceed / Start / Go / Get Started"
     let proceedScore = 0
@@ -282,10 +304,29 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
 
     if (proceedScore >= 3) {
       globalBuffer = ""
-      tabLog(`[Sensa Welcome Voice Bridge] ⚡ Executing command: "get started" (Score: ${proceedScore})`)
+      tabLogStyled(
+        `%c[Sensa Welcome Voice Bridge]%c ⚡ Executing command: %c"get started"%c (Score: ${proceedScore})`,
+        [
+          "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.14); padding: 2px 6px; border-radius: 4px;",
+          "color: inherit;",
+          "color: #10b981; font-weight: bold; text-decoration: underline;",
+          "color: #64748b; font-size: 0.9em;"
+        ]
+      )
       applyWelcomeProceed()
     } else {
-      tabLog(`[Sensa Welcome Voice Bridge] ❓ No command matched: "${normalizedTranscript}" (Score: ${proceedScore})`)
+      const isFinal = Boolean(event.results[event.results.length - 1]?.isFinal)
+      if (isFinal || normalizedTranscript.length >= 5) {
+        tabLogStyled(
+          `%c[Sensa Welcome Voice Bridge]%c ❓ No command matched: %c"${normalizedTranscript}"%c (Score: ${proceedScore})`,
+          [
+            "color: #64748b; font-weight: 600;",
+            "color: inherit;",
+            "color: #94a3b8; font-style: italic;",
+            "color: #64748b; font-size: 0.9em;"
+          ]
+        )
+      }
     }
   }
 
