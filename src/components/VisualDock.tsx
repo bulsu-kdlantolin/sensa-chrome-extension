@@ -1214,7 +1214,8 @@ export default function VisualDock({
 
     const getKeywordsForCommand = (cmd: string) => {
       switch (cmd) {
-        case "play": return ["play", "resume", "continue", "start reading", "read", "red", "reed", "reading", "start", "go", "speak", "begin"]
+        case "play":
+        case "read": return ["play", "resume", "continue", "start reading", "read", "red", "reed", "reading", "start", "go", "speak", "begin"]
         case "stop": return ["stop", "pause", "halt", "stop reading", "stop playing", "pause reading", "shut up", "hush", "shh", "stop it", "stahp", "cease", "freeze", "silence", "quiet"]
         case "next": return ["next", "skip", "forward", "necks", "neck", "nex", "nix"]
         case "previous": return ["previous", "prev", "previ", "preevi", "back", "go back", "preveous", "previus", "privious", "preview", "previews", "review", "reviews"]
@@ -1459,10 +1460,14 @@ export default function VisualDock({
               })
               return true
             }
-            else if (check("speed", "reading speed", "breathing speed", "eating speed", "reeding speed", "reed speed") || fuzzyCheck("speed", 1)) {
+            else if (check("speed", "reading speed", "read speed", "breathing speed", "eating speed", "reeding speed", "reed speed") || fuzzyCheck("speed", 1)) {
               if (commandTimeout) {
                 window.clearTimeout(commandTimeout)
                 commandTimeout = null
+              }
+              // If read was triggered within the last 650ms due to an overlapping race condition, cancel it immediately
+              if (lastCommandName === "read" && Date.now() - lastCommandTime < 650) {
+                callbacksRef.current.handleStopReading()
               }
               applyCommand("speed", () => {
                 callbacksRef.current.playClickAudio?.('Reeding speed')
@@ -1531,7 +1536,11 @@ export default function VisualDock({
               return true
             }
             else if (((!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) || !callbacksRef.current.isPlayOptimistic || readMatch) && readMatch) {
-              if (check("speed", "reading speed", "breathing speed", "eating speed", "reeding speed", "reed speed")) {
+              if (check("speed", "reading speed", "read speed", "breathing speed", "eating speed", "reeding speed", "reed speed") || fuzzyCheck("speed", 1)) {
+                if (commandTimeout) {
+                  window.clearTimeout(commandTimeout)
+                  commandTimeout = null
+                }
                 return false
               }
               if (commandTimeout) {
@@ -1540,15 +1549,18 @@ export default function VisualDock({
               }
 
               currentMatchedKeyword = readMatch[0].toLowerCase()
-              const isSingleWordRead = cleanText === "read" || cleanText === "reading" || cleanText === "reed" || cleanText === "breathing"
+              const matchedWord = currentMatchedKeyword
+              const isPotentialSpeedPrefix = /^(read|reading|reed|reeding|red|breathing)$/i.test(matchedWord)
 
-              if (isSingleWordRead) {
+              if (isPotentialSpeedPrefix) {
+                // If speech recognition only heard "read" or "reading" so far, wait to see if "speed" follows
+                const delayMs = (matchedWord === "reading" || matchedWord === "reeding") ? 600 : 500
                 commandTimeout = window.setTimeout(() => {
                   commandTimeout = null
                   applyCommand("read", () => {
                     callbacksRef.current.handleStartReading()
                   })
-                }, 200)
+                }, delayMs)
                 return true
               }
 
