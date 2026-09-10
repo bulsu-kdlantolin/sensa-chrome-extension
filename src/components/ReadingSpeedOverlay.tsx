@@ -304,17 +304,9 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
 
       const now = Date.now()
 
-      if (!initialPlayed) {
-        if (now - lastReminderTime >= 2500) {
-          initialPlayed = true
-          lastReminderTime = now
-          wrappedPlayClickAudio("Say increase or decrease to adjust reading speed. Or say close to exit the overlay.", 0.8)
-        }
-      } else {
-        if (now - lastReminderTime >= 60000) {
-          lastReminderTime = now
-          wrappedPlayClickAudio("Say increase or decrease to adjust reading speed. Or say close to exit the overlay.", 0.8)
-        }
+      if (now - lastReminderTime >= 60000) {
+        lastReminderTime = now
+        wrappedPlayClickAudio("Say increase or decrease to adjust reading speed. Or say close to exit the overlay.", 0.8)
       }
 
       loopTimer = window.setTimeout(checkReminder, 1000)
@@ -469,6 +461,9 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     }
 
     const closeOverlay = () => {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel()
+      }
       playClickSfx()
       teardownRecognition()
       setIsMounted(false)
@@ -493,13 +488,21 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           consumedKeywords = []
         }
 
+        // Gating: ONLY decide and execute on finalized speech results
+        let hasFinal = false
         let liveText = ""
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const item = event.results[i]?.[0]
-          if (item) {
-            liveText += item.transcript + " "
+          const resItem = event.results[i]
+          if (resItem?.isFinal) {
+            hasFinal = true
+            const item = resItem[0]
+            if (item) {
+              liveText += item.transcript + " "
+            }
           }
         }
+
+        if (!hasFinal) return
 
         const rawTranscript = liveText.trim()
         if (!rawTranscript) return
