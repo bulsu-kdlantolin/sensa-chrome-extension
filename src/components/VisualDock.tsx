@@ -1215,10 +1215,10 @@ export default function VisualDock({
     const getKeywordsForCommand = (cmd: string) => {
       switch (cmd) {
         case "play":
-        case "read": return ["play", "resume", "continue", "start reading", "read", "red", "reed", "reading", "start", "go", "speak", "begin"]
+        case "read": return ["play", "resume", "continue", "start reading", "read", "reed", "reading", "start", "go", "speak", "begin"]
         case "stop": return ["stop", "pause", "halt", "stop reading", "stop playing", "pause reading", "shut up", "hush", "shh", "stop it", "stahp", "cease", "freeze", "silence", "quiet"]
         case "next": return ["next", "skip", "forward", "necks", "neck", "nex", "nix"]
-        case "previous": return ["previous", "prev", "previ", "preevi", "back", "go back", "preveous", "previus", "privious", "preview", "previews", "review", "reviews"]
+        case "previous": return ["previous", "prev", "previ", "preevi", "back", "go back", "preveous", "previus", "privious", "preview", "previews", "review", "reviews", "reduce", "view", "views", "pre", "prevue", "prevues"]
         case "restart": return ["repeat", "restart", "start over", "reset", "refresh", "re start", "re-start", "from the top", "from the beginning", "begin again", "restore", "replay", "rewind", "again"]
         case "speed": return ["speed", "rate", "reading speed", "voice speed"]
         case "settings": return ["setting", "settings", "options", "open settings"]
@@ -1298,6 +1298,7 @@ export default function VisualDock({
 
         if (event.resultIndex !== currentResultIndex) {
           currentResultIndex = event.resultIndex
+          consumedKeywords = []
         }
 
         let rawTranscript = ""
@@ -1386,13 +1387,13 @@ export default function VisualDock({
           const applyCommand = (commandName: string, action: () => void) => {
             matchedAnyCommand = true
 
-            // Apply a global 800ms buffer flush lock so trailing audio doesn't trigger false positives
-            ignoreSpeechUntil = Date.now() + 800
+            // Apply a brief 450ms buffer flush lock so trailing audio doesn't trigger false positives
+            ignoreSpeechUntil = Date.now() + 450
 
-            // Only apply cooldown if repeating the EXACT same command within 850ms.
-            if (commandName === lastCommandName && timeSinceLastCommand < 850) {
+            // Only apply cooldown if repeating the EXACT same command within 550ms.
+            if (commandName === lastCommandName && timeSinceLastCommand < 550) {
               const ts = new Date().toISOString().substring(11, 23)
-              console.log(`%c[Sensa Dock Voice] ⏸️ Ignored duplicate command: "${commandName}" (within 850ms cooldown)`, "color: #f59e0b; font-weight: bold;")
+              console.log(`%c[Sensa Dock Voice] ⏸️ Ignored duplicate command: "${commandName}" (within 550ms cooldown)`, "color: #f59e0b; font-weight: bold;")
               return
             }
             if (commandTimeout) {
@@ -1405,8 +1406,8 @@ export default function VisualDock({
               lastCommandResultIndex = currentResultIndex
               lastCommandTranscript = rawTranscript
 
-              // Strip all keywords and aliases for this command from the interim transcript for 1.5s to prevent Chrome from re-triggering on the same breath
-              const expires = Date.now() + 1500
+              // Strip all keywords and aliases for this command from the interim transcript for 600ms to prevent Chrome from re-triggering on the same breath
+              const expires = Date.now() + 600
               getKeywordsForCommand(commandName).forEach(kw => {
                 consumedKeywords.push({ word: kw, expires })
               })
@@ -1488,9 +1489,9 @@ export default function VisualDock({
             // Rule 1 & 2 & 3: EAGER INTERIM EXECUTION + HOMOPHONE DICTIONARY MAPPING + EARLY REGEX BOUNDARIES
             const restartMatch = cleanText.match(/\b(restart|repeat|re start|re-start|replay|rewind|i start|first start|let s start)\b/i)
             const nextMatch = cleanText.match(/\b(next|necks|net|nex|nix|next page|next sentence)\b/i)
-            const prevMatch = cleanText.match(/\b(previous|preview|previews|review|reviews|previs|prev|previ|preevi|preveous|previus|privious|previous page|previous sentence|go back|back)\b/i)
+            const prevMatch = cleanText.match(/\b(previous|preview|previews|review|reviews|reduce|view|views|pre|prevue|prevues|previs|prev|previ|preevi|preveous|previus|privious|previous page|previous sentence|go back|back)\b/i)
             const stopMatch = cleanText.match(/\b(stop|pause|stop reading|stop playing|paused|pause reading|stahp)\b/i)
-            const readMatch = cleanText.match(/\b(read|red|reed|reading|play|resume|continue|start reading)\b/i)
+            const readMatch = cleanText.match(/\b(read|reed|reading|play|resume|continue|start reading)\b/i)
 
             if (restartMatch) {
               currentMatchedKeyword = restartMatch[0].toLowerCase()
@@ -1500,15 +1501,15 @@ export default function VisualDock({
               })
               return true
             }
-            else if (nextMatch) {
-              currentMatchedKeyword = nextMatch[0].toLowerCase()
+            else if (nextMatch || fuzzyCheck("next", 1)) {
+              currentMatchedKeyword = nextMatch ? nextMatch[0].toLowerCase() : "next"
               applyCommand("next", () => {
                 callbacksRef.current.onNext()
               })
               return true
             }
-            else if (prevMatch) {
-              currentMatchedKeyword = prevMatch[0].toLowerCase()
+            else if (prevMatch || fuzzyCheck("previous", 1) || fuzzyCheck("preview", 1) || fuzzyCheck("review", 1)) {
+              currentMatchedKeyword = prevMatch ? prevMatch[0].toLowerCase() : "previous"
               applyCommand("previous", () => {
                 callbacksRef.current.onPrev()
               })
@@ -1553,7 +1554,7 @@ export default function VisualDock({
 
               currentMatchedKeyword = readMatch[0].toLowerCase()
               const matchedWord = currentMatchedKeyword
-              const isPotentialSpeedPrefix = /^(read|reading|reed|reeding|red|breathing)$/i.test(matchedWord)
+              const isPotentialSpeedPrefix = /^(read|reading|reed|reeding|breathing)$/i.test(matchedWord)
 
               if (isPotentialSpeedPrefix) {
                 // If speech recognition only heard "read" or "reading" so far, wait to see if "speed" follows

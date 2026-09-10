@@ -13,10 +13,10 @@ interface EchoToken {
 
 // Map of command words to their phonetic variants and homophones
 const COMMAND_HOMOPHONES: Record<string, string[]> = {
-  previous: ["previous", "prev", "previ", "preevi", "preview", "previews", "review", "reviews", "preveous", "previus", "privious", "back"],
+  previous: ["previous", "prev", "previ", "preevi", "preview", "previews", "review", "reviews", "reduce", "view", "views", "pre", "prevue", "prevues", "preveous", "previus", "privious", "back"],
   next: ["next", "skip", "forward", "necks", "neck", "nex", "nix"],
   stop: ["stop", "pause", "halt", "stahp", "paused", "shh", "quiet", "silence", "freeze", "cease"],
-  play: ["play", "resume", "continue", "read", "red", "reed", "reading", "start", "go", "speak", "begin"],
+  play: ["play", "resume", "continue", "read", "reed", "reading", "start", "go", "speak", "begin"],
   restart: ["repeat", "restart", "start over", "reset", "refresh", "re start", "re-start", "replay", "rewind", "again"],
   speed: ["speed", "rate", "reading speed", "voice speed", "faster", "slower"],
   settings: ["setting", "settings", "options"],
