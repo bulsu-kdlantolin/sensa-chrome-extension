@@ -358,7 +358,9 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     if (!currentSpeech) return
 
     const scrubbedText = scrubTTS(currentSpeech)
-    const normalizedTranscript = normalizeInput(scrubbedText || currentSpeech)
+    if (!scrubbedText) return
+
+    const normalizedTranscript = normalizeInput(scrubbedText)
     if (!normalizedTranscript) return
 
     tabLog(`[Sensa Mode Selection Voice Bridge] 🎤 Heard transcript: "${normalizedTranscript}" (Raw: "${currentSpeech}")`)
