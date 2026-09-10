@@ -174,3 +174,20 @@ body::-webkit-scrollbar-thumb:hover,
   scrollbar-width: thin;
   scrollbar-color: rgba(156, 163, 175, 0.4) transparent;
 }
+/* --- Sensa Live Subtitle Caption Box --- */
+#sensa-live-caption-box,
+.sensa-live-caption-box {
+  pointer-events: auto !important;
+  cursor: grab !important;
+}
+
+#sensa-live-caption-box:active,
+#sensa-live-caption-box.dragging,
+.sensa-live-caption-box.dragging {
+  cursor: grabbing !important;
+}
+
+#sensa-live-caption-box:hover .sensa-caption-drag-handle {
+  background-color: rgba(255, 255, 255, 0.6) !important;
+  width: 44px !important;
+}

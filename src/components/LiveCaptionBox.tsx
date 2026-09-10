@@ -341,6 +341,8 @@ export default function LiveCaptionBox({
         }
       `}</style>
       <div
+        id="sensa-live-caption-box"
+        className={`sensa-live-caption-box fixed ${isDragging ? "dragging" : ""}`}
         ref={boxRef}
         role="log"
         aria-live="polite"
@@ -360,6 +362,7 @@ export default function LiveCaptionBox({
           boxShadow: isDragging 
             ? "0 18px 36px rgba(0,0,0,0.45), 0 0 0 2px rgba(255, 122, 47, 0.4)" 
             : "0 10px 25px rgba(0,0,0,0.25)",
+          pointerEvents: "auto",
           userSelect: "none",
           WebkitUserSelect: "none",
           touchAction: "none",
@@ -389,6 +392,7 @@ export default function LiveCaptionBox({
       >
         {/* Visual drag handle */}
         <div 
+          className="sensa-caption-drag-handle"
           style={{
             width: "36px",
             height: "4px",

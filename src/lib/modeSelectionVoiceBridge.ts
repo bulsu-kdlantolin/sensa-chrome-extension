@@ -33,6 +33,7 @@ let restartTimer: number | null = null
 let ignoreSpeechUntil = 0
 let commandApplied = false
 let globalBuffer = ""
+let bufferClearTimer: number | null = null
 let watchdogTimer: number | null = null
 let lastAudioTimestamp = 0
 let recognitionRunning = false
@@ -266,7 +267,10 @@ const TTS_SENTENCES = [
 const TTS_MARKER_WORDS = [
   "impaired", "assisting", "magnifier", "multilingual",
   "captions", "visualizer", "specialized", "accessibility",
-  "navigation", "browser extension", "guided reading", "hearing loss"
+  "navigation", "browser extension", "guided reading", "hearing loss",
+  "low vision", "support low vision", "support hearing loss", "noise alerts",
+  "primary accessibility mode", "choose a primary accessibility mode",
+  "you can say visual mode", "tools and features"
 ]
 
 /**
@@ -300,12 +304,11 @@ const scrubTTS = (text: string): string | null => {
 
   cleaned = cleaned.replace(/\s+/g, " ").trim()
 
-  // Only reject via TTS marker words if no valid mode command keyword was spoken alongside them
-  if (!hasModeKeyword) {
-    for (const marker of TTS_MARKER_WORDS) {
-      if (cleaned.includes(marker)) {
-        return null
-      }
+  // If the speech contains ANY onboarding narration marker phrase, it is definitively TTS speaker echo.
+  // We must reject it immediately even if the words "visual" or "auditory" appear alongside it!
+  for (const marker of TTS_MARKER_WORDS) {
+    if (cleaned.includes(marker)) {
+      return null
     }
   }
 
@@ -353,6 +356,15 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     if (globalBuffer.length > 150) {
       globalBuffer = globalBuffer.slice(-150)
     }
+
+    if (bufferClearTimer !== null) {
+      window.clearTimeout(bufferClearTimer)
+      bufferClearTimer = null
+    }
+    bufferClearTimer = window.setTimeout(() => {
+      globalBuffer = ""
+      bufferClearTimer = null
+    }, 2500)
 
     const currentSpeech = (globalBuffer + " " + interimChunk).trim()
     if (!currentSpeech) return
@@ -552,18 +564,19 @@ const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
 
   tabLog(`[Sensa Tab Voice Bridge] Applying chosen mode selection: ${mode}`)
 
-  chrome.storage.local.get(["sensa_user_profile", "sensa_mode_selection_listening"], (res) => {
-    if (!res.sensa_mode_selection_listening) {
-      tabLog("[Sensa Tab Voice Bridge] sensa_mode_selection_listening is false, selection ignored.", "warn")
-      commandApplied = false
-      return
-    }
-
+  chrome.storage.local.get(["sensa_user_profile"], (res) => {
     const profile = (res.sensa_user_profile as SensaUserProfile | undefined) ?? DEFAULT_PROFILE
 
     isActive = false
     clearWatchdog()
     teardownRecognition()
+
+    const extraDefaults = mode === "visual" ? {
+      sensa_visual_highlight_mouse_screen_reader: true,
+      sensa_visual_image_alt_reader_enabled: true,
+      sensa_visual_voice_guide_enabled: true,
+      sensa_visual_autoscroll_enabled: true
+    } : {}
 
     chrome.storage.local.set({
       sensa_mode_selection_listening: false,
@@ -574,7 +587,8 @@ const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
           activeMode: mode
         }
       },
-      sensa_last_tab: mode
+      sensa_last_tab: mode,
+      ...extraDefaults
     }, () => {
       tabLog(`[Sensa Tab Voice Bridge] Storage updated. activeMode is now: ${mode}`)
     })

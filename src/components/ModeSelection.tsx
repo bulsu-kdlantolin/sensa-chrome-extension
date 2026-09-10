@@ -213,14 +213,21 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
           if (action === "start" && err && retries === 0) {
             try {
               const manifest = chrome.runtime.getManifest()
-              const jsFiles = manifest?.content_scripts?.[0]?.js || []
-              if (jsFiles.length > 0) await chrome.scripting.executeScript({ target: { tabId: targetTabId }, files: jsFiles })
+              const contentScripts = manifest?.content_scripts || []
+              for (const script of contentScripts) {
+                if (script.js && script.js.length > 0) {
+                  await chrome.scripting.executeScript({
+                    target: { tabId: targetTabId, allFrames: script.all_frames || false },
+                    files: script.js
+                  }).catch(() => {})
+                }
+              }
             } catch { }
           }
           if (action === "start" && err && retries < 3 && isMounted) {
             retryTimer = window.setTimeout(() => {
               if (isMounted) sendVoiceBridgeMessage("start", retries + 1)
-            }, 800)
+            }, 600)
           } else if (action === "start" && err && retries >= 3 && isMounted) {
             chrome.tabs.query({ url: ["http://*/*", "https://*/*"] }, (fallbackTabs) => {
               const alt = fallbackTabs?.find(t => t.id !== targetTabId && typeof t.id === "number")
@@ -239,6 +246,15 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
             const fallback = httpTabs?.[0]
             if (fallback?.id) {
               dispatchToTab(fallback.id)
+            } else if (action === "start") {
+              // If no web tabs are open, spawn a background onboarding tab so speech recognition has a tab context
+              chrome.tabs.create({ url: "https://www.google.com", active: false }, (newTab) => {
+                if (newTab?.id) {
+                  setTimeout(() => {
+                    if (isMounted && newTab.id) dispatchToTab(newTab.id)
+                  }, 800)
+                }
+              })
             }
           })
           return
