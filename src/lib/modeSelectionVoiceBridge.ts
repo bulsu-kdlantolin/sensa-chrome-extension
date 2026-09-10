@@ -173,7 +173,6 @@ const scheduleRestart = () => {
   const delay = Math.min(150 + restartAttempts * 50, 400)
   restartAttempts++
 
-  tabLog(`[Sensa Tab Voice Bridge] Scheduling fast restart in ${delay}ms (attempt ${restartAttempts})`)
   restartTimer = window.setTimeout(buildAndStart, delay)
 }
 
@@ -250,17 +249,24 @@ const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
 /** Known onboarding TTS sentences to strip from transcripts to prevent speaker loopback */
 const TTS_SENTENCES = [
   "welcome to sensa",
+  "a chrome extension assisting visual and auditory impaired users with specialized accessibility tools and features",
   "a browser extension assisting visual and auditory impaired users with specialized accessibility tools and features",
-  "browser extension assisting visual and auditory impaired users",
+  "assisting visual and auditory impaired users with specialized accessibility tools and features",
   "specialized accessibility tools and features",
-  "select your primary accessibility mode"
+  "select your primary accessibility mode",
+  "visual mode support low vision with voice navigation screen magnifier and guided reading",
+  "support low vision with voice navigation screen magnifier and guided reading",
+  "auditory mode support hearing loss with multilingual captions audio visualizer and noise alerts",
+  "support hearing loss with multilingual captions audio visualizer and noise alerts",
+  "you can say visual mode or auditory mode to choose a primary accessibility mode",
+  "choose a primary accessibility mode"
 ]
 
 /** Words appearing exclusively in onboarding TTS narration */
 const TTS_MARKER_WORDS = [
   "impaired", "assisting", "magnifier", "multilingual",
   "captions", "visualizer", "specialized", "accessibility",
-  "navigation", "browser extension"
+  "navigation", "browser extension", "guided reading", "hearing loss"
 ]
 
 /**
@@ -281,9 +287,9 @@ const normalizeInput = (rawText: string): string => {
 const scrubTTS = (text: string): string | null => {
   let cleaned = text.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
 
-  // If the user clearly spoke a mode command keyword, preserve it immediately
+  // If the user clearly spoke a mode command keyword or early syllable, preserve it immediately
   const hasModeKeyword =
-    /\b(visual|vision|bisual|auditory|audio)\b/.test(cleaned)
+    /\b(visual|vision|bisual|vis|visu|visuals|virtual|visible|auditory|audio|audi|aud|first|second|option|one|two)\b/i.test(cleaned)
 
   for (const sentence of TTS_SENTENCES) {
     let safety = 0
@@ -316,7 +322,6 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     window.dispatchEvent(new CustomEvent('sensa-speech-started'))
     lastAudioTimestamp = Date.now()
     restartAttempts = 0
-    tabLog("[Sensa Tab Voice Bridge] Recognition started successfully")
   }
 
   ; (instance as any).onaudiostart = () => { lastAudioTimestamp = Date.now() }
@@ -344,54 +349,116 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       }
     }
 
-    const currentSpeech = (newFinals + interimChunk).trim()
+    globalBuffer += newFinals
+    if (globalBuffer.length > 150) {
+      globalBuffer = globalBuffer.slice(-150)
+    }
+
+    const currentSpeech = (globalBuffer + " " + interimChunk).trim()
     if (!currentSpeech) return
 
     const scrubbedText = scrubTTS(currentSpeech)
-    if (!scrubbedText) return
-
-    const normalizedTranscript = normalizeInput(scrubbedText)
+    const normalizedTranscript = normalizeInput(scrubbedText || currentSpeech)
     if (!normalizedTranscript) return
 
-    tabLog(`[Sensa Mode Selection Voice Bridge] Heard transcript: "${normalizedTranscript}" (Raw: "${currentSpeech}")`)
+    tabLog(`[Sensa Mode Selection Voice Bridge] 🎤 Heard transcript: "${normalizedTranscript}" (Raw: "${currentSpeech}")`)
 
     // --- Scoring ---
     let visualScore = 0
     let auditoryScore = 0
 
-    const has = (keyword: string) => normalizedTranscript.includes(keyword)
+    const padded = ` ${normalizedTranscript} `
+    const has = (kw: string) => padded.includes(` ${kw} `) || normalizedTranscript.includes(kw)
 
     // Visual Mode Cues
-    if (has("visual mode") || has("vision mode") || has("bisual mode")) {
+    if (
+      has("visual mode") ||
+      has("vision mode") ||
+      has("bisual mode") ||
+      has("mode visual")
+    ) {
       visualScore += 15
-    } else if (has("visual") || has("vision") || has("bisual")) {
+    } else if (
+      has("option one") ||
+      has("option 1") ||
+      has("mode one") ||
+      has("mode 1") ||
+      has("first mode") ||
+      has("first option") ||
+      has("number one") ||
+      has("first")
+    ) {
+      visualScore += 12
+    } else if (
+      has("visual") ||
+      has("vision") ||
+      has("bisual") ||
+      has("visuals") ||
+      has("virtual")
+    ) {
       visualScore += 8
+    } else if (
+      has("vis") ||
+      has("visu")
+    ) {
+      // Instant interim syllable recognition: triggers as soon as user begins saying "vis..."
+      visualScore += 6
     }
 
     if (visualScore === 0) {
       if (
         fuzzyMatch(normalizedTranscript, "visual mode", 2) ||
         fuzzyMatch(normalizedTranscript, "vision mode", 2) ||
-        fuzzyMatch(normalizedTranscript, "visual", 1) ||
-        fuzzyMatch(normalizedTranscript, "vision", 1)
+        fuzzyMatch(normalizedTranscript, "visual", 2) ||
+        fuzzyMatch(normalizedTranscript, "vision", 2) ||
+        fuzzyMatch(normalizedTranscript, "first", 1) ||
+        fuzzyMatch(normalizedTranscript, "option one", 2)
       ) {
         visualScore += 5
       }
     }
 
     // Auditory Mode Cues
-    if (has("auditory mode") || has("audio mode")) {
+    if (
+      has("auditory mode") ||
+      has("audio mode") ||
+      has("mode auditory") ||
+      has("mode audio")
+    ) {
       auditoryScore += 15
-    } else if (has("auditory") || has("audio")) {
+    } else if (
+      has("option two") ||
+      has("option 2") ||
+      has("mode two") ||
+      has("mode 2") ||
+      has("second mode") ||
+      has("second option") ||
+      has("number two") ||
+      has("second")
+    ) {
+      auditoryScore += 12
+    } else if (
+      has("auditory") ||
+      has("audio") ||
+      has("audial")
+    ) {
       auditoryScore += 8
+    } else if (
+      has("audi") ||
+      has("aud")
+    ) {
+      // Instant interim syllable recognition
+      auditoryScore += 6
     }
 
     if (auditoryScore === 0) {
       if (
         fuzzyMatch(normalizedTranscript, "auditory mode", 2) ||
         fuzzyMatch(normalizedTranscript, "audio mode", 2) ||
-        fuzzyMatch(normalizedTranscript, "auditory", 1) ||
-        fuzzyMatch(normalizedTranscript, "audio", 1)
+        fuzzyMatch(normalizedTranscript, "auditory", 2) ||
+        fuzzyMatch(normalizedTranscript, "audio", 1) ||
+        fuzzyMatch(normalizedTranscript, "second", 1) ||
+        fuzzyMatch(normalizedTranscript, "option two", 2)
       ) {
         auditoryScore += 5
       }
@@ -410,11 +477,14 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       const lastVisualIdx = Math.max(
         normalizedTranscript.lastIndexOf("visual"),
         normalizedTranscript.lastIndexOf("vision"),
-        normalizedTranscript.lastIndexOf("bisual")
+        normalizedTranscript.lastIndexOf("bisual"),
+        normalizedTranscript.lastIndexOf("vis"),
+        normalizedTranscript.lastIndexOf("first")
       )
       const lastAuditoryIdx = Math.max(
         normalizedTranscript.lastIndexOf("auditory"),
-        normalizedTranscript.lastIndexOf("audio")
+        normalizedTranscript.lastIndexOf("audio"),
+        normalizedTranscript.lastIndexOf("second")
       )
 
       if (lastVisualIdx > lastAuditoryIdx && lastVisualIdx !== -1) {
@@ -424,11 +494,12 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       }
     }
 
-    tabLog(`[Sensa Mode Selection Voice Bridge] Score results -> Visual: ${visualScore}, Auditory: ${auditoryScore}, chosenCommand: ${chosenCommand}`)
-
     if (chosenCommand) {
-      tabLog(`[Sensa Mode Selection Voice Bridge] Executing command: "${chosenCommand}"`)
+      globalBuffer = ""
+      tabLog(`[Sensa Mode Selection Voice Bridge] ⚡ Executing command: "${chosenCommand}" (Scores -> Visual: ${visualScore}, Auditory: ${auditoryScore})`)
       applyModeSelection(chosenCommand)
+    } else {
+      tabLog(`[Sensa Mode Selection Voice Bridge] ❓ No command matched: "${normalizedTranscript}" (Scores -> Visual: ${visualScore}, Auditory: ${auditoryScore})`)
     }
   }
 
@@ -463,7 +534,6 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     recognitionRunning = false
     window['sensaSpeechRunning'] = false
     window.dispatchEvent(new CustomEvent('sensa-speech-ended'))
-    tabLog("[Sensa Tab Voice Bridge] Recognition ended.")
     scheduleRestart()
   }
 }
@@ -529,7 +599,7 @@ const primeMicrophone = async () => {
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
       noiseSuppression: true,
-      echoCancellation: false,
+      echoCancellation: true,
       autoGainControl: true,
       channelCount: 1,
       sampleRate: 48000

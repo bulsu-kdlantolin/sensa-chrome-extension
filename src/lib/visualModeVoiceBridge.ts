@@ -216,8 +216,6 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
     commandApplied = false
   }, 1800)
 
-  tabLog(`[Sensa Tab Voice Bridge] Applying visual mode command: ${command}`)
-
   if (command === "activate") {
     chrome.storage.local.set({
       sensa_visual_active: true,
@@ -359,7 +357,7 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     }
     if (!cleanTranscript) return
 
-    tabLog(`[Sensa Tab Voice Bridge] Heard transcript: "${cleanTranscript}" (Raw: "${rawTranscript}")`)
+    tabLog(`[Sensa Visual Voice Bridge] 🎤 Heard: "${cleanTranscript}" (Raw: "${rawTranscript}")`)
 
     const words = cleanTranscript.split(" ")
     const padded = ` ${cleanTranscript} `
@@ -437,11 +435,9 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       (activateScore >= 3 && auditoryScore >= 3) ||
       (deactivateScore >= 3 && auditoryScore >= 3)
     ) {
-      tabLog(`[Sensa Tab Voice Bridge] Conflict detected (act: ${activateScore}, deact: ${deactivateScore}, aud: ${auditoryScore}). Clearing buffer.`)
+      tabLog(`[Sensa Visual Voice Bridge] Conflict detected (act: ${activateScore}, deact: ${deactivateScore}, aud: ${auditoryScore}). Clearing buffer.`)
       globalBuffer = ""
     }
-
-    tabLog(`[Sensa Tab Voice Bridge] Score results -> Activate: ${activateScore}, Deactivate: ${deactivateScore}, Auditory: ${auditoryScore}, isCurrentlyActive: ${isCurrentlyActive}, chosenCommand: ${chosenCommand}`)
 
     if (chosenCommand) {
       globalBuffer = ""
@@ -452,7 +448,10 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       } else if (chosenCommand === "auditory") {
         consumedKeywords.push("auditory", "audio", "mode")
       }
+      tabLog(`[Sensa Visual Voice Bridge] ⚡ Executing command: "${chosenCommand}" (Scores -> Act: ${activateScore}, Deact: ${deactivateScore}, Aud: ${auditoryScore})`)
       applyCommand(chosenCommand)
+    } else {
+      tabLog(`[Sensa Visual Voice Bridge] ❓ No command matched: "${cleanTranscript}" (Scores -> Act: ${activateScore}, Deact: ${deactivateScore}, Aud: ${auditoryScore})`)
     }
   }
 

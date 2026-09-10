@@ -161,12 +161,8 @@ const applyWelcomeProceed = () => {
   isActive = false
   teardownRecognition()
 
-  tabLog("[Sensa Tab Voice Bridge] Applying welcome proceed voice command")
-
   chrome.storage.local.set({
     sensa_welcome_proceed_trigger: true
-  }, () => {
-    tabLog("[Sensa Tab Voice Bridge] Welcome proceed storage trigger updated.")
   })
 }
 
@@ -251,31 +247,45 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     const normalizedTranscript = normalizeInput(rawTranscript)
     if (!normalizedTranscript) return
 
-    tabLog(`[Sensa Welcome Voice Bridge] Heard transcript: "${normalizedTranscript}" (Raw: "${rawTranscript}")`)
+    tabLog(`[Sensa Welcome Voice Bridge] 🎤 Heard: "${normalizedTranscript}" (Raw: "${rawTranscript}")`)
 
     // Score "Enter / Proceed / Start / Go / Get Started"
     let proceedScore = 0
 
+    const padded = ` ${normalizedTranscript} `
+    const has = (w: string) => padded.includes(` ${w} `) || normalizedTranscript.includes(w)
+
     // Phrases that direct proceed
     if (
-      normalizedTranscript.includes("get started") ||
-      normalizedTranscript.includes("start")
+      has("get started") ||
+      has("start") ||
+      has("proceed") ||
+      has("enter") ||
+      has("continue")
     ) {
       proceedScore += 5
     } else if (
+      has("get start") ||
+      has("get") ||
+      has("go") ||
+      has("ready") ||
+      has("confirm")
+    ) {
+      proceedScore += 3
+    } else if (
       fuzzyMatch(normalizedTranscript, "get started", 2) ||
-      fuzzyMatch(normalizedTranscript, "start", 1)
+      fuzzyMatch(normalizedTranscript, "start", 1) ||
+      fuzzyMatch(normalizedTranscript, "proceed", 1)
     ) {
       proceedScore += 3
     }
 
-    const chosenCmd = proceedScore >= 3 ? "get started" : null
-    tabLog(`[Sensa Welcome Voice Bridge] Score results -> proceedScore: ${proceedScore}, chosenCommand: ${chosenCmd}`)
-
     if (proceedScore >= 3) {
       globalBuffer = ""
-      tabLog(`[Sensa Welcome Voice Bridge] Executing command: "get started"`)
+      tabLog(`[Sensa Welcome Voice Bridge] ⚡ Executing command: "get started" (Score: ${proceedScore})`)
       applyWelcomeProceed()
+    } else {
+      tabLog(`[Sensa Welcome Voice Bridge] ❓ No command matched: "${normalizedTranscript}" (Score: ${proceedScore})`)
     }
   }
 
