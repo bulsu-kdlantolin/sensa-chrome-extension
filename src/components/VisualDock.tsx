@@ -1218,7 +1218,7 @@ export default function VisualDock({
         case "read": return ["play", "resume", "continue", "start reading", "read", "reed", "reading", "start", "go", "speak", "begin"]
         case "stop": return ["stop", "pause", "halt", "stop reading", "stop playing", "pause reading", "shut up", "hush", "shh", "stop it", "stahp", "cease", "freeze", "silence", "quiet"]
         case "next": return ["next", "skip", "forward", "necks", "neck", "nex", "nix"]
-        case "previous": return ["previous", "prev", "previ", "preevi", "back", "go back", "preveous", "previus", "privious", "preview", "previews", "review", "reviews", "reduce", "view", "views", "pre", "prevue", "prevues"]
+        case "previous": return ["previous", "prev", "pre", "pri", "pree", "priv", "previ", "preevi", "preve", "preev", "preview", "previews", "review", "reviews", "prevue", "prevues", "previs", "preveous", "previus", "privious", "previos", "pervious", "purview", "prior", "before", "back", "go back"]
         case "restart": return ["repeat", "restart", "start over", "reset", "refresh", "re start", "re-start", "from the top", "from the beginning", "begin again", "restore", "replay", "rewind", "again"]
         case "speed": return ["speed", "rate", "reading speed", "voice speed"]
         case "settings": return ["setting", "settings", "options", "open settings"]
@@ -1314,8 +1314,15 @@ export default function VisualDock({
         rawTranscript = rawTranscript.trim()
         if (!rawTranscript) return
 
-        // Drop ambiguous background audio / low-confidence mumbled noise (below 0.35 confidence on final)
-        if (hasConfidence && minConfidence < 0.35) {
+        let hasFinal = false
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (event.results[i]?.isFinal) {
+            hasFinal = true
+          }
+        }
+        // Only drop finalized results if confidence is exceptionally poor (< 0.25).
+        // Never drop interim results which often carry low provisional confidence on initial syllables (like "pre" or "nex").
+        if (hasFinal && hasConfidence && minConfidence < 0.25) {
           return
         }
 
@@ -1381,17 +1388,25 @@ export default function VisualDock({
           let currentMatchedKeyword: string | null = null
 
           const applyCommand = (commandName: string, action: () => void) => {
+            // Check identical command deduplication FIRST before setting any locks or state
+            if (commandName === lastCommandName) {
+              // Block duplicate execution on the SAME speech recognition utterance resultIndex
+              if (currentResultIndex === lastCommandResultIndex) {
+                return
+              }
+              // Cooldown for repeating the EXACT same command
+              if (timeSinceLastCommand < 850) {
+                const ts = new Date().toISOString().substring(11, 23)
+                console.log(`%c[Sensa Dock Voice] ⏸️ Ignored duplicate command: "${commandName}" (within 850ms cooldown)`, "color: #f59e0b; font-weight: bold;")
+                return
+              }
+            }
+
             matchedAnyCommand = true
 
-            // Apply a brief 450ms buffer flush lock so trailing audio doesn't trigger false positives
-            ignoreSpeechUntil = Date.now() + 450
+            // Brief 200ms lock so trailing audio frame doesn't false-trigger, without lagging the next command
+            ignoreSpeechUntil = Date.now() + 200
 
-            // Only apply cooldown if repeating the EXACT same command within 550ms.
-            if (commandName === lastCommandName && timeSinceLastCommand < 550) {
-              const ts = new Date().toISOString().substring(11, 23)
-              console.log(`%c[Sensa Dock Voice] ⏸️ Ignored duplicate command: "${commandName}" (within 550ms cooldown)`, "color: #f59e0b; font-weight: bold;")
-              return
-            }
             if (commandTimeout) {
               window.clearTimeout(commandTimeout)
               commandTimeout = null
@@ -1402,8 +1417,8 @@ export default function VisualDock({
               lastCommandResultIndex = currentResultIndex
               lastCommandTranscript = rawTranscript
 
-              // Strip all keywords and aliases for this command from the interim transcript for 600ms to prevent Chrome from re-triggering on the same breath
-              const expires = Date.now() + 600
+              // Strip all keywords and aliases for this command from the interim transcript for 1000ms
+              const expires = Date.now() + 1000
               getKeywordsForCommand(commandName).forEach(kw => {
                 consumedKeywords.push({ word: kw, expires })
               })
@@ -1485,7 +1500,7 @@ export default function VisualDock({
             // Rule 1 & 2 & 3: EAGER INTERIM EXECUTION + HOMOPHONE DICTIONARY MAPPING + EARLY REGEX BOUNDARIES
             const restartMatch = cleanText.match(/\b(restart|repeat|re start|re-start|replay|rewind|i start|first start|let s start)\b/i)
             const nextMatch = cleanText.match(/\b(next|necks|net|nex|nix|next page|next sentence)\b/i)
-            const prevMatch = cleanText.match(/\b(previous|preview|previews|review|reviews|reduce|view|views|pre|prevue|prevues|previs|prev|previ|preevi|preveous|previus|privious|previous page|previous sentence|go back|back)\b/i)
+            const prevMatch = cleanText.match(/\b(previous|prev|pre|pri|pree|priv|previ|preevi|preve|preev|preview|previews|review|reviews|prevue|prevues|previs|preveous|previus|privious|previos|pervious|purview|prior|before|back|go back|previous page|previous sentence|prior sentence|last sentence)\b/i)
             const stopMatch = cleanText.match(/\b(stop|pause|stop reading|stop playing|paused|pause reading|stahp)\b/i)
             const readMatch = cleanText.match(/\b(read|reed|reading|play|resume|continue|start reading)\b/i)
 
@@ -1497,14 +1512,14 @@ export default function VisualDock({
               })
               return true
             }
-            else if (nextMatch || fuzzyCheck("next", 1)) {
-              currentMatchedKeyword = nextMatch ? nextMatch[0].toLowerCase() : "next"
+            else if (nextMatch) {
+              currentMatchedKeyword = nextMatch[0].toLowerCase()
               applyCommand("next", () => {
                 callbacksRef.current.onNext()
               })
               return true
             }
-            else if (prevMatch || fuzzyCheck("previous", 1) || fuzzyCheck("preview", 1) || fuzzyCheck("review", 1)) {
+            else if (prevMatch || fuzzyCheck("previous", 1)) {
               currentMatchedKeyword = prevMatch ? prevMatch[0].toLowerCase() : "previous"
               applyCommand("previous", () => {
                 callbacksRef.current.onPrev()
