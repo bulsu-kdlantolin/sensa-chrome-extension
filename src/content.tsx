@@ -33,6 +33,7 @@ import FocusModeOverlay from "./components/FocusModeOverlay"
 import LiveCaptionBox from "./components/LiveCaptionBox"
 import type { SensaUserProfile } from "./lib/storage"
 import { useSpeech } from "./hooks/useSpeech"
+import "./lib/ttsEchoFilter"
 import { resolveVoice } from "./lib/voiceResolver"
 import { useLiveCaptions } from "./hooks/useLiveCaptions"
 import {

@@ -14,6 +14,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 import { isBraveBrowser } from "../lib/browserUtils"
+import { ttsEchoFilter } from "../lib/ttsEchoFilter"
 
 const getLevenshteinDistance = (a: string, b: string): number => {
   const tmp: number[][] = []
@@ -387,7 +388,8 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     let globalBuffer = ""
     let ignoreSpeechUntil = 0
     let lastCommandName = ""
-    let consumedKeywords: string[] = []
+    let lastCommandTime = 0
+    let consumedKeywords: { word: string; expires: number }[] = []
     let recognition: SpeechRecognition | null = null
     let isPermanentlyDead = false
 
@@ -480,8 +482,6 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       instance.onresult = (event: any) => {
         if (event.resultIndex !== currentResultIndex) {
           currentResultIndex = event.resultIndex
-          consumedKeywords = []
-          globalBuffer = ""
         }
 
         let interimChunk = ""
@@ -501,11 +501,37 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         if (!rawTranscript) return
 
         let cleanText = normalizeTranscript(rawTranscript)
-        
+
+        // Strip exact TTS guide narration so it does not interfere
+        const ttsPatterns = [
+          "say increase or decrease to adjust reading speed or say close to exit the overlay",
+          "say increase or decrease to adjust reading speed",
+          "or say close to exit the overlay",
+          "or say close to exit",
+          "reading speed overlay opened",
+          "reading speed overlay closed",
+          "closing speed settings",
+          "voice commands activated",
+          "voice commands deactivated"
+        ]
+        for (const p of ttsPatterns) {
+          cleanText = cleanText.replace(new RegExp(p, "gi"), " ")
+        }
+
+        // Suppress acoustic self-echo from TTS
+        const { cleanText: echoFilteredText, isEcho, droppedWords } = ttsEchoFilter.filterTranscript(cleanText)
+        if (isEcho) {
+          console.log(`%c[Sensa Speed Echo Filter] 🛡️ Suppressed self-echo from TTS: "${droppedWords.join(', ')}" (Raw: "${rawTranscript}")`, "color: #eab308; font-weight: bold;")
+        }
+        cleanText = echoFilteredText
+
+        const now = Date.now()
+        // Prune expired consumed keywords
+        consumedKeywords = consumedKeywords.filter(k => k.expires > now)
         if (consumedKeywords.length > 0) {
-          consumedKeywords.forEach(kw => {
-            const escapedKw = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-            cleanText = cleanText.replace(new RegExp(`\\b${escapedKw}\\b`, 'g'), " ")
+          consumedKeywords.forEach(({ word }) => {
+            const escapedKw = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            cleanText = cleanText.replace(new RegExp(`\\b${escapedKw}\\b`, 'gi'), " ")
           })
           cleanText = cleanText.replace(/\s+/g, " ").trim()
         }
@@ -513,7 +539,9 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         if (!cleanText) return
 
         const ts = new Date().toISOString().substring(11, 23)
-        // console.log(`[${ts}] [Sensa Speed Voice Bridge] Heard transcript: "${cleanText}" (Raw: "${rawTranscript}")`)
+        console.log(`%c[Sensa Speed Voice] 🎤 Heard: "${cleanText}" %c(Raw: "${rawTranscript}")`, "color: #3b82f6; font-weight: bold;", "color: #94a3b8;")
+
+        if (now < ignoreSpeechUntil) return
 
         const paddedSpeech = ` ${cleanText} `
         const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
@@ -522,18 +550,27 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         let matchedCmd = false
 
         const applyCommand = (commandName: string, keywordsToConsume: string[], action: () => void) => {
-          if (Date.now() < ignoreSpeechUntil) return
-          ignoreSpeechUntil = Date.now() + 800
+          const timeSinceLastCommand = Date.now() - lastCommandTime
+          if (commandName === lastCommandName && timeSinceLastCommand < 800) {
+            console.log(`%c[Sensa Speed Voice] ⏸️ Ignored duplicate command: "${commandName}" (within 800ms cooldown)`, "color: #f59e0b; font-weight: bold;")
+            return
+          }
+
+          ignoreSpeechUntil = Date.now() + 350
           lastCommandName = commandName
-          consumedKeywords.push(...keywordsToConsume)
+          lastCommandTime = Date.now()
+
+          const expires = Date.now() + 1200
+          keywordsToConsume.forEach(kw => {
+            consumedKeywords.push({ word: kw, expires })
+          })
+
           matchedCmd = true
-          const ts = new Date().toISOString().substring(11, 23)
-          // console.log(`[${ts}] [Sensa Speed Voice Bridge] Score results -> Executing command: "${commandName}"`)
+          console.log(`%c[Sensa Speed Voice] ⚡ Executing command: "${commandName}"`, "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px;")
           action()
         }
 
         if (!isVoiceCommandActiveRef.current) {
-          if (Date.now() < ignoreSpeechUntil) return
           if (check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens") || fuzzyCheck("sensa", 1)) {
             applyCommand("sensa", ["sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens"], () => {
               playClickAudio("Voice commands activated")
@@ -558,26 +595,29 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           return
         }
 
-        if (check("close", "closed", "clothes") || fuzzyCheck("close", 1)) {
-          applyCommand("close", ["close", "closed", "clothes"], () => closeOverlay())
+        const closeMatch = cleanText.match(/\b(close|closed|clothes|clos|exit|shut|leave|cancel|dismiss|back|go back|done|finish)\b/i)
+        if (closeMatch || fuzzyCheck("close", 1)) {
+          applyCommand("close", ["close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back", "done"], () => closeOverlay())
           return
         }
 
-        if (check("increase", "in greece", "in crease") || fuzzyCheck("increase", 1)) {
-          applyCommand("increase", ["increase", "in greece", "in crease"], () => applySpeed(speedRef.current + 0.25))
+        const increaseMatch = cleanText.match(/\b(increase|faster|speed up|higher|in crease|in greece)\b/i)
+        if (increaseMatch || fuzzyCheck("increase", 1)) {
+          applyCommand("increase", ["increase", "faster", "speed up", "higher", "in crease", "in greece"], () => applySpeed(speedRef.current + 0.25))
           return
         }
 
-        if (check("decrease", "the grease", "degrees", "de grease", "the crease", "de crease") || fuzzyCheck("decrease", 1)) {
-          applyCommand("decrease", ["decrease", "the grease", "degrees", "de grease", "the crease", "de crease"], () => applySpeed(speedRef.current - 0.25))
+        const decreaseMatch = cleanText.match(/\b(decrease|slower|slow down|lower|the grease|degrees|de grease|the crease|de crease)\b/i)
+        if (decreaseMatch || fuzzyCheck("decrease", 1)) {
+          applyCommand("decrease", ["decrease", "slower", "slow down", "lower", "the grease", "degrees", "de grease", "the crease", "de crease"], () => applySpeed(speedRef.current - 0.25))
           return
         }
 
         if (!matchedCmd) {
-          const ts = new Date().toISOString().substring(11, 23)
-          // console.log(`[${ts}] [Sensa Speed Voice Bridge] Score results -> No command matched for transcript: "${cleanText}"`)
+          console.log(`%c[Sensa Speed Voice] ❓ No command matched: "${cleanText}"`, "color: #64748b;")
         }
       }
+
 
       instance.onerror = (event: any) => {
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {

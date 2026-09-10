@@ -20,6 +20,7 @@ import ColorPickerPopup from "./ColorPickerPopup"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 import { startVisualModeVoiceListener, stopVisualModeVoiceListener } from "../lib/visualModeVoiceBridge"
 import { isBraveBrowser } from "../lib/browserUtils"
+import { ttsEchoFilter } from "../lib/ttsEchoFilter"
 import { resolveVoice, updateSelectedVoice, speakWithUserVoice, simplifyVoiceName } from "../lib/voiceResolver"
 
 const getLevenshteinDistance = (a: string, b: string): number => {
@@ -566,8 +567,9 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     let restartTimer: number | null = null
 
     let ignoreSpeechUntil = 0
-    let consumedString = ""
-    let consumedStringExpires = 0
+    let lastCommandName = ""
+    let lastCommandTime = 0
+    let consumedKeywords: { word: string; expires: number }[] = []
     let currentResultIndex = 0
     let recognition: any = null
     let isPermanentlyDead = false
@@ -785,166 +787,180 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       instance.onresult = (event: any) => {
         if (!settingsRecognitionArmedRef.current) return
 
-        if (!isVoiceCommandActiveRef.current) {
-          if (Date.now() < ignoreSpeechUntil) return
-
-          let liveText = ""
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            liveText += event.results[i][0].transcript + " "
-          }
-          liveText = liveText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
-
-          let newSpeech = liveText
-          if (liveText.startsWith(consumedString) && consumedString.length > 0) {
-            newSpeech = liveText.slice(consumedString.length).trim()
-          }
-
-          const paddedSpeech = ` ${newSpeech} `
-          const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
-          const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(newSpeech, target, maxDistance)
-
-          if (check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens") || fuzzyCheck("sensa", 1)) {
-            ignoreSpeechUntil = Date.now() + 800
-            consumedString = liveText
-            playClickAudio("Voice commands activated")
-            onToggleVoiceCommand?.()
-          }
-          return
-        }
-
-        if (Date.now() > consumedStringExpires || event.resultIndex !== currentResultIndex) {
-          consumedString = ""
-          currentResultIndex = event.resultIndex
-        }
-
         let liveText = ""
         for (let i = event.resultIndex; i < event.results.length; i++) {
           liveText += event.results[i][0].transcript + " "
         }
         liveText = liveText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
 
-        let newSpeech = liveText
-        if (liveText.startsWith(consumedString) && consumedString.length > 0) {
-          newSpeech = liveText.slice(consumedString.length).trim()
-        }
+        if (!liveText) return
 
-        // Strip exact TTS guide narration from newSpeech so it does not interfere
+        let cleanText = liveText
+
+        // Strip exact TTS guide narration so it does not interfere
         const ttsPatterns = [
           "here are the commands voice selection this opens the voice list reset this resets all settings to default close this exits settings",
+          "voice selection opened reading voices",
           "voice selection opened you can choose from",
+          "voice selection opened",
+          "just say the name to select it or say close to exit",
           "just say the name to select it",
           "voice selection closed",
           "settings reset to default",
           "voice guide enabled",
-          "voice guide disabled"
+          "voice guide disabled",
+          "settings opened you can say commands to hear the list of available actions",
+          "settings opened",
+          "voice commands activated",
+          "voice commands deactivated"
         ]
         for (const p of ttsPatterns) {
-          while (newSpeech.includes(p)) {
-            newSpeech = newSpeech.replace(p, " ").replace(/\s+/g, " ").trim()
-          }
+          cleanText = cleanText.replace(new RegExp(p, "gi"), " ")
         }
 
-        if (!newSpeech) return
+        // Suppress acoustic self-echo from TTS
+        const { cleanText: echoFilteredText, isEcho, droppedWords } = ttsEchoFilter.filterTranscript(cleanText)
+        if (isEcho) {
+          console.log(`%c[Sensa Settings Echo Filter] 🛡️ Suppressed self-echo from TTS: "${droppedWords.join(', ')}" (Raw: "${liveText}")`, "color: #eab308; font-weight: bold;")
+        }
+        cleanText = echoFilteredText
+
+        const now = Date.now()
+        // Prune expired consumed keywords
+        consumedKeywords = consumedKeywords.filter(k => k.expires > now)
+        if (consumedKeywords.length > 0) {
+          consumedKeywords.forEach(({ word }) => {
+            const escapedKw = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            cleanText = cleanText.replace(new RegExp(`\\b${escapedKw}\\b`, 'gi'), " ")
+          })
+          cleanText = cleanText.replace(/\s+/g, " ").trim()
+        }
+
+        if (!cleanText) return
 
         const ts = new Date().toISOString().substring(11, 23)
-        console.log(`%c[Sensa Settings Voice] 🎤 Heard: "${newSpeech}" %c(Raw: "${liveText}")`, "color: #a855f7; font-weight: bold;", "color: #94a3b8;")
+        console.log(`%c[Sensa Settings Voice] 🎤 Heard: "${cleanText}" %c(Raw: "${liveText}")`, "color: #a855f7; font-weight: bold;", "color: #94a3b8;")
 
-        if (Date.now() < ignoreSpeechUntil) {
-          consumedString = liveText
+        if (now < ignoreSpeechUntil) return
+
+        const paddedSpeech = ` ${cleanText} `
+        const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
+        const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(cleanText, target, maxDistance)
+
+        let matchedCmd = false
+
+        const applyCommand = (commandName: string, keywordsToConsume: string[], action: () => void, customExpires = 1200) => {
+          const timeSinceLastCommand = Date.now() - lastCommandTime
+          if (commandName === lastCommandName && timeSinceLastCommand < 800) {
+            console.log(`%c[Sensa Settings Voice] ⏸️ Ignored duplicate command: "${commandName}" (within 800ms cooldown)`, "color: #f59e0b; font-weight: bold;")
+            return
+          }
+
+          ignoreSpeechUntil = Date.now() + 350
+          lastCommandName = commandName
+          lastCommandTime = Date.now()
+
+          const expires = Date.now() + customExpires
+          keywordsToConsume.forEach(kw => {
+            consumedKeywords.push({ word: kw, expires })
+          })
+
+          matchedCmd = true
+          console.log(`%c[Sensa Settings Voice] ⚡ Executed command: "${commandName}"`, "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px;")
+          action()
+        }
+
+        if (!isVoiceCommandActiveRef.current) {
+          if (check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens") || fuzzyCheck("sensa", 1)) {
+            applyCommand("sensa", ["sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens"], () => {
+              playClickAudio("Voice commands activated")
+              onToggleVoiceCommand?.()
+            })
+          }
           return
         }
-        const paddedSpeech = ` ${newSpeech} `
-        const check = (...words: string[]) => words.some(w => paddedSpeech.includes(` ${w} `))
-        const fuzzyCheck = (target: string, maxDistance = 1) => fuzzyMatch(newSpeech, target, maxDistance)
 
         if (check("stop listening", "deactivate voice", "deactivate voice command", "deactivate listening")) {
-          ignoreSpeechUntil = Date.now() + 800
-          consumedString = liveText
-          const ts = new Date().toISOString().substring(11, 23)
-          console.log(`%c[Sensa Settings Voice] ⚡ Executing command: "deactivate-voice"`, "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px;")
-          playClickAudio("Voice commands deactivated")
-          onToggleVoiceCommand?.()
+          applyCommand("deactivate-voice", ["stop listening", "deactivate voice", "deactivate voice command", "deactivate listening"], () => {
+            playClickAudio("Voice commands deactivated")
+            onToggleVoiceCommand?.()
+          })
           return
         }
 
-
         const state = overlayStateRef.current
-        let commandFired = false
-        let matchedCmdName = ""
 
         if (state.isVoiceDropdownOpen) {
-          if (check("close voice selection", "close dropdown", "close", "closed", "clothes")) {
-            commandFired = true
-            matchedCmdName = "close voice selection"
-            setIsVoiceDropdownOpen(false)
-            setSettingsState((next) => { next.isVoiceDropdownOpen = false })
-            window.speechSynthesis.cancel()
-            isReadingVoiceListRef.current = false
-            setSpeakingVoiceURI(null)
-            speakFeedback("Voice selection closed")
-          } else if (check("next voice", "voice next", "next selection")) {
-            commandFired = true
-            matchedCmdName = "next voice"
-            cycleVoice(1)
-          } else if (check("previous voice", "prev voice", "last voice")) {
-            commandFired = true
-            matchedCmdName = "previous voice"
-            cycleVoice(-1)
-          } else if (voiceSelectionMatches(newSpeech)) {
-            commandFired = true
-            matchedCmdName = "select specific voice"
+          const closeDropdownMatch = cleanText.match(/\b(close voice selection|close dropdown|close|closed|clothes|clos|exit|shut|leave|cancel|dismiss|back|go back|done)\b/i)
+          if (closeDropdownMatch) {
+            applyCommand("close voice selection", ["close voice selection", "close dropdown", "close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back"], () => {
+              setIsVoiceDropdownOpen(false)
+              setSettingsState((next) => { next.isVoiceDropdownOpen = false })
+              window.speechSynthesis.cancel()
+              isReadingVoiceListRef.current = false
+              setSpeakingVoiceURI(null)
+              speakFeedback("Voice selection closed")
+            }, 450)
+            return
+          }
+          if (check("next voice", "voice next", "next selection")) {
+            applyCommand("next voice", ["next voice", "voice next", "next selection"], () => cycleVoice(1))
+            return
+          }
+          if (check("previous voice", "prev voice", "last voice")) {
+            applyCommand("previous voice", ["previous voice", "prev voice", "last voice"], () => cycleVoice(-1))
+            return
+          }
+          if (voiceSelectionMatches(cleanText)) {
+            applyCommand("select specific voice", [cleanText], () => {})
+            return
           }
         } else {
           if (check("help", "commands")) {
-            commandFired = true
-            matchedCmdName = "help"
-            speakFeedback("Here are the commands. Voice selection. This opens the voice list. Reset. This resets all settings to default. Close. This exits settings.")
-          } else if (check("close settings", "close", "closed", "clothes") || fuzzyCheck("close", 1)) {
-            commandFired = true
-            matchedCmdName = "close settings"
-            window.speechSynthesis.cancel()
-            isReadingVoiceListRef.current = false
-            setSpeakingVoiceURI(null)
-            setIsMounted(false)
-            setTimeout(() => onCloseRef.current(), 300)
-          } else if (check("reset default", "reset defaults", "reset settings", "reset", "default") || fuzzyCheck("reset default", 1)) {
-            commandFired = true
-            matchedCmdName = "reset to default"
-            handleResetToDefault()
-          } else if (
+            applyCommand("help", ["help", "commands"], () => {
+              speakFeedback("Here are the commands. Voice selection. This opens the voice list. Reset. This resets all settings to default. Close. This exits settings.")
+            })
+            return
+          }
+          const closeSettingsMatch = cleanText.match(/\b(close settings|close|closed|clothes|clos|exit|shut|leave|cancel|dismiss|back|go back|done|finish)\b/i)
+          if (closeSettingsMatch || fuzzyCheck("close", 1)) {
+            applyCommand("close settings", ["close settings", "close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back", "done"], () => {
+              window.speechSynthesis.cancel()
+              isReadingVoiceListRef.current = false
+              setSpeakingVoiceURI(null)
+              setIsMounted(false)
+              setTimeout(() => onCloseRef.current(), 300)
+            })
+            return
+          }
+          if (check("reset default", "reset defaults", "reset settings", "reset", "default") || fuzzyCheck("reset default", 1)) {
+            applyCommand("reset to default", ["reset default", "reset defaults", "reset settings", "reset", "default"], () => {
+              handleResetToDefault()
+            })
+            return
+          }
+          if (
             check("voice selection", "voice election", "vice election", "three selection", "free selection", "boys selection", "voice select", "select voice", "voice voices", "voices", "voice list", "open voice") ||
             fuzzyCheck("voice selection", 2) ||
             fuzzyCheck("select voice", 2) ||
             (paddedSpeech.includes(" voice ") && (paddedSpeech.includes(" selection ") || paddedSpeech.includes(" election ") || paddedSpeech.includes(" select ") || paddedSpeech.includes(" list ")))
           ) {
-            commandFired = true
-            matchedCmdName = "open voice selection"
-            setIsVoiceDropdownOpen(true)
-            setSettingsState((next) => { next.isVoiceDropdownOpen = true })
-
-            if (isVoiceGuideEnabledRef.current) {
-              startReadingVoiceListRef.current()
-            }
+            applyCommand("open voice selection", ["voice selection", "voice election", "vice election", "voice select", "select voice", "open voice", "voices", "voice list"], () => {
+              setIsVoiceDropdownOpen(true)
+              setSettingsState((next) => { next.isVoiceDropdownOpen = true })
+              if (isVoiceGuideEnabledRef.current) {
+                startReadingVoiceListRef.current()
+              }
+            })
+            return
           }
         }
 
-        if (commandFired) {
-          if (matchedCmdName === "close voice selection") {
-            // Unblock "close" immediately so user can say "close" right away to close settings modal
-            consumedString = ""
-            consumedStringExpires = 0
-            ignoreSpeechUntil = Date.now() + 600
-          } else {
-            consumedString = liveText
-            consumedStringExpires = Date.now() + 1000
-          }
-          const ts = new Date().toISOString().substring(11, 23)
-          console.log(`%c[Sensa Settings Voice] ⚡ Executed command: "${matchedCmdName}"`, "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px;")
-        } else {
-          const ts = new Date().toISOString().substring(11, 23)
-          console.log(`%c[Sensa Settings Voice] ❓ No command matched: "${newSpeech}"`, "color: #64748b;")
+        if (!matchedCmd) {
+          console.log(`%c[Sensa Settings Voice] ❓ No command matched: "${cleanText}"`, "color: #64748b;")
         }
       }
+
 
       instance.onerror = (event: any) => {
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {

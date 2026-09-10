@@ -23,6 +23,7 @@ import ReactDOM from "react-dom"
 import { Tooltip } from "./Tooltip"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 import { isBraveBrowser } from "../lib/browserUtils"
+import { ttsEchoFilter } from "../lib/ttsEchoFilter"
 
 const DEFAULT_WAKE_WORD = "Sensa"
 
@@ -1337,6 +1338,13 @@ export default function VisualDock({
           }
 
           let cleanText = rawCleanText
+
+          // Suppress acoustic self-echo from the computer's own speakers
+          const { cleanText: echoFilteredText, isEcho, droppedWords } = ttsEchoFilter.filterTranscript(cleanText)
+          if (isEcho) {
+            console.log(`%c[Sensa Echo Filter] 🛡️ Suppressed self-echo from TTS: "${droppedWords.join(', ')}" (Raw: "${text}")`, "color: #eab308; font-weight: bold;")
+          }
+          cleanText = echoFilteredText
 
           // Keyword Consumption: Strip out keywords that have already been executed
           if (consumedKeywords.length > 0) {
