@@ -459,7 +459,7 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
       })
     }
 
-    if (isActiveView && !isListening) {
+    if (isActiveView) {
       sendVoiceBridgeMessage("start")
     } else {
       sendVoiceBridgeMessage("stop")
@@ -476,7 +476,7 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
         })
       })
     }
-  }, [isActiveView, isListening])
+  }, [isActiveView])
 
   useEffect(() => {
     const interval = window.setInterval(() => {

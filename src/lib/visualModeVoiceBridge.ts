@@ -166,8 +166,8 @@ const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
 const normalizeInput = (rawText: string): string => {
   let text = rawText.toLowerCase()
   text = text.replace(/[^a-z0-9\s]/gi, " ")
-  text = text.replace(/\b(?:de|dee)\s+activate[d]?\b/g, "deactivate")
-  text = text.replace(/\b(?:deactivated|deactivating|unactivate|disable|turn off|turn it off)\b/g, "deactivate")
+  text = text.replace(/\b(?:de|dee|the|d)\s+activate[d]?\b/g, "deactivate")
+  text = text.replace(/\b(?:deactivated|deactivating|unactivate|disable|turn off|turn it off|switch off|close visual mode)\b/g, "deactivate")
   text = text.replace(/\b(?:activated|activating|reactivate|enable|turn on)\b/g, "activate")
   text = text.replace(/\s+/g, " ").trim()
   const fillerWords = new Set(["the", "a", "please", "hey", "can", "you", "change", "set", "to", "my", "sincere", "sansa", "sensor", "sensia"])
