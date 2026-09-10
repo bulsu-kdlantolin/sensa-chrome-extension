@@ -20,10 +20,15 @@ const COMMAND_HOMOPHONES: Record<string, string[]> = {
   restart: ["repeat", "restart", "start over", "reset", "refresh", "re start", "re-start", "replay", "rewind", "again"],
   speed: ["speed", "rate", "reading speed", "voice speed", "faster", "slower"],
   settings: ["setting", "settings", "options"],
-  close: ["close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back", "done", "finish"],
   increase: ["increase", "faster", "speed up", "higher", "in crease", "in greece"],
   decrease: ["decrease", "slower", "slow down", "lower", "the grease", "degrees", "de grease", "the crease", "de crease"],
 }
+
+// Critical exit/close words that must NEVER be suppressed by the acoustic echo filter.
+// Users must always be able to close overlays and modals without any delay or suppression.
+const NEVER_ECHO_FILTER = new Set([
+  "close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back", "done", "finish"
+])
 
 // Reverse lookup: any variant points to its full cluster
 const VARIANT_TO_CLUSTER: Map<string, string[]> = new Map()
@@ -129,6 +134,7 @@ class TTSEchoFilter {
     for (const w of words) {
       const lower = w.toLowerCase().trim()
       if (!lower || lower.length < 2) continue
+      if (NEVER_ECHO_FILTER.has(lower)) continue
 
       // Add the raw word
       this.activeTokens.push({ word: lower, expires })
@@ -165,6 +171,7 @@ class TTSEchoFilter {
     const uniqueActiveWords = Array.from(new Set(this.activeTokens.map(t => t.word)))
 
     for (const word of uniqueActiveWords) {
+      if (NEVER_ECHO_FILTER.has(word)) continue
       const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
       const wordRegex = new RegExp("\\b" + escaped + "\\b", "gi")
       if (wordRegex.test(cleanText)) {

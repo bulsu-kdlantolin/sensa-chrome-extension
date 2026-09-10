@@ -567,6 +567,14 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           action()
         }
 
+        // 1. Close Overlay: ALWAYS allowed immediately, even if voice commands are inactive/standby
+        const closeMatch = cleanText.match(/\b(close|closed|clothes|clos|exit|shut|leave|cancel|dismiss|back|go back|done|finish)\b/i)
+        if (closeMatch || fuzzyCheck("close", 1)) {
+          applyCommand("close", ["close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back", "done"], () => closeOverlay())
+          return
+        }
+
+        // 2. If voice commands are inactive, only wake word "sensa" can activate them
         if (!isVoiceCommandActiveRef.current) {
           if (check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens") || fuzzyCheck("sensa", 1)) {
             applyCommand("sensa", ["sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens"], () => {
@@ -577,6 +585,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           return
         }
 
+        // 3. Voice command deactivation
         if (check("stop listening", "deactivate voice", "deactivate voice command", "deactivate listening")) {
           applyCommand("deactivate-voice", ["stop listening", "deactivate voice", "deactivate voice command", "deactivate listening"], () => {
             wrappedPlayClickAudio("Voice commands deactivated")
@@ -585,16 +594,11 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           return
         }
 
+        // 4. Help commands
         if (check("help", "commands")) {
           applyCommand("help", ["help", "commands"], () => {
             wrappedPlayClickAudio("Say increase or decrease to adjust reading speed. Or say close to exit.")
           })
-          return
-        }
-
-        const closeMatch = cleanText.match(/\b(close|closed|clothes|clos|exit|shut|leave|cancel|dismiss|back|go back|done|finish)\b/i)
-        if (closeMatch || fuzzyCheck("close", 1)) {
-          applyCommand("close", ["close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back", "done"], () => closeOverlay())
           return
         }
 

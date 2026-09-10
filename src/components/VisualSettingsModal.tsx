@@ -870,6 +870,38 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           action()
         }
 
+        const state = overlayStateRef.current
+
+        // 1. Voice Dropdown Close: if voice dropdown is open, say "close" to close dropdown
+        if (state.isVoiceDropdownOpen) {
+          const closeDropdownMatch = cleanText.match(/\b(close voice selection|close dropdown|close|closed|clothes|clos|exit|shut|leave|cancel|dismiss|back|go back|done)\b/i)
+          if (closeDropdownMatch) {
+            applyCommand("close voice selection", ["close voice selection", "close dropdown", "voice selection"], () => {
+              setIsVoiceDropdownOpen(false)
+              setSettingsState((next) => { next.isVoiceDropdownOpen = false })
+              window.speechSynthesis.cancel()
+              isReadingVoiceListRef.current = false
+              setSpeakingVoiceURI(null)
+              speakFeedback("Voice selection closed")
+            }, 300)
+            return
+          }
+        } else {
+          // 2. Settings Modal Close: ALWAYS allowed immediately, even if voice commands are inactive/standby
+          const closeSettingsMatch = cleanText.match(/\b(close settings|close|closed|clothes|clos|exit|shut|leave|cancel|dismiss|back|go back|done|finish)\b/i)
+          if (closeSettingsMatch || fuzzyCheck("close", 1)) {
+            applyCommand("close settings", ["close settings", "close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back", "done"], () => {
+              window.speechSynthesis.cancel()
+              isReadingVoiceListRef.current = false
+              setSpeakingVoiceURI(null)
+              setIsMounted(false)
+              setTimeout(() => onCloseRef.current(), 300)
+            })
+            return
+          }
+        }
+
+        // 3. If voice commands are inactive, only wake word "sensa" can activate them
         if (!isVoiceCommandActiveRef.current) {
           if (check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens") || fuzzyCheck("sensa", 1)) {
             applyCommand("sensa", ["sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens"], () => {
@@ -880,6 +912,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           return
         }
 
+        // 4. Voice command deactivation
         if (check("stop listening", "deactivate voice", "deactivate voice command", "deactivate listening")) {
           applyCommand("deactivate-voice", ["stop listening", "deactivate voice", "deactivate voice command", "deactivate listening"], () => {
             playClickAudio("Voice commands deactivated")
@@ -888,21 +921,8 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           return
         }
 
-        const state = overlayStateRef.current
-
+        // 5. Active voice commands when dropdown is open
         if (state.isVoiceDropdownOpen) {
-          const closeDropdownMatch = cleanText.match(/\b(close voice selection|close dropdown|close|closed|clothes|clos|exit|shut|leave|cancel|dismiss|back|go back|done)\b/i)
-          if (closeDropdownMatch) {
-            applyCommand("close voice selection", ["close voice selection", "close dropdown", "close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back"], () => {
-              setIsVoiceDropdownOpen(false)
-              setSettingsState((next) => { next.isVoiceDropdownOpen = false })
-              window.speechSynthesis.cancel()
-              isReadingVoiceListRef.current = false
-              setSpeakingVoiceURI(null)
-              speakFeedback("Voice selection closed")
-            }, 450)
-            return
-          }
           if (check("next voice", "voice next", "next selection")) {
             applyCommand("next voice", ["next voice", "voice next", "next selection"], () => cycleVoice(1))
             return
@@ -916,20 +936,10 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
             return
           }
         } else {
+          // 6. Active voice commands for main settings
           if (check("help", "commands")) {
             applyCommand("help", ["help", "commands"], () => {
               speakFeedback("Here are the commands. Voice selection. This opens the voice list. Reset. This resets all settings to default. Close. This exits settings.")
-            })
-            return
-          }
-          const closeSettingsMatch = cleanText.match(/\b(close settings|close|closed|clothes|clos|exit|shut|leave|cancel|dismiss|back|go back|done|finish)\b/i)
-          if (closeSettingsMatch || fuzzyCheck("close", 1)) {
-            applyCommand("close settings", ["close settings", "close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back", "done"], () => {
-              window.speechSynthesis.cancel()
-              isReadingVoiceListRef.current = false
-              setSpeakingVoiceURI(null)
-              setIsMounted(false)
-              setTimeout(() => onCloseRef.current(), 300)
             })
             return
           }
