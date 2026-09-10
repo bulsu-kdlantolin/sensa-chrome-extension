@@ -37,6 +37,8 @@ const getLevenshteinDistance = (a: string, b: string): number => {
 }
 
 const fuzzyMatch = (text: string, target: string, maxDistance = 2): boolean => {
+  if (target === "increase" && (text.includes("decrease") || (text.includes("crease") && text.includes("de")))) return false
+  if (target === "decrease" && (text.includes("increase") || (text.includes("crease") && text.includes("in")))) return false
   if (text.includes(target)) return true
   const tokens = text.split(/\s+/).filter(Boolean)
   const targetTokens = target.split(/\s+/).filter(Boolean)
@@ -385,7 +387,6 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     let restartTimer: number | null = null
 
     let currentResultIndex = 0
-    let globalBuffer = ""
     let ignoreSpeechUntil = 0
     let lastCommandName = ""
     let lastCommandTime = 0
@@ -482,22 +483,18 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       instance.onresult = (event: any) => {
         if (event.resultIndex !== currentResultIndex) {
           currentResultIndex = event.resultIndex
+          consumedKeywords = []
         }
 
-        let interimChunk = ""
-        let newFinals = ""
-
+        let liveText = ""
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const text = event.results[i][0].transcript
-          if (event.results[i].isFinal) {
-            newFinals += text + " "
-          } else {
-            interimChunk += text + " "
+          const item = event.results[i]?.[0]
+          if (item) {
+            liveText += item.transcript + " "
           }
         }
 
-        globalBuffer += newFinals
-        const rawTranscript = (globalBuffer + " " + interimChunk).trim()
+        const rawTranscript = liveText.trim()
         if (!rawTranscript) return
 
         let cleanText = normalizeTranscript(rawTranscript)
@@ -556,11 +553,11 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
             return
           }
 
-          ignoreSpeechUntil = Date.now() + 350
+          ignoreSpeechUntil = Date.now() + 650
           lastCommandName = commandName
           lastCommandTime = Date.now()
 
-          const expires = Date.now() + 1200
+          const expires = Date.now() + 1500
           keywordsToConsume.forEach(kw => {
             consumedKeywords.push({ word: kw, expires })
           })
@@ -603,13 +600,13 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
 
         const increaseMatch = cleanText.match(/\b(increase|faster|speed up|higher|in crease|in greece)\b/i)
         if (increaseMatch || fuzzyCheck("increase", 1)) {
-          applyCommand("increase", ["increase", "faster", "speed up", "higher", "in crease", "in greece"], () => applySpeed(speedRef.current + 0.25))
+          applyCommand("increase", ["increase", "faster", "speed up", "higher", "in crease", "in greece", "crease", "in"], () => applySpeed(speedRef.current + 0.25))
           return
         }
 
         const decreaseMatch = cleanText.match(/\b(decrease|slower|slow down|lower|the grease|degrees|de grease|the crease|de crease)\b/i)
         if (decreaseMatch || fuzzyCheck("decrease", 1)) {
-          applyCommand("decrease", ["decrease", "slower", "slow down", "lower", "the grease", "degrees", "de grease", "the crease", "de crease"], () => applySpeed(speedRef.current - 0.25))
+          applyCommand("decrease", ["decrease", "slower", "slow down", "lower", "the grease", "degrees", "de grease", "the crease", "de crease", "crease", "de"], () => applySpeed(speedRef.current - 0.25))
           return
         }
 
