@@ -85,13 +85,13 @@ const buildAndStart = () => {
   try {
     instance.start()
   } catch {
-    scheduleRestart(true)
+    scheduleRestart(400)
   }
 }
 
 let visualRestartAttempts = 0
 
-const scheduleRestart = (hard = true) => {
+const scheduleRestart = (delay = 150) => {
   if (!isActive) return
   if (!isExtensionContextValid()) {
     isActive = false
@@ -100,20 +100,10 @@ const scheduleRestart = (hard = true) => {
   }
   clearRestartTimer()
 
-  if (!hard) {
-    restartTimer = window.setTimeout(() => {
-      try {
-        recognition?.start()
-      } catch (e: any) {
-        scheduleRestart(true)
-      }
-    }, 50)
-    return
-  }
-
-  const delay = Math.min(500 * Math.pow(2, visualRestartAttempts), 5000)
-  visualRestartAttempts++
-  restartTimer = window.setTimeout(buildAndStart, delay)
+  restartTimer = window.setTimeout(() => {
+    if (!isActive) return
+    buildAndStart()
+  }, delay)
 }
 
 const getLevenshteinDistance = (a: string, b: string): number => {
@@ -277,11 +267,7 @@ const teardownRecognition = () => {
     rec.onerror = null
     rec.onend = null
     rec.onstart = null
-    if (typeof rec.abort === 'function') {
-      rec.abort()
-    } else {
-      rec.stop()
-    }
+    rec.stop()
   } catch { }
 }
 
@@ -480,24 +466,28 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     window['sensaSpeechRunning'] = false
     window.dispatchEvent(new CustomEvent('sensa-speech-ended'))
     if (event.error === "aborted" || event.error === "no-speech") {
+      scheduleRestart(100)
       return
     }
-    tabLog(`[Sensa Tab Voice Bridge] Visual mode SpeechRecognition error in tab: ${event.error}`, "error")
-    if (event.error === "not-allowed" || event.error === "service-not-allowed" || event.error === "network") {
-      tabLog("[Sensa Tab Voice Bridge] Visual mode microphone access denied or network error, stopping tab listener and flagging speech unsupported.", "warn")
+    tabLog(`[Sensa Tab Voice Bridge] Visual mode SpeechRecognition error in tab: ${event.error}`, "warn")
+    if (event.error === "not-allowed") {
+      tabLog("[Sensa Tab Voice Bridge] Visual mode microphone access denied.", "warn")
       isActive = false
       teardownRecognition()
-      chrome.storage.onChanged.removeListener(handleStorageChange)
-      chrome.storage.local.set({ sensa_speech_supported: false })
       return
     }
-    scheduleRestart(true)
+    if (event.error === "service-not-allowed" || event.error === "network" || event.error === "audio-capture") {
+      tabLog(`[Sensa Tab Voice Bridge] Transient voice recognition error (${event.error}), scheduling retry.`, "warn")
+      scheduleRestart(800)
+      return
+    }
+    scheduleRestart(400)
   }
 
   instance.onend = () => {
     window['sensaSpeechRunning'] = false
     window.dispatchEvent(new CustomEvent('sensa-speech-ended'))
-    scheduleRestart(false)
+    scheduleRestart(150)
   }
 }
 

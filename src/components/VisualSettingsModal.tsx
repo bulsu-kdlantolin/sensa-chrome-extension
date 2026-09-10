@@ -582,7 +582,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       }
     }
 
-    const scheduleRestart = () => {
+    const scheduleRestart = (delay = 150) => {
       if (!isComponentMounted || isPermanentlyDead) return
       if (!isExtensionContextValid()) {
         isPermanentlyDead = true
@@ -591,17 +591,15 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       }
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
-        if (!recognition || !isComponentMounted) return
+        if (!isComponentMounted || isPermanentlyDead) return
+        teardownRecognition()
+        buildRecognition()
         try {
-          recognition.start()
+          recognition?.start()
         } catch (e: any) {
-          if (e && e.name === 'InvalidStateError') {
-            restartTimer = window.setTimeout(scheduleRestart, 400)
-            return
-          }
-          restartTimer = window.setTimeout(scheduleRestart, 1000)
+          restartTimer = window.setTimeout(() => scheduleRestart(400), 400)
         }
-      }, 300)
+      }, delay)
     }
 
 
@@ -618,11 +616,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
         rec.onend = null
         rec.onstart = null
         ;(rec as any).onsoundstart = null
-        if (typeof rec.abort === 'function') {
-          rec.abort()
-        } else {
-          rec.stop()
-        }
+        rec.stop()
       } catch { }
     }
 
@@ -982,18 +976,18 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
       instance.onerror = (event: any) => {
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-          window.setTimeout(scheduleRestart, 1500)
+          window.setTimeout(() => scheduleRestart(800), 800)
           return
         }
-        if (event.error === "aborted") {
-          scheduleRestart()
+        if (event.error === "aborted" || event.error === "no-speech") {
+          scheduleRestart(100)
           return
         }
-        scheduleRestart()
+        scheduleRestart(200)
       }
 
       instance.onend = () => {
-        scheduleRestart()
+        scheduleRestart(100)
       }
 
       recognition = instance

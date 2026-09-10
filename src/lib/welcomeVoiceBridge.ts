@@ -175,11 +175,7 @@ const teardownRecognition = () => {
   if (!recognition) return
 
   try {
-    if (typeof recognition.abort === 'function') {
-      recognition.abort()
-    } else {
-      recognition.stop()
-    }
+    recognition.stop()
   } catch { }
 
   recognition.onresult = null
@@ -296,11 +292,15 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
       return
     }
     tabLog(`[Sensa Tab Voice Bridge] Welcome SpeechRecognition error in tab: ${event.error}`, "error")
-    if (event.error === "not-allowed" || event.error === "service-not-allowed" || event.error === "network") {
-      tabLog("[Sensa Tab Voice Bridge] Welcome microphone access denied or network error, stopping tab listener and flagging speech unsupported.", "warn")
+    if (event.error === "not-allowed") {
+      tabLog("[Sensa Tab Voice Bridge] Welcome microphone access denied, stopping tab listener.", "warn")
       isActive = false
       teardownRecognition()
-      chrome.storage.local.set({ sensa_speech_supported: false })
+      return
+    }
+    if (event.error === "service-not-allowed" || event.error === "network") {
+      tabLog(`[Sensa Tab Voice Bridge] Transient error in welcome bridge (${event.error}), retrying...`, "warn")
+      window.setTimeout(buildAndStart, 800)
       return
     }
     scheduleRestart()

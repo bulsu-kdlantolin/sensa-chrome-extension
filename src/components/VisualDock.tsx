@@ -1254,11 +1254,7 @@ export default function VisualDock({
         rec.onend = null
         rec.onsoundstart = null
         rec.onstart = null
-        if (typeof rec.abort === 'function') {
-          rec.abort()
-        } else {
-          rec.stop()
-        }
+        rec.stop()
       } catch (e) { }
     }
 
@@ -1422,7 +1418,7 @@ export default function VisualDock({
           }
 
           if (!callbacksRef.current.isVoiceCommandActive) {
-            if (check("deactivate visual mode", "deactivate visual", "close visual mode", "turn off visual mode")) {
+            if (check("deactivate", "deactivate visual mode", "deactivate visual", "close visual mode", "turn off visual mode")) {
               applyCommand("close", () => callbacksRef.current.onClose())
               return true
             }
@@ -1430,7 +1426,7 @@ export default function VisualDock({
             const isCustom = currentWakeWord !== "sensa"
             const wakeMatched = isCustom
               ? paddedSpeech.includes(` ${currentWakeWord} `) || fuzzyCheck(currentWakeWord, 1)
-              : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens") || fuzzyCheck("sensa", 1)
+              : check("sensa", "sansa", "sensor", "sensia", "sincere", "center", "censor", "senser", "censer", "sens", "activate voice", "activate listening", "start listening", "voice command", "voice commands") || fuzzyCheck("sensa", 1)
 
             if (canToggleVoiceMode && wakeMatched) {
               applyCommand("activate-voice", () => {
@@ -1615,7 +1611,7 @@ export default function VisualDock({
 
       instance.onerror = (event: any) => {
         if (event.error === "aborted" || event.error === "no-speech") {
-          scheduleRestart(50, false)
+          scheduleRestart(80)
           return
         }
         console.error("[Sensa VisualDock SpeechRecognition Error]", event.error)
@@ -1623,17 +1619,21 @@ export default function VisualDock({
           isPermanentlyDead = true
           return
         }
-        scheduleRestart(100, true)
+        if (event.error === "service-not-allowed" || event.error === "network" || event.error === "audio-capture") {
+          scheduleRestart(600)
+          return
+        }
+        scheduleRestart(150)
       }
 
       instance.onend = () => {
-        scheduleRestart(50, false)
+        scheduleRestart(80)
       }
 
       try {
         instance.start()
       } catch (e: any) {
-        scheduleRestart(50, true)
+        scheduleRestart(150)
       }
     }
 
@@ -1655,7 +1655,7 @@ export default function VisualDock({
       } catch (e) { }
     }
 
-    const scheduleRestart = (delay = 50, hard = true) => {
+    const scheduleRestart = (delay = 100) => {
       if (!isComponentMounted || isPermanentlyDead) return
       if (!isExtensionContextValid()) {
         isPermanentlyDead = true
@@ -1664,24 +1664,8 @@ export default function VisualDock({
       }
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
-        if (!isComponentMounted) return
-        if (hard) {
-          buildAndStart()
-        } else {
-          try {
-            currentResultIndex = 0
-            lastCommandResultIndex = -1
-            lastCommandTranscript = ""
-            consumedKeywords = []
-            lastCommandName = ""
-            lastCommandTime = 0
-            recognition?.start()
-          } catch (e: any) {
-            // Do not immediately buildAndStart which causes OS mic hangs.
-            // Wait a moment and then try a hard restart if needed.
-            window.setTimeout(buildAndStart, 300)
-          }
-        }
+        if (!isComponentMounted || isPermanentlyDead) return
+        buildAndStart()
       }, delay)
     }
 
@@ -1707,7 +1691,7 @@ export default function VisualDock({
 
     const startTimeout = window.setTimeout(() => {
       buildAndStart()
-    }, 40)
+    }, 150)
 
     return () => {
       isComponentMounted = false
@@ -1725,11 +1709,7 @@ export default function VisualDock({
         recognition.onsoundstart = null
         recognition.onstart = null
         try {
-          if (typeof recognition.abort === 'function') {
-            recognition.abort()
-          } else {
-            recognition.stop()
-          }
+          recognition.stop()
         } catch (e) { }
         recognition = null
       }

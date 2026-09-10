@@ -400,7 +400,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       }
     }
 
-    const scheduleRestart = (hard = true) => {
+    const scheduleRestart = (delay = 100) => {
       if (!isComponentMounted || isPermanentlyDead) return
       if (!isExtensionContextValid()) {
         isPermanentlyDead = true
@@ -409,23 +409,15 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       }
       if (restartTimer) window.clearTimeout(restartTimer)
       restartTimer = window.setTimeout(() => {
-        if (!isComponentMounted) return
-        
-        if (hard) {
-          teardownRecognition()
-          buildRecognition()
-        }
-
+        if (!isComponentMounted || isPermanentlyDead) return
+        teardownRecognition()
+        buildRecognition()
         try { 
           recognition?.start() 
         } catch (e: any) { 
-          if (!hard) {
-            scheduleRestart(true)
-          } else {
-            restartTimer = window.setTimeout(() => scheduleRestart(true), 400)
-          }
+          restartTimer = window.setTimeout(() => scheduleRestart(300), 300)
         }
-      }, hard ? 120 : 30)
+      }, delay)
     }
 
 
@@ -442,11 +434,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         rec.onend = null
         rec.onstart = null
         ;(rec as any).onsoundstart = null
-        if (typeof rec.abort === 'function') {
-          rec.abort()
-        } else {
-          rec.stop()
-        }
+        rec.stop()
       } catch {}
     }
 
@@ -629,18 +617,18 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
 
       instance.onerror = (event: any) => {
         if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-          window.setTimeout(() => scheduleRestart(true), 1500)
+          window.setTimeout(() => scheduleRestart(800), 800)
           return
         }
         if (event.error === "aborted" || event.error === "no-speech") {
-          scheduleRestart(false)
+          scheduleRestart(80)
           return
         }
-        scheduleRestart(true)
+        scheduleRestart(150)
       }
 
       instance.onend = () => {
-        scheduleRestart(false)
+        scheduleRestart(80)
       }
 
       recognition = instance

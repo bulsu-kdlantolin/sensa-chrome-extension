@@ -224,7 +224,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
           } else if (action === "start" && err && retries >= 3 && isMounted) {
             chrome.tabs.query({ url: ["http://*/*", "https://*/*"] }, (fallbackTabs) => {
               const alt = fallbackTabs?.find(t => t.id !== targetTabId && typeof t.id === "number")
-              if (alt?.id) chrome.tabs.sendMessage(alt.id, { type: "sensa-visual-mode-voice", action: "start" }, () => chrome.runtime.lastError)
+              if (alt?.id) chrome.tabs.sendMessage(alt.id, { type: "sensa-mode-selection-voice", action: "start" }, () => chrome.runtime.lastError)
             })
           }
         })
