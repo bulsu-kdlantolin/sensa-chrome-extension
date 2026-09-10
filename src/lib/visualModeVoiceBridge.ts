@@ -269,16 +269,20 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
 const teardownRecognition = () => {
   clearRestartTimer()
   if (!recognition) return
+  const rec = recognition
+  recognition = null
 
   try {
-    recognition.stop()
+    rec.onresult = null
+    rec.onerror = null
+    rec.onend = null
+    rec.onstart = null
+    if (typeof rec.abort === 'function') {
+      rec.abort()
+    } else {
+      rec.stop()
+    }
   } catch { }
-
-  recognition.onresult = null
-  recognition.onerror = null
-  recognition.onend = null
-  recognition.onstart = null
-  recognition = null
 }
 
 const primeMicrophone = async () => {

@@ -894,7 +894,7 @@ export default function FloatingDockManager() {
             onClose={() => {
               setIsReadingSpeedOpen(false)
               setIsReadingSpeedOpenViaVoice(false)
-              speakOverlayFeedback("Reading speed overlay closed")
+              speakOverlayFeedback("Reading speed closed")
             }}
             isDark={isDark}
             isVoiceCommandActive={isVoiceCommandActive}
@@ -1002,7 +1002,7 @@ export default function FloatingDockManager() {
                 onOpenReadingSpeed={(viaVoice) => {
                   setIsReadingSpeedOpen(true)
                   if (viaVoice) setIsReadingSpeedOpenViaVoice(true)
-                  speakOverlayFeedback("Reading speed overlay opened")
+                  speakOverlayFeedback("Reading speed opened")
                 }}
                 onOpenSettings={(viaVoice) => {
                   setIsVisualSettingsOpen(true)

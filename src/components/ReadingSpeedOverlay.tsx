@@ -433,7 +433,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
             restartTimer = window.setTimeout(() => scheduleRestart(true), 400)
           }
         }
-      }, hard ? 300 : 50)
+      }, hard ? 120 : 30)
     }
 
 
@@ -442,13 +442,20 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
 
     const teardownRecognition = () => {
       if (!recognition) return
-      try { recognition.stop() } catch {}
-      recognition.onresult = null
-      recognition.onerror = null
-      recognition.onend = null
-      recognition.onstart = null
-      ;(recognition as any).onsoundstart = null
+      const rec = recognition
       recognition = null
+      try {
+        rec.onresult = null
+        rec.onerror = null
+        rec.onend = null
+        rec.onstart = null
+        ;(rec as any).onsoundstart = null
+        if (typeof rec.abort === 'function') {
+          rec.abort()
+        } else {
+          rec.stop()
+        }
+      } catch {}
     }
 
     const applySpeed = (next: number, announce = true) => {
@@ -463,9 +470,9 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
 
     const closeOverlay = () => {
       playClickSfx()
-      playClickAudio("Closing speed settings")
+      teardownRecognition()
       setIsMounted(false)
-      setTimeout(() => onCloseRef.current(), 300)
+      setTimeout(() => onCloseRef.current(), 150)
     }
 
     const buildRecognition = () => {
@@ -507,6 +514,11 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           "or say close to exit",
           "reading speed overlay opened",
           "reading speed overlay closed",
+          "reading speed opened",
+          "reading speed closed",
+          "reading speed",
+          "reeding speed",
+          "speed overlay",
           "closing speed settings",
           "voice commands activated",
           "voice commands deactivated"
@@ -654,10 +666,25 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     window.addEventListener("focus", reviveEngine)
     window.addEventListener("visibilitychange", handleVisibilityChange)
 
+    let startRetryTimer: number | null = null
+    const safeStart = (retries = 0) => {
+      if (!isComponentMounted || isPermanentlyDead) return
+      if (!recognition) {
+        buildRecognition()
+      }
+      try {
+        recognition?.start()
+      } catch (e: any) {
+        if (retries < 10 && isComponentMounted && !isPermanentlyDead) {
+          startRetryTimer = window.setTimeout(() => safeStart(retries + 1), 50)
+        }
+      }
+    }
+
     buildRecognition()
     const startTimeout = window.setTimeout(() => {
-      try { recognition?.start() } catch (e) {}
-    }, 150)
+      safeStart()
+    }, 30)
 
     return () => {
       isComponentMounted = false
@@ -665,11 +692,9 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
       window.removeEventListener("focus", reviveEngine)
       window.removeEventListener("visibilitychange", handleVisibilityChange)
       if (restartTimer) window.clearTimeout(restartTimer)
-
+      if (startRetryTimer) window.clearTimeout(startRetryTimer)
       window.clearTimeout(startTimeout)
-      if (recognition) {
-        try { recognition.stop() } catch (e) {}
-      }
+      teardownRecognition()
     }
   }, [playClickAudio, isTabVisible, isBrave])
 

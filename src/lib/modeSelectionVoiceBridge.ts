@@ -101,7 +101,11 @@ const teardownRecognition = () => {
   if (!recognition) return
 
   try {
-    recognition.stop()
+    if (typeof recognition.abort === 'function') {
+      recognition.abort()
+    } else {
+      recognition.stop()
+    }
   } catch { }
 
   recognition.onresult = null

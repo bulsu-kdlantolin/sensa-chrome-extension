@@ -1254,7 +1254,11 @@ export default function VisualDock({
         rec.onend = null
         rec.onsoundstart = null
         rec.onstart = null
-        rec.stop()
+        if (typeof rec.abort === 'function') {
+          rec.abort()
+        } else {
+          rec.stop()
+        }
       } catch (e) { }
     }
 
@@ -1470,7 +1474,6 @@ export default function VisualDock({
                 callbacksRef.current.handleStopReading()
               }
               applyCommand("speed", () => {
-                callbacksRef.current.playClickAudio?.('Reeding speed')
                 callbacksRef.current.onOpenReadingSpeed(true)
               })
               return true
@@ -1703,7 +1706,7 @@ export default function VisualDock({
 
     const startTimeout = window.setTimeout(() => {
       buildAndStart()
-    }, 150)
+    }, 40)
 
     return () => {
       isComponentMounted = false
@@ -1720,7 +1723,13 @@ export default function VisualDock({
         recognition.onend = null
         recognition.onsoundstart = null
         recognition.onstart = null
-        try { recognition.stop() } catch (e) { }
+        try {
+          if (typeof recognition.abort === 'function') {
+            recognition.abort()
+          } else {
+            recognition.stop()
+          }
+        } catch (e) { }
         recognition = null
       }
       teardownRecognition()
