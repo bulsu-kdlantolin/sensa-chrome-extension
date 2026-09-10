@@ -794,22 +794,10 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       instance.onresult = (event: any) => {
         if (!settingsRecognitionArmedRef.current) return
 
-        // Gating: ONLY decide and execute on finalized speech results
-        let hasFinal = false
         let liveText = ""
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const resItem = event.results[i]
-          if (resItem?.isFinal) {
-            hasFinal = true
-            const item = resItem[0]
-            if (item) {
-              liveText += item.transcript + " "
-            }
-          }
+          liveText += event.results[i][0].transcript + " "
         }
-
-        if (!hasFinal) return
-
         liveText = liveText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
 
         if (!liveText) return

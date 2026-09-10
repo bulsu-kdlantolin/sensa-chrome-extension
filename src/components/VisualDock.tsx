@@ -1301,32 +1301,20 @@ export default function VisualDock({
           consumedKeywords = []
         }
 
-        // Gating: ONLY decide and execute on finalized speech results (prevents interim double-executions)
-        let hasFinal = false
         let rawTranscript = ""
         let minConfidence = 1.0
         let hasConfidence = false
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const resItem = event.results[i]
-          if (resItem?.isFinal) {
-            hasFinal = true
-            const item = resItem[0]
-            if (item) {
-              rawTranscript += item.transcript + " "
-              if (typeof item.confidence === "number" && item.confidence > 0) {
-                minConfidence = Math.min(minConfidence, item.confidence)
-                hasConfidence = true
-              }
+          const item = event.results[i]?.[0]
+          if (item) {
+            rawTranscript += item.transcript + " "
+            if (typeof item.confidence === "number" && item.confidence > 0) {
+              minConfidence = Math.min(minConfidence, item.confidence)
+              hasConfidence = true
             }
           }
         }
-
-        // If no segment in the result list is final, do not execute on interim hypothesis
-        if (!hasFinal) {
-          return
-        }
-
         rawTranscript = rawTranscript.trim()
         if (!rawTranscript) return
 
@@ -1402,10 +1390,10 @@ export default function VisualDock({
             // Apply a brief 450ms buffer flush lock so trailing audio doesn't trigger false positives
             ignoreSpeechUntil = Date.now() + 450
 
-            // Only apply cooldown if repeating the EXACT same command within 1000ms.
-            if (commandName === lastCommandName && timeSinceLastCommand < 1000) {
+            // Only apply cooldown if repeating the EXACT same command within 550ms.
+            if (commandName === lastCommandName && timeSinceLastCommand < 550) {
               const ts = new Date().toISOString().substring(11, 23)
-              console.log(`%c[Sensa Dock Voice] ⏸️ Ignored duplicate command: "${commandName}" (within 1000ms cooldown)`, "color: #f59e0b; font-weight: bold;")
+              console.log(`%c[Sensa Dock Voice] ⏸️ Ignored duplicate command: "${commandName}" (within 550ms cooldown)`, "color: #f59e0b; font-weight: bold;")
               return
             }
             if (commandTimeout) {

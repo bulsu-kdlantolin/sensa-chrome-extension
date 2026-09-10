@@ -488,21 +488,13 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           consumedKeywords = []
         }
 
-        // Gating: ONLY decide and execute on finalized speech results
-        let hasFinal = false
         let liveText = ""
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const resItem = event.results[i]
-          if (resItem?.isFinal) {
-            hasFinal = true
-            const item = resItem[0]
-            if (item) {
-              liveText += item.transcript + " "
-            }
+          const item = event.results[i]?.[0]
+          if (item) {
+            liveText += item.transcript + " "
           }
         }
-
-        if (!hasFinal) return
 
         const rawTranscript = liveText.trim()
         if (!rawTranscript) return
