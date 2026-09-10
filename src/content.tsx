@@ -555,25 +555,19 @@ export default function FloatingDockManager() {
           : (activeModeRef.current === "auditory")
 
         if (nextVisual && !prevVisual) {
-          // Stop the popup's voice bridge so the VisualDock's own
-          // SpeechRecognition engine can cleanly claim the microphone
-          stopVisualModeVoiceListener()
+          // Keep the popup's voice bridge running if popup is open so user can say "deactivate".
+          // When popup closes, port.onDisconnect will stop it and VisualDock will take over.
           setActiveMode("visual")
           setIsAuditorySettingsOpen(false)
           setIsCaptionLanguageOpen(false)
           setIsTextSizeOpen(false)
           setIsCaptionTransparencyOpen(false)
-          // speakOverlayFeedback("Visual mode activated")
         } else if (!nextVisual && prevVisual) {
           setActiveMode(null)
           setIsVisualSettingsOpen(false)
           setIsReadingSpeedOpen(false)
           setIsVoiceCommandActive(false)
           window.speechSynthesis.cancel()
-          // Restart the popup's voice bridge so the user can say "activate" again
-          if (isPopupOpenRef.current) {
-            startVisualModeVoiceListener()
-          }
         }
       }
       if (changes.sensa_visual_highlight_color !== undefined && typeof changes.sensa_visual_highlight_color.newValue === "string") {
