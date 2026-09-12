@@ -1,4 +1,4 @@
-# 🌟 Sensa — Advanced Sensory & Accessibility Assistant
+# 🌟 Sensa: Advanced Sensory & Accessibility Assistant
 
 [![Chrome Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-0052FF?style=for-the-badge&logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/)
 [![Plasmo Framework](https://img.shields.io/badge/Built%20with-Plasmo-FF7A2F?style=for-the-badge&logo=react&logoColor=white)](https://docs.plasmo.com/)
