@@ -27,6 +27,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
   const [isSkipping, setIsSkipping] = useState(false)
   const [isExiting, setIsExiting] = useState(false)
   const [isBrave, setIsBrave] = useState(false)
+  const [voiceChosen, setVoiceChosen] = useState(false)
 
   useEffect(() => {
     isBraveBrowser().then(setIsBrave)
@@ -616,7 +617,11 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
       if (changes.sensa_welcome_proceed_trigger && changes.sensa_welcome_proceed_trigger.newValue === true) {
         chrome.storage.local.set({ sensa_welcome_proceed_trigger: false }, () => {
-          handleManualProceed()
+          setVoiceChosen(true)
+          playPopSfx()
+          window.setTimeout(() => {
+            handleManualProceed()
+          }, 360)
         })
       }
     }
@@ -756,7 +761,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
         <div className={`w-full h-[56px] shrink-0 mt-auto transition-all duration-500 ${showButton ? 'opacity-100 pointer-events-auto fade-in-4' : 'opacity-0 pointer-events-none'}`}>
           <button
             onClick={handleManualProceed}
-            className="w-full h-full relative overflow-hidden rounded-full bg-[#0A44FF] shadow-[0_12px_30px_rgba(10,68,255,0.3)] hover:shadow-[0_16px_40px_rgba(10,68,255,0.4)] hover:scale-[1.03] active:scale-95 transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50"
+            className={`w-full h-full relative overflow-hidden rounded-full bg-[#0A44FF] shadow-[0_12px_30px_rgba(10,68,255,0.3)] hover:shadow-[0_16px_40px_rgba(10,68,255,0.4)] hover:scale-[1.03] active:scale-95 transition-all duration-300 ease-[cubic-bezier(0.23,1,0.32,1)] group focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 ${voiceChosen ? '!scale-95 !ring-4 !ring-white/70 shadow-[0_0_40px_rgba(10,68,255,0.85)] brightness-110' : ''}`}
             onMouseEnter={() => { playHoverSfx(); playHoverAudio("Get Started") }}
             onFocus={() => { playHoverSfx(); playHoverAudio("Get Started") }}
             onMouseLeave={cancelHoverAudio}
@@ -765,7 +770,7 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
             {/* Button Text & Icon */}
             <div className="relative z-10 flex items-center justify-center w-full h-full gap-3 text-white font-black text-[17px] tracking-wide">
               Get Started
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-1">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`w-5 h-5 transition-transform duration-300 ${voiceChosen ? 'translate-x-2' : 'group-hover:translate-x-1'}`}>
                 <path d="M5 12h14" />
                 <path d="m12 5 7 7-7 7" />
               </svg>

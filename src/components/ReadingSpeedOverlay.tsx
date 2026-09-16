@@ -70,6 +70,22 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
   const [speed, setSpeed] = useState(initialSpeed)
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   const onCloseRef = useRef(onClose)
+  const [voiceActiveBtn, setVoiceActiveBtn] = useState<string | null>(null)
+  const voiceActiveTimeoutRef = useRef<number | null>(null)
+
+  const triggerVoiceHighlight = useCallback((btnKey: string) => {
+    setVoiceActiveBtn(btnKey)
+    if (voiceActiveTimeoutRef.current) window.clearTimeout(voiceActiveTimeoutRef.current)
+    voiceActiveTimeoutRef.current = window.setTimeout(() => {
+      setVoiceActiveBtn(null)
+    }, 450)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (voiceActiveTimeoutRef.current) window.clearTimeout(voiceActiveTimeoutRef.current)
+    }
+  }, [])
   const onSpeedChangeRef = useRef(onSpeedChange)
   const [isBrave, setIsBrave] = useState(false)
 
@@ -493,15 +509,10 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         const ttsPatterns = [
           "say increase or decrease to adjust reading speed or say close to exit the overlay",
           "say increase or decrease to adjust reading speed",
-          "or say close to exit the overlay",
-          "or say close to exit",
           "reading speed overlay opened",
           "reading speed overlay closed",
           "reading speed opened",
           "reading speed closed",
-          "reading speed",
-          "reeding speed",
-          "speed overlay",
           "closing speed settings",
           "voice commands activated",
           "voice commands deactivated"
@@ -558,14 +569,28 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
           })
 
           matchedCmd = true
+          if (commandName === "increase") triggerVoiceHighlight("increase")
+          else if (commandName === "decrease") triggerVoiceHighlight("decrease")
+          else if (commandName === "close") triggerVoiceHighlight("close")
           console.log(`%c[Sensa Speed Voice] ⚡ Executing command: "${commandName}"`, "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px;")
           action()
         }
 
         // 1. Close Overlay: ALWAYS allowed immediately, even if voice commands are inactive/standby
-        const closeMatch = cleanText.match(/\b(close|closed|clothes|clos|exit|shut|leave|cancel|dismiss|back|go back|done|finish)\b/i)
-        if (closeMatch || fuzzyCheck("close", 1)) {
-          applyCommand("close", ["close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back", "done"], () => closeOverlay())
+        const closeMatch = cleanText.match(/\b(close|closed|clothes|clos|clause|claws|close overlay|close speed|close it|close this|close window|exit|exit overlay|shut|shut down|leave|cancel|dismiss|back|go back|done|finish|stop listening)\b/i)
+        if (
+          closeMatch ||
+          check("close", "closed", "clothes", "clos", "clause", "claws", "close overlay", "close speed", "close it", "close this", "exit", "exit overlay", "shut", "shut down", "dismiss", "done", "cancel") ||
+          fuzzyCheck("close", 1) ||
+          fuzzyCheck("exit", 1)
+        ) {
+          applyCommand("close", ["close", "closed", "clothes", "clos", "clause", "claws", "close overlay", "close speed", "close it", "exit", "shut", "leave", "cancel", "dismiss", "back", "done"], () => {
+            triggerVoiceHighlight("close")
+            playClickSfx()
+            window.setTimeout(() => {
+              closeOverlay()
+            }, 260)
+          })
           return
         }
 
@@ -590,8 +615,8 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         }
 
         // 4. Help commands
-        if (check("help", "commands")) {
-          applyCommand("help", ["help", "commands"], () => {
+        if (check("help", "commands", "command") || fuzzyCheck("help", 1) || fuzzyCheck("command", 1)) {
+          applyCommand("help", ["help", "commands", "command"], () => {
             wrappedPlayClickAudio("Say increase or decrease to adjust reading speed. Or say close to exit.")
           })
           return
@@ -734,7 +759,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
                 playClickAudio("Closing speed settings")
                 setTimeout(onClose, 300)
               }}
-              className={`${closeButtonClass} transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_10px_22px_-16px_rgba(15,23,42,0.45)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 rounded-full p-2`}
+              className={`${closeButtonClass} transition-all duration-200 hover:-translate-y-[1px] hover:shadow-[0_10px_22px_-16px_rgba(15,23,42,0.45)] active:scale-90 active:ring-2 active:ring-[#4FA5FF]/60 active:bg-[#0A44FF]/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 rounded-full p-2 transform-gpu ${voiceActiveBtn === "close" ? "!scale-90 !ring-4 !ring-[#4FA5FF]/80 !bg-[#0A44FF]/25 shadow-[0_0_22px_rgba(79,165,255,0.65)]" : ""}`}
               aria-label="Close"
               {...getHoverHandlers("Close")}
             >
@@ -757,7 +782,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
               {/* Minus Button */}
               <button
                 onClick={handleDecrease}
-                className="w-[52px] h-[52px] flex-shrink-0 flex items-center justify-center hover:brightness-105 hover:-translate-y-[1px] hover:shadow-[0_16px_24px_-14px_rgba(10,68,255,0.7)] text-white rounded-full transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg"
+                className={`w-[52px] h-[52px] flex-shrink-0 flex items-center justify-center hover:brightness-105 hover:-translate-y-[1px] hover:shadow-[0_16px_24px_-14px_rgba(10,68,255,0.7)] text-white rounded-full transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg ${voiceActiveBtn === "decrease" ? "!scale-90 !ring-4 !ring-[#4FA5FF]/80 !bg-[#0A44FF]/25 shadow-[0_0_24px_rgba(79,165,255,0.65)]" : ""}`}
                 style={{ backgroundImage: "linear-gradient(to right, #0A44FF, #0099FF)" }}
                 aria-label="Decrease speed"
                 {...getHoverHandlers("Decrease speed")}
@@ -841,7 +866,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
               {/* Plus Button */}
               <button
                 onClick={handleIncrease}
-                className="w-[52px] h-[52px] flex-shrink-0 flex items-center justify-center hover:brightness-105 hover:-translate-y-[1px] hover:shadow-[0_16px_24px_-14px_rgba(10,68,255,0.7)] text-white rounded-full transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg"
+                className={`w-[52px] h-[52px] flex-shrink-0 flex items-center justify-center hover:brightness-105 hover:-translate-y-[1px] hover:shadow-[0_16px_24px_-14px_rgba(10,68,255,0.7)] text-white rounded-full transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 shadow-lg ${voiceActiveBtn === "increase" ? "!scale-90 !ring-4 !ring-[#4FA5FF]/80 !bg-[#0A44FF]/25 shadow-[0_0_24px_rgba(79,165,255,0.65)]" : ""}`}
                 style={{ backgroundImage: "linear-gradient(to right, #0A44FF, #0099FF)" }}
                 aria-label="Increase speed"
                 {...getHoverHandlers("Increase speed")}

@@ -33,6 +33,7 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
   const isActiveViewRef = useRef(isActiveView)
   const isBraveRef = useRef(false)
   const [isBrave, setIsBrave] = useState(false)
+  const [voiceFeedbackState, setVoiceFeedbackState] = useState<"activate" | "deactivate" | null>(null)
 
   useEffect(() => {
     isActiveViewRef.current = isActiveView
@@ -310,13 +311,25 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
       setIsListening(!!res.sensa_visual_active)
     })
 
+    // Reset any previous activation flag on popup mount
+    chrome.storage.local.remove("sensa_visual_activated_via_voice")
+
     const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
       if (changes.sensa_visual_active !== undefined) {
-        setIsListening(changes.sensa_visual_active.newValue)
+        const nextVal = !!changes.sensa_visual_active.newValue
+        if (!nextVal && isListening) {
+          setVoiceFeedbackState("deactivate")
+          playDeactivateSfx()
+          window.setTimeout(() => {
+            setVoiceFeedbackState(null)
+          }, 450)
+        }
+        setIsListening(nextVal)
       }
       if (changes.sensa_visual_activated_via_voice?.newValue === true) {
-        window.close()
-        chrome.storage.local.remove("sensa_visual_activated_via_voice")
+        chrome.storage.local.remove("sensa_visual_activated_via_voice", () => {
+          window.close()
+        })
       }
     }
 
@@ -552,7 +565,15 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
             onBlur={cancelHoverSpeak}
             aria-pressed={isListening}
             aria-label={isListening ? "Deactivate Visual Mode" : "Activate Visual Mode"}
-            className={`w-[136px] h-[136px] shrink-0 rounded-full flex items-center justify-center relative group outline-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-offset-4 focus-visible:ring-[#0A44FF]/60 transform-gpu active:scale-90 ${springTransition} ${isListening ? "bg-[#0A44FF] scale-105 shadow-[0_10px_40px_rgba(10,68,255,0.4)] ring-[0px] ring-[#0A44FF]/0" : "bg-[#0A44FF] scale-100 ring-[8px] ring-[#0A44FF]/10 shadow-[0_16px_35px_rgba(0,0,0,0.15)] hover:scale-105 hover:bg-[#0836CC] hover:ring-[#0A44FF]/20"}`}
+            className={`w-[136px] h-[136px] shrink-0 rounded-full flex items-center justify-center relative group outline-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-offset-4 focus-visible:ring-[#0A44FF]/60 transform-gpu active:scale-90 ${springTransition} ${
+            voiceFeedbackState === "activate"
+              ? "!scale-95 !ring-[10px] !ring-white/70 shadow-[0_0_55px_rgba(10,68,255,0.9)] bg-[#0A44FF] brightness-110"
+              : voiceFeedbackState === "deactivate"
+                ? "!scale-90 !ring-[10px] !ring-red-500/50 shadow-[0_0_40px_rgba(239,68,68,0.6)] bg-red-600/90"
+                : isListening
+                  ? "bg-[#0A44FF] scale-105 shadow-[0_10px_40px_rgba(10,68,255,0.4)] ring-[0px] ring-[#0A44FF]/0"
+                  : "bg-[#0A44FF] scale-100 ring-[8px] ring-[#0A44FF]/10 shadow-[0_16px_35px_rgba(0,0,0,0.15)] hover:scale-105 hover:bg-[#0836CC] hover:ring-[#0A44FF]/20"
+          }`}
           >
             <div className={`absolute inset-0 rounded-full pointer-events-none transition-opacity duration-700 ease-out ${isListening ? 'opacity-100 animate-visual-pulse-glow' : 'opacity-0'}`} />
 

@@ -15,7 +15,7 @@
  *    - Persists all settings to Chrome local storage and syncs across active tabs.
  */
 
-import React, { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
 import ColorPickerPopup from "./ColorPickerPopup"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 import { startVisualModeVoiceListener, stopVisualModeVoiceListener } from "../lib/visualModeVoiceBridge"
@@ -80,6 +80,22 @@ interface VisualSettingsModalProps {
 
 export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCommandActive = false, onToggleVoiceCommand, openedViaVoice = false }: VisualSettingsModalProps) {
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
+  const [voiceActiveBtn, setVoiceActiveBtn] = useState<string | null>(null)
+  const voiceActiveTimeoutRef = useRef<number | null>(null)
+
+  const triggerVoiceHighlight = useCallback((btnKey: string) => {
+    setVoiceActiveBtn(btnKey)
+    if (voiceActiveTimeoutRef.current) window.clearTimeout(voiceActiveTimeoutRef.current)
+    voiceActiveTimeoutRef.current = window.setTimeout(() => {
+      setVoiceActiveBtn(null)
+    }, 450)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (voiceActiveTimeoutRef.current) window.clearTimeout(voiceActiveTimeoutRef.current)
+    }
+  }, [])
   const audioCtxRef = useRef<AudioContext | null>(null)
   const [isVoiceGuideEnabled, setIsVoiceGuideEnabled] = useState<boolean>(true)
   const isVoiceGuideEnabledRef = useRef(true)
@@ -110,28 +126,31 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const defaultVoiceAppliedRef = useRef(false)
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false)
   const isReadingVoiceListRef = useRef(false)
+  const voiceListRef = useRef<HTMLUListElement>(null)
+  const voiceItemRefs = useRef<Record<string, HTMLElement | null>>({})
 
   useEffect(() => {
-    const uriToScroll = speakingVoiceURI || (isVoiceDropdownOpen ? selectedVoiceURI : null)
-    if (uriToScroll && isVoiceDropdownOpen) {
-      const safeId = `voice-option-${uriToScroll.replace(/[^a-zA-Z0-9]/g, '_')}`
-      setTimeout(() => {
-        const element = document.getElementById(safeId)
-        if (element) {
-          const container = element.closest('ul')
-          if (container) {
-            const containerHeight = container.clientHeight
-            const elementTop = element.offsetTop
-            const elementHeight = element.offsetHeight
-            if (containerHeight > 0) {
-              container.scrollTop = elementTop - containerHeight / 2 + elementHeight / 2
-            }
-          } else {
-            element.scrollIntoView({ behavior: 'auto', block: 'center' })
-          }
-        }
-      }, 50)
+    if (!isVoiceDropdownOpen) return
+    const uriToScroll = speakingVoiceURI || selectedVoiceURI
+    if (!uriToScroll) return
+
+    const scrollItem = () => {
+      const container = voiceListRef.current
+      if (!container) return
+      const element = voiceItemRefs.current[uriToScroll] || (container.querySelector(`[data-voice-uri="${CSS.escape(uriToScroll)}"]`) as HTMLElement | null)
+      if (element) {
+        const elRect = element.getBoundingClientRect()
+        const contRect = container.getBoundingClientRect()
+        const targetScroll = container.scrollTop + (elRect.top - contRect.top) - (container.clientHeight / 2) + (element.offsetHeight / 2)
+        container.scrollTo({
+          top: Math.max(0, targetScroll),
+          behavior: speakingVoiceURI ? 'smooth' : 'auto'
+        })
+      }
     }
+
+    const timer = setTimeout(scrollItem, 40)
+    return () => clearTimeout(timer)
   }, [speakingVoiceURI, selectedVoiceURI, isVoiceDropdownOpen])
   const pauseSettingsRecognitionRef = useRef<(() => void) | null>(null)
   const resumeSettingsRecognitionRef = useRef<(() => void) | null>(null)
@@ -867,6 +886,9 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           })
 
           matchedCmd = true
+          if (commandName === "reset to default") triggerVoiceHighlight("reset")
+          else if (commandName === "close settings") triggerVoiceHighlight("close")
+          else if (commandName === "open voice selection" || commandName === "close voice selection") triggerVoiceHighlight("voice-selection")
           console.log(`%c[Sensa Settings Voice] ⚡ Executed command: "${commandName}"`, "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px;")
           action()
         }
@@ -875,9 +897,14 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
         // 1. Voice Dropdown Close: if voice dropdown is open, say "close" to close dropdown
         if (state.isVoiceDropdownOpen) {
-          const closeDropdownMatch = cleanText.match(/\b(close voice selection|close dropdown|close|closed|clothes|clos|exit|shut|leave|cancel|dismiss|back|go back|done)\b/i)
-          if (closeDropdownMatch) {
-            applyCommand("close voice selection", ["close voice selection", "close dropdown", "voice selection"], () => {
+          const closeDropdownMatch = cleanText.match(/\b(close voice selection|close dropdown|close|closed|clothes|clos|clause|claws|close it|exit|shut|leave|cancel|dismiss|back|go back|done)\b/i)
+          if (
+            closeDropdownMatch ||
+            check("close voice selection", "close dropdown", "close", "closed", "clothes", "clos", "clause", "close it", "exit", "shut", "dismiss", "done") ||
+            fuzzyCheck("close", 1) ||
+            fuzzyCheck("exit", 1)
+          ) {
+            applyCommand("close voice selection", ["close voice selection", "close dropdown", "voice selection", "close", "closed", "clothes", "clos", "clause", "exit", "shut", "done"], () => {
               setIsVoiceDropdownOpen(false)
               setSettingsState((next) => { next.isVoiceDropdownOpen = false })
               window.speechSynthesis.cancel()
@@ -889,15 +916,24 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           }
         } else {
           // 2. Settings Modal Close: ALWAYS allowed immediately, even if voice commands are inactive/standby
-          const closeSettingsMatch = cleanText.match(/\b(close settings|close|closed|clothes|clos|exit|shut|leave|cancel|dismiss|back|go back|done|finish)\b/i)
-          if (closeSettingsMatch || fuzzyCheck("close", 1)) {
-            applyCommand("close settings", ["close settings", "close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back", "done"], () => {
-              window.speechSynthesis.cancel()
-              isReadingVoiceListRef.current = false
-              setSpeakingVoiceURI(null)
-              teardownRecognition()
-              setIsMounted(false)
-              setTimeout(() => onCloseRef.current(), 150)
+          const closeSettingsMatch = cleanText.match(/\b(close settings|close modal|close window|close it|close this|close|closed|clothes|clos|clause|claws|exit settings|exit modal|exit|shut|shut down|leave|cancel|dismiss|back|go back|done|finish)\b/i)
+          if (
+            closeSettingsMatch ||
+            check("close", "closed", "clothes", "clos", "clause", "close settings", "close modal", "close window", "close it", "close this", "exit settings", "exit", "shut", "shut down", "dismiss", "done") ||
+            fuzzyCheck("close", 1) ||
+            fuzzyCheck("exit", 1)
+          ) {
+            applyCommand("close settings", ["close settings", "close modal", "close window", "close it", "close this", "close", "closed", "clothes", "clos", "clause", "exit", "shut", "leave", "cancel", "dismiss", "back", "done"], () => {
+              triggerVoiceHighlight("close")
+              playClickSfx()
+              window.setTimeout(() => {
+                window.speechSynthesis.cancel()
+                isReadingVoiceListRef.current = false
+                setSpeakingVoiceURI(null)
+                teardownRecognition()
+                setIsMounted(false)
+                setTimeout(() => onCloseRef.current(), 200)
+              }, 260)
             })
             return
           }
@@ -939,8 +975,8 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           }
         } else {
           // 6. Active voice commands for main settings
-          if (check("help", "commands")) {
-            applyCommand("help", ["help", "commands"], () => {
+          if (check("help", "commands", "command") || fuzzyCheck("help", 1) || fuzzyCheck("command", 1)) {
+            applyCommand("help", ["help", "commands", "command"], () => {
               speakFeedback("Here are the commands. Voice selection. This opens the voice list. Reset. This resets all settings to default. Close. This exits settings.")
             })
             return
@@ -1142,29 +1178,73 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       intro.lang = userVoice.lang
     }
     window.sensa_utterances.push(intro)
-    window.speechSynthesis.speak(intro)
 
-    currentVoices.forEach((voice) => {
-      const utterance = new SpeechSynthesisUtterance(simplifyVoiceName(voice.name))
+    const readVoiceAtIndex = (index: number) => {
+      if (!isReadingVoiceListRef.current) return
+      if (index >= currentVoices.length) {
+        const outro = new SpeechSynthesisUtterance("Just say the name to select it, or say close to exit.")
+        if (userVoice) {
+          outro.voice = userVoice
+          outro.lang = userVoice.lang
+        }
+        outro.onend = () => {
+          isReadingVoiceListRef.current = false
+          setSpeakingVoiceURI(null)
+        }
+        outro.onerror = () => {
+          isReadingVoiceListRef.current = false
+          setSpeakingVoiceURI(null)
+        }
+        window.sensa_utterances!.push(outro)
+        window.speechSynthesis.speak(outro)
+        return
+      }
+
+      const voice = currentVoices[index]
+      const displayName = simplifyVoiceName(voice.name)
+      setSpeakingVoiceURI(voice.voiceURI)
+
+      const utterance = new SpeechSynthesisUtterance(displayName)
       utterance.voice = voice
       utterance.lang = voice.lang
-      utterance.onstart = () => setSpeakingVoiceURI(voice.voiceURI)
-      utterance.onend = () => setSpeakingVoiceURI((prev) => prev === voice.voiceURI ? null : prev)
+
+      let advanced = false
+      let safetyTimer: number | null = null
+
+      const advance = () => {
+        if (advanced) return
+        advanced = true
+        if (safetyTimer !== null) {
+          window.clearTimeout(safetyTimer)
+          safetyTimer = null
+        }
+        if (!isReadingVoiceListRef.current) return
+        window.setTimeout(() => {
+          readVoiceAtIndex(index + 1)
+        }, 120)
+      }
+
+      utterance.onend = advance
+      utterance.onerror = advance
+
+      // Safety timeout: in case a voice engine drops the onend event
+      const estDuration = Math.max(1200, displayName.length * 130)
+      safetyTimer = window.setTimeout(advance, estDuration + 3000)
+
       window.sensa_utterances!.push(utterance)
       window.speechSynthesis.speak(utterance)
-    })
+    }
 
-    const outro = new SpeechSynthesisUtterance("Just say the name to select it, or say close to exit.")
-    if (userVoice) {
-      outro.voice = userVoice
-      outro.lang = userVoice.lang
+    intro.onend = () => {
+      if (!isReadingVoiceListRef.current) return
+      readVoiceAtIndex(0)
     }
-    outro.onend = () => {
-      isReadingVoiceListRef.current = false
-      setSpeakingVoiceURI(null)
+    intro.onerror = () => {
+      if (!isReadingVoiceListRef.current) return
+      readVoiceAtIndex(0)
     }
-    window.sensa_utterances.push(outro)
-    window.speechSynthesis.speak(outro)
+
+    window.speechSynthesis.speak(intro)
   }
 
   useEffect(() => {
@@ -1291,7 +1371,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
               setIsMounted(false)
               setTimeout(onClose, 300)
             }}
-            className={`bg-transparent hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 hover:${textColor} transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 rounded-full p-2`}
+            className={`bg-transparent hover:bg-black/5 dark:hover:bg-white/10 text-gray-400 hover:${textColor} transition-all active:scale-90 active:ring-2 active:ring-[#4FA5FF]/60 active:bg-[#0A44FF]/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 rounded-full p-2 transform-gpu ${voiceActiveBtn === "close" ? "!scale-90 !ring-4 !ring-[#4FA5FF]/80 !bg-[#0A44FF]/25 shadow-[0_0_22px_rgba(79,165,255,0.65)]" : ""}`}
             aria-label="Close settings"
             {...getHoverHandlers("Close")}
           >
@@ -1510,7 +1590,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
                     setSpeakingVoiceURI(null)
                   }
                 }}
-                className={`w-full text-left border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md`}
+                className={`w-full text-left border ${inputBorder} ${textColor} ${inputBg} shadow-sm h-11 pl-4 pr-8 rounded-xl text-[13px] font-medium focus:outline-none focus:ring-2 focus:ring-[#0A44FF]/40 cursor-pointer transition-all hover:shadow-md ${voiceActiveBtn === "voice-selection" ? "!scale-95 !ring-4 !ring-[#4FA5FF]/80 !bg-[#0A44FF]/25 shadow-[0_0_24px_rgba(79,165,255,0.65)]" : ""}`}
                 aria-haspopup="listbox"
                 aria-expanded={isVoiceDropdownOpen}
               >
@@ -1600,7 +1680,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           <button
             type="button"
             onClick={handleResetToDefault}
-            className={`flex items-center gap-2 bg-transparent hover:bg-[#0A44FF]/10 hover:text-[#0A44FF] hover:border-[#0A44FF]/30 dark:hover:bg-[#0A44FF]/20 dark:hover:border-[#0A44FF]/40 ${textColor} border ${inputBorder} font-semibold h-11 px-8 rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 text-[14px] tracking-wide hover:shadow-sm`}
+            className={`flex items-center gap-2 bg-transparent hover:bg-[#0A44FF]/10 hover:text-[#0A44FF] hover:border-[#0A44FF]/30 dark:hover:bg-[#0A44FF]/20 dark:hover:border-[#0A44FF]/40 ${textColor} border ${inputBorder} font-semibold h-11 px-8 rounded-xl transition-all active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0A44FF]/50 text-[14px] tracking-wide hover:shadow-sm ${voiceActiveBtn === "reset" ? "!scale-90 !ring-4 !ring-[#4FA5FF]/80 !bg-[#0A44FF]/25 shadow-[0_0_24px_rgba(79,165,255,0.65)]" : ""}`}
             {...getHoverHandlers("Reset")}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><polyline points="3 3 3 8 8 8" /></svg>
@@ -1633,13 +1713,14 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           <>
             <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel(); isReadingVoiceListRef.current = false; setSpeakingVoiceURI(null) }} />
             <ul
+              ref={voiceListRef}
               style={{
                 position: 'absolute',
                 top: `${voiceMenuPos.top}px`,
                 right: `${voiceMenuPos.right}px`,
-                width: '260px'
+                width: '315px'
               }}
-              className={`z-50 max-h-56 overflow-y-auto overflow-x-hidden ${modalBg} border ${inputBorder} rounded-xl shadow-2xl py-2 text-[13px] custom-scrollbar`}
+              className={`z-50 max-h-60 overflow-y-auto overflow-x-hidden scroll-smooth relative ${modalBg} border ${inputBorder} rounded-xl shadow-2xl p-1.5 pr-2.5 text-[13px] custom-scrollbar`}
               role="listbox"
             >
               {voices.map((voice) => {
@@ -1650,39 +1731,44 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
                 return (
                   <li
+                    ref={(el) => { voiceItemRefs.current[voice.voiceURI] = el }}
+                    data-voice-uri={voice.voiceURI}
                     id={`voice-option-${voice.voiceURI.replace(/[^a-zA-Z0-9]/g, '_')}`}
                     key={voice.voiceURI}
                     role="option"
                     aria-selected={isSelected}
-                    className={`px-3.5 py-2.5 cursor-pointer flex items-center justify-between gap-2 w-full text-left transition-all m-1 rounded-xl ${
-                      isSelected
-                        ? "bg-gradient-to-r from-[#0A44FF] to-[#0080FF] text-white shadow-md font-semibold"
-                        : isSpeaking
-                          ? "bg-[#0A44FF]/25 text-[#0A44FF] dark:text-blue-300 ring-2 ring-[#0A44FF]/50 font-semibold"
+                    className={`px-3 py-2 cursor-pointer flex items-center justify-between gap-2 text-left transition-all duration-300 my-1 rounded-xl ${
+                      isSpeaking
+                        ? "bg-[#0A44FF]/15 border border-[#4FA5FF]/80 text-[#0A44FF] dark:text-[#6AA2FF] ring-2 ring-[#4FA5FF]/70 shadow-[0_0_16px_rgba(79,165,255,0.4)] font-bold"
+                        : isSelected
+                          ? "bg-[#0A44FF]/10 border border-[#4FA5FF]/40 text-[#0A44FF] dark:text-[#6AA2FF] font-semibold"
                           : isDark
-                            ? "text-gray-100 hover:bg-white/10 hover:text-white font-medium"
-                            : "text-gray-800 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF] font-medium"
-                    } ${isSpeaking && isSelected ? "ring-2 ring-white/80 shadow-[0_0_12px_rgba(10,68,255,0.5)]" : ""}`}
+                            ? "text-gray-200 hover:bg-[#0A44FF]/10 hover:text-[#6AA2FF] font-medium"
+                            : "text-gray-700 hover:bg-[#0A44FF]/10 hover:text-[#0A44FF] font-medium"
+                    }`}
                     onMouseEnter={() => { playHoverSfx(); previewVoice(voice) }}
                     onClick={() => { handleVoiceChange(voice.voiceURI); setIsVoiceDropdownOpen(false) }}
                     style={{ fontFamily: `"${voice.name}", system-ui, sans-serif` }}
                   >
-                    <span className="truncate flex-1">
-                      {displayName}
-                    </span>
+                    <div className="flex items-center gap-2 truncate flex-1 min-w-0">
+                      {isSpeaking && (
+                        <span className="flex items-center gap-0.5 text-[#0A44FF] dark:text-[#6AA2FF] shrink-0" aria-hidden="true">
+                          <span className="w-1 h-3 bg-current rounded-full animate-pulse" />
+                          <span className="w-1 h-4 bg-current rounded-full animate-pulse" style={{ animationDelay: "150ms" }} />
+                          <span className="w-1 h-2 bg-current rounded-full animate-pulse" style={{ animationDelay: "300ms" }} />
+                        </span>
+                      )}
+                      <span className="truncate flex-1">
+                        {displayName}
+                      </span>
+                    </div>
                     {isDefault && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold shrink-0 ${
-                        isSelected 
-                          ? "bg-white/25 text-white" 
-                          : isDark 
-                            ? "bg-white/10 text-gray-300" 
-                            : "bg-black/5 text-gray-600"
-                      }`}>
+                      <span className="text-[10.5px] px-2 py-0.5 rounded-md font-bold tracking-wide shrink-0 bg-[#0A44FF]/15 dark:bg-[#0A44FF]/25 border border-[#4FA5FF]/40 text-[#0A44FF] dark:text-[#6AA2FF] shadow-xs">
                         Default
                       </span>
                     )}
                     {isSelected && (
-                      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-white shrink-0">
+                      <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-[#0A44FF] dark:text-[#6AA2FF] shrink-0">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
                     )}
