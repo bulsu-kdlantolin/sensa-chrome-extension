@@ -80,6 +80,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
   const [startDescription, setStartDescription] = useState(false)
   const [startSubtitle, setStartSubtitle] = useState(false)
   const [visibleCards, setVisibleCards] = useState(0)
+  const [voiceChosenMode, setVoiceChosenMode] = useState<"visual" | "auditory" | null>(null)
   const [reminderTrigger, setReminderTrigger] = useState<{ skipped: boolean } | null>(null)
   const selectedVoiceURIRef = useRef<string>("")
   const selectedVoiceNameRef = useRef<string>("")
@@ -271,10 +272,13 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
       const activeMode = (profileChange.newValue as { globalSettings?: { activeMode?: string } }).globalSettings?.activeMode
       if (activeMode !== "visual" && activeMode !== "auditory") return
 
+      setVoiceChosenMode(activeMode as "visual" | "auditory")
       narrationCanceledRef.current = true
       window.speechSynthesis.cancel()
       playPopSfx()
-      onSelectMode(activeMode as "visual" | "auditory")
+      window.setTimeout(() => {
+        onSelectMode(activeMode as "visual" | "auditory")
+      }, 360)
     }
 
     const handleTabLogMessage = (msg: any) => {
@@ -811,13 +815,15 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
               onMouseLeave={cancelHoverAudio}
               onBlur={cancelHoverAudio}
               className={`w-full h-[114px] group relative flex items-center px-[20px] pt-[12px] pb-[18px] rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#0A44FF]/50 active:scale-95 animate-pop ${springTransition}
-                ${isDark
-                  ? 'backdrop-blur-md bg-[#24262B]/85 border-[#3A3F4A] hover:border-[#0A44FF] hover:bg-[#262A31]/90 shadow-[0_10px_26px_rgba(0,0,0,0.35)] hover:shadow-[0_14px_32px_rgba(10,68,255,0.28)]'
-                  : 'backdrop-blur-md bg-white/80 border-[#E2E6F0] hover:border-[#0A44FF] hover:bg-white/95 shadow-[0_8px_22px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_28px_rgba(10,68,255,0.2)]'
+                ${voiceChosenMode === "visual"
+                  ? '!scale-[0.96] !border-[#0A44FF] !bg-[#0A44FF]/15 ring-4 ring-[#0A44FF]/60 shadow-[0_0_35px_rgba(10,68,255,0.45)]'
+                  : isDark
+                    ? 'backdrop-blur-md bg-[#24262B]/85 border-[#3A3F4A] hover:border-[#0A44FF] hover:bg-[#262A31]/90 shadow-[0_10px_26px_rgba(0,0,0,0.35)] hover:shadow-[0_14px_32px_rgba(10,68,255,0.28)]'
+                    : 'backdrop-blur-md bg-white/80 border-[#E2E6F0] hover:border-[#0A44FF] hover:bg-white/95 shadow-[0_8px_22px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_28px_rgba(10,68,255,0.2)]'
                 }`}
               style={{ animationDelay: "0.2s" }}
             >
-              <div className={`w-[50px] h-[50px] rounded-2xl flex items-center justify-center shrink-0 mr-4 ${springTransition} group-hover:scale-110 ${isDark ? 'bg-[#0A44FF]/22 text-[#6AA2FF]' : 'bg-[#0A44FF]/12 text-[#0A44FF]'}`}>
+              <div className={`w-[50px] h-[50px] rounded-2xl flex items-center justify-center shrink-0 mr-4 ${springTransition} group-hover:scale-110 ${voiceChosenMode === "visual" ? "scale-110 !bg-[#0A44FF] !text-white shadow-lg shadow-[#0A44FF]/40" : isDark ? 'bg-[#0A44FF]/22 text-[#6AA2FF]' : 'bg-[#0A44FF]/12 text-[#0A44FF]'}`}>
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
                   <circle cx="12" cy="12" r="3" />
@@ -843,13 +849,15 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
               onMouseLeave={cancelHoverAudio}
               onBlur={cancelHoverAudio}
               className={`w-full h-[114px] group relative flex items-center px-[20px] pt-[12px] pb-[18px] rounded-[22px] border-[2px] text-left transform-gpu focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[#FF7A2F]/50 active:scale-95 animate-pop ${springTransition}
-                ${isDark
-                  ? 'backdrop-blur-md bg-[#24262B]/85 border-[#3A3F4A] hover:border-[#FF7A2F] hover:bg-[#262A31]/90 shadow-[0_10px_26px_rgba(0,0,0,0.35)] hover:shadow-[0_14px_32px_rgba(255,122,47,0.28)]'
-                  : 'backdrop-blur-md bg-white/80 border-[#E2E6F0] hover:border-[#FF7A2F] hover:bg-white/95 shadow-[0_8px_22px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_28px_rgba(255,122,47,0.2)]'
+                ${voiceChosenMode === "auditory"
+                  ? '!scale-[0.96] !border-[#FF7A2F] !bg-[#FF7A2F]/15 ring-4 ring-[#FF7A2F]/60 shadow-[0_0_35px_rgba(255,122,47,0.45)]'
+                  : isDark
+                    ? 'backdrop-blur-md bg-[#24262B]/85 border-[#3A3F4A] hover:border-[#FF7A2F] hover:bg-[#262A31]/90 shadow-[0_10px_26px_rgba(0,0,0,0.35)] hover:shadow-[0_14px_32px_rgba(255,122,47,0.28)]'
+                    : 'backdrop-blur-md bg-white/80 border-[#E2E6F0] hover:border-[#FF7A2F] hover:bg-white/95 shadow-[0_8px_22px_rgba(0,0,0,0.08)] hover:shadow-[0_12px_28px_rgba(255,122,47,0.2)]'
                 }`}
               style={{ animationDelay: "0.28s" }}
             >
-              <div className={`w-[50px] h-[50px] rounded-2xl flex items-center justify-center shrink-0 mr-4 ${springTransition} group-hover:scale-110 ${isDark ? 'bg-[#FF7A2F]/22 text-[#FFC09B]' : 'bg-[#FF7A2F]/12 text-[#FF7A2F]'}`}>
+              <div className={`w-[50px] h-[50px] rounded-2xl flex items-center justify-center shrink-0 mr-4 ${springTransition} group-hover:scale-110 ${voiceChosenMode === "auditory" ? "scale-110 !bg-[#FF7A2F] !text-white shadow-lg shadow-[#FF7A2F]/40" : isDark ? 'bg-[#FF7A2F]/22 text-[#FFC09B]' : 'bg-[#FF7A2F]/12 text-[#FF7A2F]'}`}>
                 <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0" />
                   <path d="M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4" />

@@ -103,9 +103,13 @@ export default function IndexPopup() {
 
   // Automatically close the popup when Visual Mode is activated to immediately focus the user on the webpage dock
   useEffect(() => {
+    chrome.storage.local.remove("sensa_visual_activated_via_voice")
+
     const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
       if (changes.sensa_visual_activated_via_voice?.newValue === true) {
-        window.close()
+        chrome.storage.local.remove("sensa_visual_activated_via_voice", () => {
+          window.close()
+        })
       }
     }
 

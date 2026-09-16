@@ -778,6 +778,27 @@ export default function VisualDock({
   const { playHoverAudio, playClickAudio, cancelHoverAudio } = useUIHoverAudio()
   const [isPlayOptimistic, setIsPlayOptimistic] = useState(isPlaying && !isPaused)
   const [isMagnifierActive, setIsMagnifierActive] = useState(false)
+  const [voiceActiveBtn, setVoiceActiveBtn] = useState<string | null>(null)
+  const voiceActiveTimeoutRef = useRef<number | null>(null)
+
+  const triggerVoiceHighlight = useCallback((btnKey: string) => {
+    setVoiceActiveBtn(btnKey)
+    if (voiceActiveTimeoutRef.current) window.clearTimeout(voiceActiveTimeoutRef.current)
+    voiceActiveTimeoutRef.current = window.setTimeout(() => {
+      setVoiceActiveBtn(null)
+    }, 450)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (voiceActiveTimeoutRef.current) window.clearTimeout(voiceActiveTimeoutRef.current)
+    }
+  }, [])
+
+  const getVoiceBtnStyle = (key: string, isRed = false) => {
+    if (voiceActiveBtn !== key) return ""
+    return "!scale-90 !ring-4 !ring-[#4FA5FF]/80 !bg-[#0A44FF]/25 shadow-[0_0_24px_rgba(79,165,255,0.65)] transition-all duration-200"
+  }
   const dockRootRef = useRef<HTMLDivElement>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState(true)
@@ -1104,6 +1125,7 @@ export default function VisualDock({
     onOpenReadingSpeed,
     onOpenSettings,
     onClose,
+    triggerVoiceHighlight,
     playClickAudio: wrappedPlayClickAudio,
     cancelHoverAudio,
   })
@@ -1133,6 +1155,7 @@ export default function VisualDock({
       onOpenReadingSpeed,
       onOpenSettings,
       onClose,
+      triggerVoiceHighlight,
       playClickAudio: wrappedPlayClickAudio,
       cancelHoverAudio,
     }
@@ -1224,7 +1247,7 @@ export default function VisualDock({
         case "settings": return ["setting", "settings", "options", "open settings"]
         case "minimize": return ["minimize", "collapse", "hide", "mini"]
         case "expand": return ["expand", "maximize", "show", "open", "expend", "span"]
-        case "close": return ["close", "close dock", "close visual mode", "deactivate", "deactivate visual mode", "turn off", "dismiss"]
+        case "close": return ["close", "closed", "clothes", "clos", "clause", "close dock", "close visual", "close visual mode", "close it", "exit", "shut", "dismiss", "deactivate", "deactivate visual mode", "turn off", "turn off visual mode"]
         case "deactivate-voice": return ["stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening"]
         default: return []
       }
@@ -1343,7 +1366,7 @@ export default function VisualDock({
           // Block feedback loops from the system's own speech for the "help/commands" trigger words
           const systemRecentlySpoke = Date.now() - lastUISpeechTimeRef.current < lastUISpeechDurationRef.current
           if (systemRecentlySpoke) {
-            rawCleanText = rawCleanText.replace(/\b(help|commands)\b/gi, " ")
+            rawCleanText = rawCleanText.replace(/\b(help|commands|command)\b/gi, " ")
           }
 
           let cleanText = rawCleanText
@@ -1427,14 +1450,37 @@ export default function VisualDock({
                 currentMatchedKeyword = null // reset for next execution
               }
             }
+            switch (commandName) {
+              case "next": callbacksRef.current.triggerVoiceHighlight?.("next"); break;
+              case "prev": case "previous": callbacksRef.current.triggerVoiceHighlight?.("prev"); break;
+              case "restart": callbacksRef.current.triggerVoiceHighlight?.("restart"); break;
+              case "play": case "read": case "resume": case "stop": case "pause": callbacksRef.current.triggerVoiceHighlight?.("play"); break;
+              case "magnifier": case "zoom": callbacksRef.current.triggerVoiceHighlight?.("magnifier"); break;
+              case "speed": callbacksRef.current.triggerVoiceHighlight?.("speed"); break;
+              case "settings": callbacksRef.current.triggerVoiceHighlight?.("settings"); break;
+              case "close": callbacksRef.current.triggerVoiceHighlight?.("close"); break;
+              case "activate-voice": case "deactivate-voice": callbacksRef.current.triggerVoiceHighlight?.("mic"); break;
+            }
             const ts = new Date().toISOString().substring(11, 23)
             console.log(`%c[Sensa Dock Voice] ⚡ Executing command: "${commandName}"`, "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px;")
             action()
           }
 
+          const closeDockRegex = /\b(close|closed|clothes|clos|clause|claws|close dock|close visual|close visual mode|close it|close this|deactivate|deactivate visual|deactivate visual mode|turn off visual mode|turn off visual|turn off|exit|exit dock|shut|shut down|dismiss|done)\b/i
           if (!callbacksRef.current.isVoiceCommandActive) {
-            if (check("deactivate", "deactivate visual mode", "deactivate visual", "close visual mode", "turn off visual mode")) {
-              applyCommand("close", () => callbacksRef.current.onClose())
+            if (
+              closeDockRegex.test(cleanText) ||
+              check("close", "closed", "clothes", "clos", "clause", "close dock", "close visual", "close visual mode", "close it", "deactivate", "deactivate visual mode", "deactivate visual", "turn off visual mode", "turn off", "exit", "shut", "dismiss") ||
+              fuzzyCheck("close", 1) ||
+              fuzzyCheck("deactivate", 2) ||
+              fuzzyCheck("exit", 1)
+            ) {
+              applyCommand("close", () => {
+                callbacksRef.current.playClickAudio?.('Visual mode deactivated')
+                window.setTimeout(() => {
+                  callbacksRef.current.onClose()
+                }, 280)
+              })
               return true
             }
 
@@ -1467,7 +1513,7 @@ export default function VisualDock({
               })
               return true
             }
-            else if (check("help", "commands") || fuzzyCheck("help", 1)) {
+            else if (check("help", "commands", "command") || fuzzyCheck("help", 1) || fuzzyCheck("command", 1)) {
               applyCommand("help", () => {
                 const available = callbacksRef.current.isMinimized
                   ? "Stop listening. This turns off voice commands. Expand. This expands the dock. Read. This starts reading. Stop. This stops reading. Next. This skips forward. Previous. This goes back. Restart. This starts from the beginning. Reading speed. This adjusts speed. Settings. This opens settings. Close. This will exit and deactivate visual mode."
@@ -1604,10 +1650,18 @@ export default function VisualDock({
               })
               return true
             }
-            else if (check("close", "deactivate", "close dock", "close visual", "close visual mode", "deactivate visual mode", "turn off visual mode")) {
+            else if (
+              closeDockRegex.test(cleanText) ||
+              check("close", "closed", "clothes", "clos", "clause", "close dock", "close visual", "close visual mode", "close it", "close this", "deactivate", "deactivate visual mode", "deactivate visual", "turn off", "turn off visual mode", "exit", "exit dock", "shut", "shut down", "dismiss", "done", "finish") ||
+              fuzzyCheck("close", 1) ||
+              fuzzyCheck("deactivate", 2) ||
+              fuzzyCheck("exit", 1)
+            ) {
               applyCommand("close", () => {
                 callbacksRef.current.playClickAudio?.('Visual mode deactivated')
-                callbacksRef.current.onClose()
+                window.setTimeout(() => {
+                  callbacksRef.current.onClose()
+                }, 280)
               })
               return true
             }
@@ -1770,7 +1824,7 @@ export default function VisualDock({
             isVoiceCommandActive
             ? "shadow-[0_0_0_1px_rgba(10,68,255,0.18),0_0_24px_rgba(10,68,255,0.42)] ring-4 ring-[#0A44FF]/30 bg-[#0A44FF]"
             : "bg-[#0A44FF] shadow-md shadow-[#0A44FF]/30 hover:bg-[#0836CC] hover:shadow-lg hover:shadow-[#0A44FF]/50"
-            }`}
+            } ${getVoiceBtnStyle("mic")}`}
           aria-label={isBrave === true ? "Voice commands are not supported in Brave." : isVoiceCommandActive ? "Stop Listening" : "Start Voice Command"}
           {...getHoverHandlers(isBrave === true ? "Voice commands not supported in Brave" : isVoiceCommandActive ? "Stop Listening" : "Speak")}
         >
@@ -1815,7 +1869,7 @@ export default function VisualDock({
               type="button"
               onClick={handleTogglePlay}
               aria-pressed={isPlayOptimistic}
-              className={`${btnBaseClass} ${isMinimized ? "shadow-none hover:shadow-none" : btnAccentClass}`}
+              className={`${btnBaseClass} ${isMinimized ? "shadow-none hover:shadow-none" : btnAccentClass} ${getVoiceBtnStyle("play")}`}
               aria-label={isPlayOptimistic ? "Stop Reading" : "Read"}
               {...getHoverHandlers(isPlayOptimistic ? "Stop" : "Read")}
             >
@@ -1838,7 +1892,7 @@ export default function VisualDock({
                 playClickSfx()
                 onNext()
               }}
-              className={`${btnBaseClass} ${btnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""}`}
+              className={`${btnBaseClass} ${btnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""} ${getVoiceBtnStyle("next")}`}
               aria-label="Next Paragraph"
               {...getHoverHandlers("Next")}
             >
@@ -1855,7 +1909,7 @@ export default function VisualDock({
                 playClickSfx()
                 onPrev()
               }}
-              className={`${btnBaseClass} ${btnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""}`}
+              className={`${btnBaseClass} ${btnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""} ${getVoiceBtnStyle("prev")}`}
               aria-label="Previous Paragraph"
               {...getHoverHandlers("Previous")}
             >
@@ -1873,7 +1927,7 @@ export default function VisualDock({
                 onRestart()
               }}
               disabled={!canRestart}
-              className={`${btnBaseClass} ${btnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""} ${canRestart ? "" : "opacity-30 cursor-not-allowed hover:bg-transparent hover:translate-y-0 hover:shadow-none"}`}
+              className={`${btnBaseClass} ${btnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""} ${canRestart ? "" : "opacity-30 cursor-not-allowed hover:bg-transparent hover:translate-y-0 hover:shadow-none"} ${getVoiceBtnStyle("restart")}`}
               aria-label="Repeat Reading from Beginning"
               {...getHoverHandlers("Repeat")}
             >
@@ -1891,7 +1945,7 @@ export default function VisualDock({
                 setIsMagnifierActive(prev => !prev)
                 wrappedPlayClickAudio(isMagnifierActive ? "Screen Magnifier disabled" : "Screen Magnifier enabled")
               }}
-              className={`${btnBaseClass} ${btnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""} ${isMagnifierActive ? "!bg-[#0A44FF] !text-white ring-2 ring-[#0A44FF]/40 shadow-lg shadow-[#0A44FF]/30" : ""}`}
+              className={`${btnBaseClass} ${btnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""} ${isMagnifierActive ? "!bg-[#0A44FF] !text-white ring-2 ring-[#0A44FF]/40 shadow-lg shadow-[#0A44FF]/30" : ""} ${getVoiceBtnStyle("magnifier")}`}
               aria-label="Screen Magnifier"
               aria-pressed={isMagnifierActive}
               {...getHoverHandlers("Screen Magnifier")}
@@ -1913,7 +1967,7 @@ export default function VisualDock({
                 playClickSfx()
                 onOpenReadingSpeed()
               }}
-              className={`${btnBaseClass} ${btnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""} font-bold text-sm tracking-wider`}
+              className={`${btnBaseClass} ${btnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""} font-bold text-sm tracking-wider ${getVoiceBtnStyle("speed")}`}
               aria-label={`Change Reading Speed. Current speed is ${readingSpeedLabel}`}
               {...getHoverHandlers("Reading Speed")}
             >
@@ -1927,7 +1981,7 @@ export default function VisualDock({
                 playClickSfx()
                 onOpenSettings()
               }}
-              className={`${btnBaseClass} ${settingsBtnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""}`}
+              className={`${btnBaseClass} ${settingsBtnHoverClass} ${isMinimized ? "shadow-none hover:shadow-none" : ""} ${getVoiceBtnStyle("settings")}`}
               aria-label="Open Settings"
               {...getHoverHandlers("Settings")}
             >
@@ -1982,7 +2036,7 @@ export default function VisualDock({
             playClickAudio('Visual mode deactivated')
             onClose()
           }}
-          className={closeBtnClass}
+          className={`${closeBtnClass} ${getVoiceBtnStyle("close", true)}`}
           aria-label="Close Toolbar"
           {...getHoverHandlers("Close")}
         >
