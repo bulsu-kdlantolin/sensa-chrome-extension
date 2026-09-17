@@ -768,38 +768,38 @@ export function useSpeech(
     speakAtSegment(currentSegmentIndexRef.current, currentCharOffsetRef.current, false);
   }, [readingSpeed, isPlaying, isPaused, speakAtSegment]);
 
+  const lastNavExecutionTimeRef = useRef(0);
+
   const next = useCallback(() => {
+    const now = Date.now();
+    if (now - lastNavExecutionTimeRef.current < 750) {
+      console.log(`%c[useSpeech] 🛑 Ignored rapid duplicate next() call (${now - lastNavExecutionTimeRef.current}ms < 750ms)`, "color: #f59e0b; font-weight: bold;");
+      return;
+    }
+    lastNavExecutionTimeRef.current = now;
+
     if (!segmentsRef.current.length) extractReadableContent();
     if (!segmentsRef.current.length) return;
 
-    // If onend automatically advanced to the next sentence within the last 1500ms right as the user triggered "next",
-    // the reader is ALREADY right at the sentence the user intended to jump to!
-    // Instead of skipping over this new sentence (`N + 1 -> N + 2`), we simply ensure `currentSegmentIndexRef` stays right here
-    // and restart/play `currentSegmentIndexRef` immediately so they hear it cleanly from the beginning without delay.
-    if (Date.now() - lastAutoAdvanceTimeRef.current < 1500) {
-      lastAutoAdvanceTimeRef.current = 0;
-      speakAtSegment(currentSegmentIndexRef.current, 0, true);
-      return;
-    }
-
+    lastAutoAdvanceTimeRef.current = 0;
     const nextIndex = findAdjacentSegment(currentSegmentIndexRef.current, 1);
     if (nextIndex === -1) return;
     speakAtSegment(nextIndex, 0, true);
   }, [extractReadableContent, findAdjacentSegment, speakAtSegment]);
 
   const prev = useCallback(() => {
+    const now = Date.now();
+    if (now - lastNavExecutionTimeRef.current < 750) {
+      console.log(`%c[useSpeech] 🛑 Ignored rapid duplicate prev() call (${now - lastNavExecutionTimeRef.current}ms < 750ms)`, "color: #f59e0b; font-weight: bold;");
+      return;
+    }
+    lastNavExecutionTimeRef.current = now;
+
     if (!segmentsRef.current.length) extractReadableContent();
     if (!segmentsRef.current.length) return;
 
-    // If onend just auto-advanced from N to N+1 within the last 1500ms right when the user called "previous",
-    // they actually heard sentence N right before, so they want to jump back to N - 1 (or N if they just barely got to N+1).
-    let targetFromIndex = currentSegmentIndexRef.current;
-    if (Date.now() - lastAutoAdvanceTimeRef.current < 1500 && lastAutoAdvancedFromIndexRef.current !== -1) {
-      targetFromIndex = lastAutoAdvancedFromIndexRef.current;
-      lastAutoAdvanceTimeRef.current = 0;
-    }
-
-    const prevIndex = findAdjacentSegment(targetFromIndex, -1);
+    lastAutoAdvanceTimeRef.current = 0;
+    const prevIndex = findAdjacentSegment(currentSegmentIndexRef.current, -1);
     if (prevIndex === -1) return;
     speakAtSegment(prevIndex, 0, true);
   }, [extractReadableContent, findAdjacentSegment, speakAtSegment]);

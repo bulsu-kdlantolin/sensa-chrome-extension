@@ -647,29 +647,8 @@ const applyModeSelection = (mode: ModeSelectionVoiceMode) => {
  * Prime microphone permissions via `getUserMedia` without blocking `SpeechRecognition` startup.
  */
 const primeMicrophone = async () => {
-  const isSpeechSupported = await new Promise<boolean>((resolve) => {
-    chrome.storage.local.get(["sensa_speech_supported"], (res) => {
-      resolve(res.sensa_speech_supported !== false)
-    })
-  })
-  if (!isSpeechSupported) return
-
-  const isBrave = await isBraveBrowser()
-  if (isBrave) return
-
-  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
-    throw new Error("navigator.mediaDevices.getUserMedia is not available")
-  }
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      noiseSuppression: true,
-      echoCancellation: true,
-      autoGainControl: true,
-      channelCount: 1,
-      sampleRate: 48000
-    }
-  })
-  stream.getTracks().forEach((track) => track.stop())
+  // SpeechRecognition handles permissions natively.
+  // Avoid creating and immediately stopping dummy tracks which causes tab mic indicator flickering.
 }
 
 /**

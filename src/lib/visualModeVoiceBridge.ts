@@ -90,7 +90,7 @@ const buildAndStart = () => {
 
   const instance = new SpeechRecognitionCtor()
   recognition = instance
-  instance.continuous = true
+    instance.continuous = true
   instance.interimResults = true
   instance.lang = "en-US"
 
@@ -171,7 +171,7 @@ const normalizeInput = (rawText: string): string => {
   let text = rawText.toLowerCase()
   text = text.replace(/[^a-z0-9\s]/gi, " ")
   text = text.replace(/\b(?:de|dee|the|d)\s+activate[d]?\b/g, "deactivate")
-  text = text.replace(/\b(?:deactivated|deactivating|unactivate|disable|turn off|turn it off|switch off|close visual mode|close visual|close dock|exit visual mode|exit visual)\b/g, "deactivate")
+  text = text.replace(/\b(?:deactivated|deactivating|unactivate|disable|turn off|turn it off|switch off|close visual mode|close visual|close dock|close it|close|exit visual mode|exit visual|exit)\b/g, "deactivate")
   text = text.replace(/\b(?:activated|activating|reactivate|enable|turn on)\b/g, "activate")
   text = text.replace(/\s+/g, " ").trim()
   const fillerWords = new Set(["the", "a", "please", "hey", "can", "you", "change", "set", "to", "my", "sincere", "sansa", "sensor", "sensia"])
@@ -273,40 +273,20 @@ const teardownRecognition = () => {
   if (!recognition) return
   const rec = recognition
   recognition = null
-
+  
   try {
     rec.onresult = null
     rec.onerror = null
     rec.onend = null
     rec.onstart = null
-    rec.stop()
+    try { rec.abort() } catch (e) {}
+    try { rec.stop() } catch (e) {}
   } catch { }
 }
 
 const primeMicrophone = async () => {
-  const isSpeechSupported = await new Promise<boolean>((resolve) => {
-    chrome.storage.local.get(["sensa_speech_supported"], (res) => {
-      resolve(res.sensa_speech_supported !== false)
-    })
-  })
-  if (!isSpeechSupported) return
-
-  const isBrave = await isBraveBrowser()
-  if (isBrave) return
-
-  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
-    throw new Error("navigator.mediaDevices.getUserMedia is not available")
-  }
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      noiseSuppression: true,
-      echoCancellation: true,
-      autoGainControl: true,
-      channelCount: 1,
-      sampleRate: 48000
-    }
-  })
-  stream.getTracks().forEach((track) => track.stop())
+  // SpeechRecognition handles permissions natively.
+  // Avoid creating and immediately stopping dummy tracks which causes tab mic indicator flickering.
 }
 
 const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
@@ -415,9 +395,12 @@ const attachRecognitionHandlers = (instance: SpeechRecognition) => {
     if (isCurrentlyActive) {
       deactivateScore += count("deactivate visual mode") * 5
       deactivateScore += count("stop visual mode") * 5
+      deactivateScore += count("deactivate visual") * 4
       deactivateScore += count("deactivate") * 3
+      deactivateScore += count("close") * 3
+      deactivateScore += count("turn off") * 3
 
-      if (check("deactivate", "deactivate visual mode")) {
+      if (check("deactivate", "deactivate visual mode", "deactivate visual", "close", "turn off")) {
         deactivateScore += 6
       } else if (fuzzyMatch(cleanTranscript, "deactivate", 2) || fuzzyMatch(cleanTranscript, "deactivate visual mode", 2)) {
         deactivateScore += 4

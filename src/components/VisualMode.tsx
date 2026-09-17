@@ -432,20 +432,13 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
 
     const sendVoiceBridgeMessage = (action: "start" | "stop", retries = 0) => {
       const dispatchToTab = (targetTabId: number) => {
-        chrome.tabs.sendMessage(targetTabId, { type: "sensa-visual-mode-voice", action }, async () => {
+        chrome.tabs.sendMessage(targetTabId, { type: "sensa-visual-mode-voice", action }, () => {
           const err = chrome.runtime.lastError?.message
-          if (action === "start" && err && retries === 0) {
-            try {
-              const manifest = chrome.runtime.getManifest()
-              const jsFiles = manifest?.content_scripts?.[0]?.js || []
-              if (jsFiles.length > 0) await chrome.scripting.executeScript({ target: { tabId: targetTabId }, files: jsFiles })
-            } catch {}
-          }
-          if (action === "start" && err && retries < 3 && isMounted) {
+          if (action === "start" && err && retries < 4 && isMounted) {
             retryTimer = window.setTimeout(() => {
               if (isMounted) sendVoiceBridgeMessage("start", retries + 1)
-            }, 600)
-          } else if (action === "start" && err && retries >= 3 && isMounted) {
+            }, 500)
+          } else if (action === "start" && err && retries >= 4 && isMounted) {
             chrome.tabs.query({ url: ["http://*/*", "https://*/*"] }, (fallbackTabs) => {
               const alt = fallbackTabs?.find(t => t.id !== targetTabId && typeof t.id === "number")
               if (alt?.id) chrome.tabs.sendMessage(alt.id, { type: "sensa-visual-mode-voice", action: "start" }, () => chrome.runtime.lastError)

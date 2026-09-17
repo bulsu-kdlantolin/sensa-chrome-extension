@@ -13,8 +13,8 @@ interface EchoToken {
 
 // Map of command words to their phonetic variants and homophones
 const COMMAND_HOMOPHONES: Record<string, string[]> = {
-  previous: ["previous", "prev", "previ", "preevi", "preview", "previews", "review", "reviews", "preveous", "previus", "privious", "prevue", "prevues"],
-  next: ["next", "skip", "forward", "necks", "neck", "nex", "nix"],
+  previous: ["previous", "prev", "go back", "back", "prior", "before", "preevious", "preveous", "previus", "privious", "review", "reviews", "re view"],
+  next: ["next", "skip", "forward", "necks", "nex"],
   stop: ["stop", "pause", "halt", "stahp", "paused", "shh", "quiet", "silence", "freeze", "cease"],
   play: ["play", "resume", "continue", "read", "reed", "reading", "start", "go", "speak", "begin"],
   restart: ["repeat", "restart", "start over", "reset", "refresh", "re start", "re-start", "replay", "rewind", "again"],
@@ -27,7 +27,7 @@ const COMMAND_HOMOPHONES: Record<string, string[]> = {
 // Critical exit/close words that must NEVER be suppressed by the acoustic echo filter.
 // Users must always be able to close overlays and modals without any delay or suppression.
 const NEVER_ECHO_FILTER = new Set([
-  "close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back", "done", "finish"
+  "close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back", "done", "finish", "deactivate", "deactivated"
 ])
 
 // Reverse lookup: any variant points to its full cluster

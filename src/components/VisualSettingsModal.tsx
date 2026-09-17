@@ -83,6 +83,95 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const [voiceActiveBtn, setVoiceActiveBtn] = useState<string | null>(null)
   const voiceActiveTimeoutRef = useRef<number | null>(null)
 
+  const isNarratingCommandsRef = useRef(false)
+  const commandNarrationTimeoutRef = useRef<number | null>(null)
+
+  const stopCommandNarration = useCallback(() => {
+    isNarratingCommandsRef.current = false
+    if (commandNarrationTimeoutRef.current !== null) {
+      window.clearTimeout(commandNarrationTimeoutRef.current)
+      commandNarrationTimeoutRef.current = null
+    }
+    setVoiceActiveBtn(null)
+  }, [])
+
+  const startCommandsNarration = useCallback(() => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel()
+    }
+    stopCommandNarration()
+    isReadingVoiceListRef.current = false
+    setSpeakingVoiceURI(null)
+    isNarratingCommandsRef.current = true
+
+    const commandSteps: Array<{ key: string | null; text: string }> = [
+      { key: null, text: "Here are the commands." },
+      { key: "voice-selection", text: "Voice selection. This opens the voice list." },
+      { key: "reset", text: "Reset. This resets all settings to default." },
+      { key: "close", text: "Close. This exits settings." }
+    ]
+
+    chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
+      if (!isNarratingCommandsRef.current) return
+      const voiceURI = typeof res.sensa_visual_voice_uri === "string" ? res.sensa_visual_voice_uri : ""
+      const voiceName = typeof res.sensa_visual_voice_name === "string" ? res.sensa_visual_voice_name : ""
+
+      const currentVoices = overlayStateRef.current.voices.length > 0 ? overlayStateRef.current.voices : window.speechSynthesis.getVoices()
+      const preferredVoice = resolveVoice(currentVoices, voiceURI, voiceName)
+
+      const speakStep = (index: number) => {
+        if (!isNarratingCommandsRef.current) return
+        if (index >= commandSteps.length) {
+          stopCommandNarration()
+          return
+        }
+
+        const step = commandSteps[index]
+        if (voiceActiveTimeoutRef.current) {
+          window.clearTimeout(voiceActiveTimeoutRef.current)
+          voiceActiveTimeoutRef.current = null
+        }
+        setVoiceActiveBtn(step.key)
+        console.log(`%c[Sensa Settings Commands] 🗣️ Announcing (${index + 1}/${commandSteps.length}): "${step.text}" (Key: ${step.key || 'none'})`, "color: #38bdf8; font-weight: bold;")
+        try { window.speechSynthesis.resume() } catch (e) {}
+
+        const utterance = new SpeechSynthesisUtterance(step.text)
+        if (preferredVoice) {
+          utterance.voice = preferredVoice
+          utterance.lang = preferredVoice.lang
+        }
+        utterance.rate = 0.88
+
+        let advanced = false
+        const advance = () => {
+          if (advanced) return
+          advanced = true
+          if (commandNarrationTimeoutRef.current !== null) {
+            window.clearTimeout(commandNarrationTimeoutRef.current)
+            commandNarrationTimeoutRef.current = null
+          }
+          if (!isNarratingCommandsRef.current) return
+          commandNarrationTimeoutRef.current = window.setTimeout(() => {
+            speakStep(index + 1)
+          }, 140)
+        }
+
+        utterance.onend = advance
+        utterance.onerror = advance
+
+        const estDuration = Math.max(1200, step.text.length * 100)
+        commandNarrationTimeoutRef.current = window.setTimeout(advance, estDuration + 2500)
+
+        if (!(window as any).sensa_utterances) (window as any).sensa_utterances = []
+        ;(window as any).sensa_utterances.push(utterance)
+
+        window.speechSynthesis.speak(utterance)
+      }
+
+      speakStep(0)
+    })
+  }, [stopCommandNarration])
+
   const triggerVoiceHighlight = useCallback((btnKey: string) => {
     setVoiceActiveBtn(btnKey)
     if (voiceActiveTimeoutRef.current) window.clearTimeout(voiceActiveTimeoutRef.current)
@@ -588,8 +677,12 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     let ignoreSpeechUntil = 0
     let lastCommandName = ""
     let lastCommandTime = 0
+    let lastCommandResultIndex = -1
+    let lastCommandTranscript = ""
+    let lastUtteranceWasFinalized = false
     let consumedKeywords: { word: string; expires: number }[] = []
     let currentResultIndex = 0
+    let executedResultIndex = -1
     let recognition: any = null
     let isPermanentlyDead = false
 
@@ -629,13 +722,14 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       if (!recognition) return
       const rec = recognition
       recognition = null
-      try {
+            try {
         rec.onresult = null
         rec.onerror = null
         rec.onend = null
         rec.onstart = null
         ;(rec as any).onsoundstart = null
-        rec.stop()
+        try { rec.abort() } catch (e) {}
+        try { rec.stop() } catch (e) {}
       } catch { }
     }
 
@@ -793,12 +887,15 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
     const buildRecognition = () => {
       const instance = new SpeechRecognitionCtor()
-      instance.continuous = true
+            instance.continuous = true
       instance.interimResults = true
       instance.lang = "en-US"
 
       instance.onstart = () => {
         settingsRecognitionArmedRef.current = true
+        currentResultIndex = 0
+        lastCommandResultIndex = -1
+        executedResultIndex = -1
       }
 
         ; (instance as any).onsoundstart = () => {
@@ -806,14 +903,36 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
       instance.onresult = (event: any) => {
         if (!settingsRecognitionArmedRef.current) return
+        if (event.resultIndex <= executedResultIndex) return
+
+        const timeSinceCmd = Date.now() - lastCommandTime
+
+        if (event.resultIndex !== currentResultIndex) {
+          currentResultIndex = event.resultIndex
+          if (timeSinceCmd > 850) {
+            consumedKeywords = []
+            lastCommandTranscript = ""
+            lastCommandResultIndex = -1
+          }
+        } else if (timeSinceCmd > 850) {
+          lastCommandTranscript = ""
+          lastCommandResultIndex = -1
+          consumedKeywords = []
+        }
 
         let liveText = ""
         for (let i = event.resultIndex; i < event.results.length; i++) {
           liveText += event.results[i][0].transcript + " "
         }
-        liveText = liveText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
 
+        liveText = liveText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
         if (!liveText) return
+
+        if (lastCommandTranscript && liveText === lastCommandTranscript) {
+          if (event.resultIndex === lastCommandResultIndex || timeSinceCmd < 1000) {
+            return
+          }
+        }
 
         let cleanText = liveText
 
@@ -870,17 +989,26 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
         let matchedCmd = false
 
         const applyCommand = (commandName: string, keywordsToConsume: string[], action: () => void, customExpires = 1200) => {
+          if (commandName !== "help") stopCommandNarration()
           const timeSinceLastCommand = Date.now() - lastCommandTime
-          if (commandName === lastCommandName && timeSinceLastCommand < 800) {
-            console.log(`%c[Sensa Settings Voice] ⏸️ Ignored duplicate command: "${commandName}" (within 800ms cooldown)`, "color: #f59e0b; font-weight: bold;")
-            return
+          if (commandName === lastCommandName) {
+            if (currentResultIndex === lastCommandResultIndex) {
+              return
+            }
+            if (timeSinceLastCommand < 600) {
+              console.log(`%c[Sensa Settings Voice] ⏸️ Ignored duplicate command: "${commandName}" (within 600ms cooldown)`, "color: #f59e0b; font-weight: bold;")
+              return
+            }
           }
 
-          ignoreSpeechUntil = Date.now() + 350
+          ignoreSpeechUntil = Date.now() + 250
+          executedResultIndex = event.resultIndex
           lastCommandName = commandName
           lastCommandTime = Date.now()
+          lastCommandResultIndex = currentResultIndex
+          lastCommandTranscript = liveText
 
-          const expires = Date.now() + customExpires
+          const expires = Date.now() + 2000
           keywordsToConsume.forEach(kw => {
             consumedKeywords.push({ word: kw, expires })
           })
@@ -977,7 +1105,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           // 6. Active voice commands for main settings
           if (check("help", "commands", "command") || fuzzyCheck("help", 1) || fuzzyCheck("command", 1)) {
             applyCommand("help", ["help", "commands", "command"], () => {
-              speakFeedback("Here are the commands. Voice selection. This opens the voice list. Reset. This resets all settings to default. Close. This exits settings.")
+              startCommandsNarration()
             })
             return
           }
@@ -1043,9 +1171,10 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     }
 
     const reviveEngine = () => {
-      if (isPermanentlyDead) {
+      if (!isComponentMounted) return
+      if (isPermanentlyDead || !recognition) {
         isPermanentlyDead = false
-        scheduleRestart()
+        scheduleRestart(100)
       }
     }
 

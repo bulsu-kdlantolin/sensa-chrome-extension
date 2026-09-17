@@ -412,12 +412,16 @@ export default function FloatingDockManager() {
 
   const deactivateDock = () => {
     setActiveMode(null) // Immediately clear React state so the dock disappears
+    try { window.speechSynthesis.cancel() } catch (e) {}
     chrome.storage.local.set({
       sensa_visual_active: false,
       sensa_auditory_active: false,
       sensa_voice_command_active: false
     })
     chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null })
+    if (isPopupOpenRef.current) {
+      void startVisualModeVoiceListener()
+    }
   }
 
   // --- THE BRIDGE ---
@@ -556,9 +560,11 @@ export default function FloatingDockManager() {
           : (activeModeRef.current === "auditory")
 
         if (nextVisual && !prevVisual) {
-          // Keep the popup's voice bridge running if popup is open so user can say "deactivate".
-          // When popup closes, port.onDisconnect will stop it and VisualDock will take over.
+          stopModeSelectionVoiceListener()
+          setIsModeSelectionVoiceActive(false)
+          stopVisualModeVoiceListener()
           setActiveMode("visual")
+          setIsVoiceCommandActive(false)
           setIsAuditorySettingsOpen(false)
           setIsCaptionLanguageOpen(false)
           setIsTextSizeOpen(false)
@@ -568,7 +574,10 @@ export default function FloatingDockManager() {
           setIsVisualSettingsOpen(false)
           setIsReadingSpeedOpen(false)
           setIsVoiceCommandActive(false)
-          window.speechSynthesis.cancel()
+          try { window.speechSynthesis.cancel() } catch (e) {}
+          if (isPopupOpenRef.current) {
+            void startVisualModeVoiceListener()
+          }
         }
       }
       if (changes.sensa_visual_highlight_color !== undefined && typeof changes.sensa_visual_highlight_color.newValue === "string") {
@@ -576,6 +585,8 @@ export default function FloatingDockManager() {
       }
       if (changes.sensa_auditory_active !== undefined) {
         if (changes.sensa_auditory_active.newValue) {
+          stopModeSelectionVoiceListener()
+          setIsModeSelectionVoiceActive(false)
           setActiveMode("auditory")
           setIsVisualSettingsOpen(false)
           setIsReadingSpeedOpen(false)
@@ -989,9 +1000,9 @@ export default function FloatingDockManager() {
                 onTogglePlay={togglePlayPause}   // <-- NEW PROP
                 onPausePlay={pauseSpeech}
                 onPlaySpeech={playSpeech}
-                onToggleVoiceCommand={() => {
+                onToggleVoiceCommand={(forceState?: boolean) => {
                   setIsVoiceCommandActive(prev => {
-                    const next = !prev
+                    const next = typeof forceState === "boolean" ? forceState : !prev
                     chrome.storage.local.set({ sensa_voice_command_active: next })
                     return next
                   })
