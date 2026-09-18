@@ -353,14 +353,14 @@ export default function LiveCaptionBox({
           bottom: "20px",
           transform: `translate(calc(-50% + ${offset.x}px), ${offset.y}px)`,
           width: "min(92vw, 760px)",
-          padding: "8px 14px 12px 14px", 
+          padding: "10px 14px 12px 14px", 
           borderRadius: "14px",
           backgroundColor: bgColor,
           color: textColor,
           fontSize: `${fontSize}px`,
           fontFamily: fontFamily || "system-ui, Arial, sans-serif",
           boxShadow: isDragging 
-            ? "0 18px 36px rgba(0,0,0,0.45), 0 0 0 2px rgba(255, 122, 47, 0.4)" 
+            ? "0 18px 36px rgba(0,0,0,0.45)" 
             : "0 10px 25px rgba(0,0,0,0.25)",
           pointerEvents: "auto",
           userSelect: "none",
@@ -375,9 +375,7 @@ export default function LiveCaptionBox({
           overflowX: "hidden",
           backdropFilter: "blur(12px)",
           WebkitBackdropFilter: "blur(12px)", 
-          border: isDragging 
-            ? "1px solid rgba(255, 122, 47, 0.5)" 
-            : "1px solid rgba(255,255,255,0.12)",
+          border: "1px solid rgba(255,255,255,0.12)",
           wordBreak: "break-word",
           overflowWrap: "anywhere",
           textShadow: "0px 1px 3px rgba(0,0,0,0.4)",
@@ -390,19 +388,6 @@ export default function LiveCaptionBox({
         onPointerCancel={handlePointerCancel}
         onDoubleClick={handleDoubleClick}
       >
-        {/* Visual drag handle */}
-        <div 
-          className="sensa-caption-drag-handle"
-          style={{
-            width: "36px",
-            height: "4px",
-            borderRadius: "999px",
-            backgroundColor: isDragging ? "#FF7A2F" : "rgba(255, 255, 255, 0.3)",
-            margin: "0 auto 2px auto",
-            transition: "background-color 200ms ease",
-            pointerEvents: "none"
-          }} 
-        />
 
         {error ? (
           <div style={{ color: "#FCA5A5", textAlign: "center", fontSize: `${Math.max(14, fontSize * 0.8)}px`, fontWeight: 500, padding: "4px 0" }}>{error}</div>

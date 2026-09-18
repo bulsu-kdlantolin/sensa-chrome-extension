@@ -412,8 +412,6 @@ export default function CaptionLanguageOverlay({
           visibility: initialOffsetLoaded ? "visible" : "hidden"
         }}
       >
-        {/* Visual Drag Handle */}
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-gray-400/30 pointer-events-none" />
 
         {/* Flex Header matching AuditorySettingsModal */}
         <div className="flex items-start justify-between gap-4 mb-5 mt-1">

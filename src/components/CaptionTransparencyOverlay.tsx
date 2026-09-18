@@ -163,8 +163,7 @@ export default function CaptionTransparencyOverlay({
           visibility: initialOffsetLoaded ? "visible" : "hidden"
         }}
       >
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-gray-500/35 pointer-events-none" />
-
+        
         <div className="flex items-start justify-between gap-4 mb-4 mt-2">
           <div>
             <h2 

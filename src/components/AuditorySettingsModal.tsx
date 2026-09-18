@@ -293,8 +293,6 @@ export default function AuditorySettingsModal({ isDark, onClose }: AuditorySetti
             visibility: initialOffsetLoaded ? "visible" : "hidden"
           }}
         >
-          {/* Subtle Drag Handle */}
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-gray-400/30 pointer-events-none" />
 
           <div className="flex justify-between items-center mb-8 mt-2">
             <h2 

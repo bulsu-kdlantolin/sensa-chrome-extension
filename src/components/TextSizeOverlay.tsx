@@ -189,8 +189,7 @@ export default function TextSizeOverlay({ isDark, onClose, initialSize = 32, onS
           visibility: initialOffsetLoaded ? "visible" : "hidden"
         }}
       >
-        <div className="absolute top-3 left-1/2 -translate-x-1/2 w-14 h-1.5 rounded-full bg-gray-500/35 pointer-events-none" />
-
+        
         <div className="flex items-start justify-between gap-4 mb-5 mt-1">
           <div>
             <h2 

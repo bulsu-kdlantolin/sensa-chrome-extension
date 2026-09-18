@@ -866,8 +866,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
             visibility: initialOffsetLoaded ? "visible" : "hidden"
           }}
         >
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 w-12 h-1.5 rounded-full bg-gray-400/30 pointer-events-none" />
-
+          
           <div className="flex items-center justify-between mb-6 mt-2">
             <h2 
               className="text-[26px] font-bold tracking-tight px-1 pb-1"
