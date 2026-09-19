@@ -215,8 +215,29 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const defaultVoiceAppliedRef = useRef(false)
   const [isVoiceDropdownOpen, setIsVoiceDropdownOpen] = useState(false)
   const isReadingVoiceListRef = useRef(false)
+  const voiceReadTimerRef = useRef<number | null>(null)
   const voiceListRef = useRef<HTMLUListElement>(null)
   const voiceItemRefs = useRef<Record<string, HTMLElement | null>>({})
+
+  const stopReadingVoiceList = useCallback(() => {
+    isReadingVoiceListRef.current = false
+    setSpeakingVoiceURI(null)
+    if (voiceReadTimerRef.current !== null) {
+      window.clearTimeout(voiceReadTimerRef.current)
+      voiceReadTimerRef.current = null
+    }
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel()
+      } catch { }
+    }
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      stopReadingVoiceList()
+    }
+  }, [stopReadingVoiceList])
 
   useEffect(() => {
     if (!isVoiceDropdownOpen) return
@@ -224,17 +245,28 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     if (!uriToScroll) return
 
     const scrollItem = () => {
-      const container = voiceListRef.current
-      if (!container) return
-      const element = voiceItemRefs.current[uriToScroll] || (container.querySelector(`[data-voice-uri="${CSS.escape(uriToScroll)}"]`) as HTMLElement | null)
-      if (element) {
-        const elRect = element.getBoundingClientRect()
-        const contRect = container.getBoundingClientRect()
-        const targetScroll = container.scrollTop + (elRect.top - contRect.top) - (container.clientHeight / 2) + (element.offsetHeight / 2)
-        container.scrollTo({
-          top: Math.max(0, targetScroll),
-          behavior: speakingVoiceURI ? 'smooth' : 'auto'
-        })
+      try {
+        const container = voiceListRef.current
+        if (!container) return
+        let element = voiceItemRefs.current[uriToScroll]
+        if (!element && container) {
+          try {
+            element = container.querySelector(`[data-voice-uri="${CSS.escape(uriToScroll)}"]`) as HTMLElement | null
+          } catch {
+            element = null
+          }
+        }
+        if (element) {
+          const elRect = element.getBoundingClientRect()
+          const contRect = container.getBoundingClientRect()
+          const targetScroll = container.scrollTop + (elRect.top - contRect.top) - (container.clientHeight / 2) + (element.offsetHeight / 2)
+          container.scrollTo({
+            top: Math.max(0, targetScroll),
+            behavior: speakingVoiceURI ? 'smooth' : 'auto'
+          })
+        }
+      } catch (err) {
+        console.warn("[Sensa Settings] Failed to scroll to voice item:", err)
       }
     }
 
@@ -863,9 +895,15 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
       const matchedVoice = bestVoice
 
+      // CRITICAL: If the system is currently reading this EXACT voice out loud via TTS,
+      // this matches the acoustic self-echo from the speakers. Do NOT select it!
+      if (isReadingVoiceListRef.current && speakingVoiceURI && matchedVoice.voiceURI === speakingVoiceURI) {
+        console.log(`%c[Sensa Settings Voice] 🛡️ Ignored voice selection match for "${matchedVoice.name}" (matches voice currently being read by TTS)`, "color: #eab308; font-weight: bold;")
+        return false
+      }
+
       // Cancel ongoing sequential TTS narration instantly if user speaks a voice name
-      window.speechSynthesis.cancel()
-      isReadingVoiceListRef.current = false
+      stopReadingVoiceList()
 
       setSelectedVoiceURI(matchedVoice.voiceURI)
       selectedVoiceURIRef.current = matchedVoice.voiceURI
@@ -877,10 +915,9 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
         state.selectedVoiceURI = matchedVoice.voiceURI
         state.isVoiceDropdownOpen = true
       })
+      ignoreSpeechUntil = Date.now() + 1500
       setTimeout(() => {
         setSpeakingVoiceURI((prev) => prev === matchedVoice.voiceURI ? null : prev)
-        setIsVoiceDropdownOpen(false)
-        setSettingsState((state) => { state.isVoiceDropdownOpen = false })
       }, 1500)
       return true
     }
@@ -944,6 +981,11 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           "voice selection opened",
           "just say the name to select it or say close to exit",
           "just say the name to select it",
+          "or say close to exit",
+          "say close to exit",
+          "close to exit",
+          "say close",
+          "say exit",
           "voice selection closed",
           "settings reset to default",
           "voice guide enabled",
@@ -1055,9 +1097,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
               triggerVoiceHighlight("close")
               playClickSfx()
               window.setTimeout(() => {
-                window.speechSynthesis.cancel()
-                isReadingVoiceListRef.current = false
-                setSpeakingVoiceURI(null)
+                stopReadingVoiceList()
                 teardownRecognition()
                 setIsMounted(false)
                 setTimeout(() => onCloseRef.current(), 200)
@@ -1292,7 +1332,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
   const startReadingVoiceList = () => {
     if (!isVoiceGuideEnabledRef.current) return
-    window.speechSynthesis.cancel()
+    stopReadingVoiceList()
     isReadingVoiceListRef.current = true
     window.sensa_utterances = []
 
@@ -1340,7 +1380,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       let advanced = false
       let safetyTimer: number | null = null
 
-      const advance = () => {
+      const advance = (e?: any) => {
         if (advanced) return
         advanced = true
         if (safetyTimer !== null) {
@@ -1348,17 +1388,26 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           safetyTimer = null
         }
         if (!isReadingVoiceListRef.current) return
-        window.setTimeout(() => {
+        if (e && (e.error === 'canceled' || e.error === 'interrupted')) {
+          isReadingVoiceListRef.current = false
+          setSpeakingVoiceURI(null)
+          return
+        }
+        if (voiceReadTimerRef.current !== null) {
+          window.clearTimeout(voiceReadTimerRef.current)
+        }
+        voiceReadTimerRef.current = window.setTimeout(() => {
+          if (!isReadingVoiceListRef.current) return
           readVoiceAtIndex(index + 1)
         }, 120)
       }
 
-      utterance.onend = advance
-      utterance.onerror = advance
+      utterance.onend = () => advance()
+      utterance.onerror = (e) => advance(e)
 
       // Safety timeout: in case a voice engine drops the onend event
       const estDuration = Math.max(1200, displayName.length * 130)
-      safetyTimer = window.setTimeout(advance, estDuration + 3000)
+      safetyTimer = window.setTimeout(() => advance(), estDuration + 3000)
 
       window.sensa_utterances!.push(utterance)
       window.speechSynthesis.speak(utterance)
@@ -1368,8 +1417,12 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       if (!isReadingVoiceListRef.current) return
       readVoiceAtIndex(0)
     }
-    intro.onerror = () => {
+    intro.onerror = (e: any) => {
       if (!isReadingVoiceListRef.current) return
+      if (e && (e.error === 'canceled' || e.error === 'interrupted')) {
+        isReadingVoiceListRef.current = false
+        return
+      }
       readVoiceAtIndex(0)
     }
 
@@ -1382,9 +1435,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
   const handleVoiceChange = (voiceURI: string) => {
     playClickSfx()
-    window.speechSynthesis.cancel()
-    isReadingVoiceListRef.current = false
-    setSpeakingVoiceURI(null)
+    stopReadingVoiceList()
     setSelectedVoiceURI(voiceURI)
     selectedVoiceURIRef.current = voiceURI
     const selected = voices.find((voice) => voice.voiceURI === voiceURI)
@@ -1394,9 +1445,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
   const handleResetToDefault = () => {
     playClickSfx()
-    window.speechSynthesis.cancel()
-    isReadingVoiceListRef.current = false
-    setSpeakingVoiceURI(null)
+    stopReadingVoiceList()
     const currentVoices = overlayStateRef.current.voices
     const defaultVoice = currentVoices.find((voice) => voice.name.includes("Google US English")) || currentVoices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) || currentVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) || currentVoices[0]
     const defaultVoiceURI = defaultVoice?.voiceURI || ""
@@ -1433,9 +1482,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     if (event.target === event.currentTarget && isBackdropMouseDownRef.current) {
       isBackdropMouseDownRef.current = false
       playClickSfx()
-      window.speechSynthesis.cancel()
-      isReadingVoiceListRef.current = false
-      setSpeakingVoiceURI(null)
+      stopReadingVoiceList()
       setIsMounted(false)
       setTimeout(onClose, 300)
     }
@@ -1496,6 +1543,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           <button
             onClick={() => {
               playClickSfx()
+              stopReadingVoiceList()
               setIsMounted(false)
               setTimeout(onClose, 300)
             }}
@@ -1839,7 +1887,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
         {isVoiceDropdownOpen && (
           <>
-            <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setIsVoiceDropdownOpen(false); window.speechSynthesis.cancel(); isReadingVoiceListRef.current = false; setSpeakingVoiceURI(null) }} />
+            <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setIsVoiceDropdownOpen(false); stopReadingVoiceList() }} />
             <ul
               ref={voiceListRef}
               style={{

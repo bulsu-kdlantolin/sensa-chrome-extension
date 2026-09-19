@@ -18,8 +18,27 @@
 
 import cssText from "data-text:~style.css"
 import type { PlasmoCSConfig } from "plasmo"
-import { useState, useRef, useEffect } from "react"
+import React, { useState, useRef, useEffect, Component } from "react"
 import { createPortal } from "react-dom"
+
+class SafeErrorBoundary extends Component<{ children: React.ReactNode; name?: string }, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode; name?: string }) {
+    super(props)
+    this.state = { hasError: false }
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true }
+  }
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error(`[Sensa ErrorBoundary: ${this.props.name || "Component"}] Caught error:`, error, errorInfo)
+  }
+  render() {
+    if (this.state.hasError) {
+      return null
+    }
+    return this.props.children
+  }
+}
 import VisualDock from "./components/VisualDock"
 import AuditoryDock from "./components/AuditoryDock"
 import VisualSettingsModal from "./components/VisualSettingsModal"
@@ -256,6 +275,12 @@ export default function FloatingDockManager() {
     isCaptionTransparencyOpen ||
     isReadingSpeedOpen
   const isAuditoryModeActive = activeMode === "auditory"
+
+  const [isOverlayTransitioning, setIsOverlayTransitioning] = useState(false)
+  const triggerOverlayTransitionCooloff = () => {
+    setIsOverlayTransitioning(true)
+    window.setTimeout(() => setIsOverlayTransitioning(false), 1200)
+  }
 
   const [highlightColor, setHighlightColor] = useState("#FFFE00")
   const selectedVoiceURIRef = useRef<string>("")
@@ -878,46 +903,52 @@ export default function FloatingDockManager() {
       <div className="sensa-ui-root">
         {/* 1. THE SETTINGS MODAL (Floats dead center, outside the drag logic) */}
         {isVisualSettingsOpen && (
-          <VisualSettingsModal
-            onClose={() => {
-              setIsVisualSettingsOpen(false)
-              setIsVisualSettingsOpenViaVoice(false)
-              speakOverlayFeedback("Settings overlay closed")
-            }}
-            isDark={isDark}
-            isVoiceCommandActive={isVoiceCommandActive}
-            onToggleVoiceCommand={() => {
-              setIsVoiceCommandActive(prev => {
-                const next = !prev
-                chrome.storage.local.set({ sensa_voice_command_active: next })
-                return next
-              })
-            }}
-          />
+          <SafeErrorBoundary name="VisualSettingsModal">
+            <VisualSettingsModal
+              onClose={() => {
+                setIsVisualSettingsOpen(false)
+                setIsVisualSettingsOpenViaVoice(false)
+                triggerOverlayTransitionCooloff()
+                speakOverlayFeedback("Settings closed")
+              }}
+              isDark={isDark}
+              isVoiceCommandActive={isVoiceCommandActive}
+              onToggleVoiceCommand={() => {
+                setIsVoiceCommandActive(prev => {
+                  const next = !prev
+                  chrome.storage.local.set({ sensa_voice_command_active: next })
+                  return next
+                })
+              }}
+            />
+          </SafeErrorBoundary>
         )}
 
         {isReadingSpeedOpen && (
-          <ReadingSpeedOverlay
-            initialSpeed={readingSpeed}
-            onSpeedChange={(newSpeed) => {
-              setReadingSpeed(newSpeed)
-              chrome.storage.local.set({ sensa_visual_reading_speed: newSpeed })
-            }}
-            onClose={() => {
-              setIsReadingSpeedOpen(false)
-              setIsReadingSpeedOpenViaVoice(false)
-              speakOverlayFeedback("Reading speed closed")
-            }}
-            isDark={isDark}
-            isVoiceCommandActive={isVoiceCommandActive}
-            onToggleVoiceCommand={() => {
-              setIsVoiceCommandActive(prev => {
-                const next = !prev
-                chrome.storage.local.set({ sensa_voice_command_active: next })
-                return next
-              })
-            }}
-          />
+          <SafeErrorBoundary name="ReadingSpeedOverlay">
+            <ReadingSpeedOverlay
+              initialSpeed={readingSpeed}
+              onSpeedChange={(newSpeed) => {
+                setReadingSpeed(newSpeed)
+                chrome.storage.local.set({ sensa_visual_reading_speed: newSpeed })
+              }}
+              onClose={() => {
+                setIsReadingSpeedOpen(false)
+                setIsReadingSpeedOpenViaVoice(false)
+                triggerOverlayTransitionCooloff()
+                speakOverlayFeedback("Reading speed closed")
+              }}
+              isDark={isDark}
+              isVoiceCommandActive={isVoiceCommandActive}
+              onToggleVoiceCommand={() => {
+                setIsVoiceCommandActive(prev => {
+                  const next = !prev
+                  chrome.storage.local.set({ sensa_voice_command_active: next })
+                  return next
+                })
+              }}
+            />
+          </SafeErrorBoundary>
         )}
 
         {isAuditorySettingsOpen && (
@@ -988,43 +1019,45 @@ export default function FloatingDockManager() {
             className="fixed right-4 top-1/2 z-[99999] font-sans"
           >
             {isVisualActive && (
-              <VisualDock
-                isDark={isDark}
-                isMinimized={isMinimized}
-                readingSpeed={readingSpeed}
-                isPlaying={isPlaying}            // <-- NEW PROP
-                isPaused={isPaused}              // <-- NEW PROP
-                isVoiceCommandActive={isVoiceCommandActive}
-                canRestart={isPlaying || isPaused}
-                isVoiceCommandsSuspended={isSettingsOverlayOpen || isReadingSpeedOpen || isModeSelectionVoiceActive || isPopupOpen}
-                onTogglePlay={togglePlayPause}   // <-- NEW PROP
-                onPausePlay={pauseSpeech}
-                onPlaySpeech={playSpeech}
-                onToggleVoiceCommand={(forceState?: boolean) => {
-                  setIsVoiceCommandActive(prev => {
-                    const next = typeof forceState === "boolean" ? forceState : !prev
-                    chrome.storage.local.set({ sensa_voice_command_active: next })
-                    return next
-                  })
-                }}
-                onNext={next}                    // <-- NEW PROP
-                onPrev={prev}                    // <-- NEW PROP
-                onRestart={restart}
-                onMinimizeToggle={() => setIsMinimized(!isMinimized)}
-                onOpenReadingSpeed={(viaVoice) => {
-                  setIsReadingSpeedOpen(true)
-                  if (viaVoice) setIsReadingSpeedOpenViaVoice(true)
-                  speakOverlayFeedback("Reading speed opened")
-                }}
-                onOpenSettings={(viaVoice) => {
-                  setIsVisualSettingsOpen(true)
-                  if (viaVoice) setIsVisualSettingsOpenViaVoice(true)
-                }}
-                onClose={() => {
-                  deactivateDock()
-                  chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null })
-                }}
-              />
+              <SafeErrorBoundary name="VisualDock">
+                <VisualDock
+                  isDark={isDark}
+                  isMinimized={isMinimized}
+                  readingSpeed={readingSpeed}
+                  isPlaying={isPlaying}            // <-- NEW PROP
+                  isPaused={isPaused}              // <-- NEW PROP
+                  isVoiceCommandActive={isVoiceCommandActive}
+                  canRestart={isPlaying || isPaused}
+                  isVoiceCommandsSuspended={isSettingsOverlayOpen || isOverlayTransitioning || isReadingSpeedOpen || isModeSelectionVoiceActive || isPopupOpen}
+                  onTogglePlay={togglePlayPause}   // <-- NEW PROP
+                  onPausePlay={pauseSpeech}
+                  onPlaySpeech={playSpeech}
+                  onToggleVoiceCommand={(forceState?: boolean) => {
+                    setIsVoiceCommandActive(prev => {
+                      const next = typeof forceState === "boolean" ? forceState : !prev
+                      chrome.storage.local.set({ sensa_voice_command_active: next })
+                      return next
+                    })
+                  }}
+                  onNext={next}                    // <-- NEW PROP
+                  onPrev={prev}                    // <-- NEW PROP
+                  onRestart={restart}
+                  onMinimizeToggle={() => setIsMinimized(!isMinimized)}
+                  onOpenReadingSpeed={(viaVoice) => {
+                    setIsReadingSpeedOpen(true)
+                    if (viaVoice) setIsReadingSpeedOpenViaVoice(true)
+                    speakOverlayFeedback("Reading speed opened")
+                  }}
+                  onOpenSettings={(viaVoice) => {
+                    setIsVisualSettingsOpen(true)
+                    if (viaVoice) setIsVisualSettingsOpenViaVoice(true)
+                  }}
+                  onClose={() => {
+                    deactivateDock()
+                    chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null })
+                  }}
+                />
+              </SafeErrorBoundary>
             )}
 
             {isAuditoryActive && (

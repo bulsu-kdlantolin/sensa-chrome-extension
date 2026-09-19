@@ -1630,6 +1630,12 @@ export default function VisualDock({
               fuzzyCheck("deactivate", 2) ||
               fuzzyCheck("exit", 1)
             ) {
+              const isSpeechBusy = typeof window !== "undefined" && window.speechSynthesis && (window.speechSynthesis.speaking || window.speechSynthesis.pending)
+              const systemRecentlySpoke = Date.now() - lastUISpeechTimeRef.current < 1600 || isSpeechBusy
+              if (systemRecentlySpoke) {
+                console.log("%c[Sensa Dock Voice] 🛡️ Ignored dock close command during active system speech/echo", "color: #eab308; font-weight: bold;")
+                return false
+              }
               applyCommand("close", () => {
                 stopCommandNarration()
                 try { window.speechSynthesis.cancel() } catch (e) {}
@@ -1673,6 +1679,12 @@ export default function VisualDock({
               fuzzyCheck("deactivate", 2) ||
               fuzzyCheck("exit", 1)
             ) {
+              const isSpeechBusy = typeof window !== "undefined" && window.speechSynthesis && (window.speechSynthesis.speaking || window.speechSynthesis.pending)
+              const systemRecentlySpoke = Date.now() - lastUISpeechTimeRef.current < 1600 || isSpeechBusy
+              if (systemRecentlySpoke) {
+                console.log("%c[Sensa Dock Voice] 🛡️ Ignored dock close command during active system speech/echo", "color: #eab308; font-weight: bold;")
+                return false
+              }
               applyCommand("close", () => {
                 stopCommandNarration()
                 try { window.speechSynthesis.cancel() } catch (e) {}
@@ -1823,6 +1835,12 @@ export default function VisualDock({
               fuzzyCheck("deactivate", 2) ||
               fuzzyCheck("exit", 1)
             ) {
+              const isSpeechBusy = typeof window !== "undefined" && window.speechSynthesis && (window.speechSynthesis.speaking || window.speechSynthesis.pending)
+              const systemRecentlySpoke = Date.now() - lastUISpeechTimeRef.current < 1600 || isSpeechBusy
+              if (systemRecentlySpoke) {
+                console.log("%c[Sensa Dock Voice] 🛡️ Ignored dock close command during active system speech/echo", "color: #eab308; font-weight: bold;")
+                return false
+              }
               applyCommand("close", () => {
                 callbacksRef.current.playClickAudio?.('Visual mode deactivated')
                 window.setTimeout(() => {
