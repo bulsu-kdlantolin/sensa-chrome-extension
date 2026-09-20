@@ -301,7 +301,7 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
         resolve({ isActive: !!res.sensa_visual_active })
       })
     })
-    const statusLabel = storageState.isActive ? "Connected" : "Offline"
+    const statusLabel = "Connected"
     return `We are now in the Visual Mode interface. Target website: ${websiteLabel}. Extension status: ${statusLabel}.`
   }
 

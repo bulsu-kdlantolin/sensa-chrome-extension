@@ -249,15 +249,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             throw new Error("No Tab ID (could not resolve active tab)")
           }
 
-          const isAlreadyCapturing = await new Promise((resolve) => {
+          const pingRes: any = await new Promise((resolve) => {
             chrome.runtime.sendMessage({ type: "PING_OFFSCREEN_CAPTURE", targetTabId }, (res) => {
-              resolve(res?.isCapturing === true)
+              resolve(res)
             })
-            setTimeout(() => resolve(false), 250)
+            setTimeout(() => resolve(null), 250)
           })
 
-          if (isAlreadyCapturing) {
-            return
+          if (pingRes?.isCapturing) {
+            if (pingRes?.isSTTEnabled) {
+              return
+            }
+            // Upgrade existing capture to STT!
+            const upgraded: any = await new Promise((resolve) => {
+              chrome.runtime.sendMessage({
+                type: "ENABLE_STT",
+                targetTabId,
+                targetLang: message.targetLang,
+                sourceLang: message.sourceLang
+              }, (res) => {
+                resolve(res?.ok)
+              })
+              setTimeout(() => resolve(false), 250)
+            })
+            if (upgraded) {
+              return
+            }
           }
 
           await chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE", force: true }).catch(() => { })
@@ -304,7 +321,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // --- STOP CAPTURE ---
-  if (message?.type === "STOP_CAPTURE") {
+  if (message?.type === "STOP_CAPTURE" || message?.type === "STOP_OFFSCREEN_CAPTURE") {
     ; (async () => {
       try {
         const senderTabId = await resolveTargetTabId(sender)
@@ -439,6 +456,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
   }
 })
+
+// Sync active mode to tabs upon tab activation/switch
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === "loading") {
+    // If the captured tab is reloading, cleanly reset stale offscreen capture
+    chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE", senderTabId: tabId }).catch(() => { })
+  }
+})
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE", senderTabId: tabId }).catch(() => { })
+})
+
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  try {
+    const res = await chrome.storage.local.get(["sensa_visual_active", "sensa_auditory_active", "sensa_last_tab"])
+    let currentMode: "visual" | "auditory" | null = null
+    if (res.sensa_visual_active && !res.sensa_auditory_active) currentMode = "visual"
+    else if (res.sensa_auditory_active && !res.sensa_visual_active) currentMode = "auditory"
+    else if (res.sensa_visual_active && res.sensa_auditory_active) currentMode = res.sensa_last_tab === "visual" ? "visual" : "auditory"
+
+    if (currentMode !== null && typeof activeInfo.tabId === "number") {
+      chrome.tabs.sendMessage(activeInfo.tabId, {
+        type: "sensa-activate-mode",
+        mode: currentMode
+      }).catch(() => {})
+    }
+  } catch {}
+})
+
 
 // Auto-inject content script into all open HTTP/HTTPS tabs on extension reload or update
 chrome.runtime.onInstalled.addListener(async (details) => {

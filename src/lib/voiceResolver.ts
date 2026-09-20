@@ -72,8 +72,8 @@ export function simplifyVoiceName(name: string): string {
   simplified = simplified.replace(/français/gi, "French")
   simplified = simplified.replace(/português do brasil/gi, "Portuguese")
   simplified = simplified.replace(/português/gi, "Portuguese")
-  simplified = simplified.replace(/español.*españa.*/gi, "Spanish Male")
-  simplified = simplified.replace(/español.*estados unidos.*/gi, "Spanish Female")
+  simplified = simplified.replace(/español.*españa.*/gi, "Spanish")
+  simplified = simplified.replace(/español.*estados unidos.*/gi, "Spanish")
   simplified = simplified.replace(/español/gi, "Spanish")
   simplified = simplified.replace(/italiano/gi, "Italian")
   simplified = simplified.replace(/nederlands/gi, "Dutch")
@@ -113,6 +113,11 @@ export function simplifyVoiceName(name: string): string {
   simplified = simplified.replace(/Google Taiwanese Mandarin/gi, "Google Taiwanese")
   simplified = simplified.replace(/Google Mainland Mandarin/gi, "Google Mandarin")
   simplified = simplified.replace(/Google Bahasa Indonesia/gi, "Google Indonesia")
+
+    // Strip 'Male' and 'Female' markers from technical names as requested
+  simplified = simplified.replace(/\bMale\b/gi, "")
+  simplified = simplified.replace(/\bFemale\b/gi, "")
+  simplified = simplified.replace(/\s+/g, " ")
 
   return simplified.trim() || name
 }

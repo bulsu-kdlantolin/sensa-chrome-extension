@@ -345,7 +345,7 @@ interface VisualDockProps {
   /** Callback to open comprehensive Visual Settings modal */
   onOpenSettings: (viaVoice?: boolean) => void
   /** Callback to close and exit Visual Mode */
-  onClose: () => void
+  onClose: (speakConfirmation?: boolean) => void
   /** Whether voice command listening is temporarily suspended (e.g., during TTS speech output) */
   isVoiceCommandsSuspended?: boolean
 }
@@ -910,6 +910,7 @@ export default function VisualDock({
     return "!scale-90 !ring-4 !ring-[#4FA5FF]/80 !bg-[#0A44FF]/25 shadow-[0_0_24px_rgba(79,165,255,0.65)] transition-all duration-200"
   }
   const dockRootRef = useRef<HTMLDivElement>(null)
+  const isDeactivatingRef = useRef(false)
   const audioCtxRef = useRef<AudioContext | null>(null)
   const [isSoundEffectsEnabled, setIsSoundEffectsEnabled] = useState(true)
   const isSoundEffectsEnabledRef = useRef(true)
@@ -1362,8 +1363,8 @@ export default function VisualDock({
         case "play":
         case "read": return ["play", "resume", "continue", "start reading", "read", "reed", "reading", "start", "go", "speak", "begin"]
         case "stop": return ["stop", "pause", "halt", "stop reading", "stop playing", "pause reading", "shut up", "hush", "shh", "stop it", "stahp", "cease", "freeze", "silence", "quiet"]
-        case "next": return ["next", "skip", "forward", "necks", "nex"]
-        case "previous": return ["previous", "prev", "go back", "back", "prior", "before", "preevious", "preveous", "previus", "privious", "review", "reviews", "re view"]
+        case "next": return ["next", "skip", "forward", "necks", "nex", "next page", "next sentence"]
+        case "previous": return ["previous", "prev", "go back", "back", "prior", "before", "preevious", "preveous", "previus", "privious", "previews", "preview", "previewing", "review", "reviews", "re view", "previous page", "previous sentence", "prior sentence", "last sentence"]
         case "restart": return ["repeat", "restart", "start over", "reset", "refresh", "re start", "re-start", "from the top", "from the beginning", "begin again", "restore", "replay", "rewind", "again"]
         case "speed": return ["speed", "rate", "reading speed", "voice speed"]
         case "settings": return ["setting", "settings", "options", "open settings"]
@@ -1440,18 +1441,23 @@ export default function VisualDock({
         lastSpeechActivityTime = Date.now()
         resetSilenceTimer()
 
+        // Speech Debounce: drop trailing interims / echo while locked
+        if (Date.now() < ignoreSpeechUntil) {
+          return
+        }
+
         // Utterance Boundary Lock: Result index tracking
 
         const timeSinceCmd = Date.now() - lastCommandTime
 
         if (event.resultIndex !== currentResultIndex) {
           currentResultIndex = event.resultIndex
-          if (timeSinceCmd > 900) {
+          if (timeSinceCmd > 1600) {
             consumedKeywords = []
             lastCommandTranscript = ""
             lastCommandResultIndex = -1
           }
-        } else if (timeSinceCmd > 1800) {
+        } else if (timeSinceCmd > 2500) {
           lastCommandTranscript = ""
           lastCommandResultIndex = -1
           consumedKeywords = []
@@ -1489,9 +1495,9 @@ export default function VisualDock({
 
         const normTranscript = rawTranscript.toLowerCase().trim()
 
-        // Hard deduplication gate: if identical transcript on the same resultIndex or within 2000ms, drop!
+        // Hard deduplication gate: if identical transcript on the same resultIndex or within 1600ms, drop!
         if (lastCommandTranscript && normTranscript === lastCommandTranscript) {
-          if (event.resultIndex === lastCommandResultIndex || timeSinceCmd < 900) {
+          if (event.resultIndex === lastCommandResultIndex || timeSinceCmd < 1600) {
             return
           }
         }
@@ -1561,24 +1567,25 @@ export default function VisualDock({
             const wasNavCommand = isNavCommand(lastCommandName)
             const isCurrNavCommand = isNavCommand(commandName)
 
-            // Snappy identical command deduplication (750ms for nav, 600ms for other commands)
-            if (commandName === lastCommandName) {
-              if (currentResultIndex === lastCommandResultIndex) {
-                return
-              }
-              const cooldown = isCurrNavCommand ? 750 : 600
-              if (timeSinceLastCmd < cooldown) {
+            // Strict navigation debounce: prevent any navigation command from executing twice from the same utterance
+            if (isCurrNavCommand && (wasNavCommand || commandName === lastCommandName)) {
+              if (timeSinceLastCmd < 1500) {
                 const ts = new Date().toISOString().substring(11, 23)
-                console.log(`%c[Sensa Dock Voice] ⏸️ Ignored duplicate command: "${commandName}" (within ${cooldown}ms cooldown)`, "color: #f59e0b; font-weight: bold;")
+                console.log(`%c[Sensa Dock Voice] ⏸️ Ignored navigation command: "${commandName}" (within 1500ms cooldown)`, "color: #f59e0b; font-weight: bold;")
                 return
               }
             }
 
-            // Snappy mutual navigation protection (350ms between next <-> prev)
-            if (isCurrNavCommand && wasNavCommand && commandName !== lastCommandName) {
-              if (timeSinceLastCmd < 350) {
+            // Same resultIndex deduplication: do not allow a single speech recognition utterance chunk to trigger twice
+            if (currentResultIndex === lastCommandResultIndex && timeSinceLastCmd < 2000) {
+              return
+            }
+
+            // Generic identical command deduplication (600ms cooldown)
+            if (commandName === lastCommandName) {
+              if (timeSinceLastCmd < 600) {
                 const ts = new Date().toISOString().substring(11, 23)
-                console.log(`%c[Sensa Dock Voice] ⏸️ Ignored rapid nav switch: "${lastCommandName}" -> "${commandName}" (within 350ms mutual cooldown)`, "color: #f59e0b; font-weight: bold;")
+                console.log(`%c[Sensa Dock Voice] ⏸️ Ignored duplicate command: "${commandName}" (within 600ms cooldown)`, "color: #f59e0b; font-weight: bold;")
                 return
               }
             }
@@ -1595,8 +1602,12 @@ export default function VisualDock({
               lastCommandResultIndex = currentResultIndex
               lastCommandTranscript = rawTranscript.toLowerCase().trim()
 
+              // Lock speech recognition from processing or hearing trailing interim/final results from this utterance
+              const muteDuration = isCurrNavCommand ? 1500 : 800
+              ignoreSpeechUntil = Date.now() + muteDuration
+
               // Strip keywords for this command from interim transcript until utterance completes
-              const expires = Date.now() + 600
+              const expires = Date.now() + (isCurrNavCommand ? 1800 : 800)
               getKeywordsForCommand(commandName).forEach(kw => {
                 consumedKeywords.push({ word: kw, expires })
               })
@@ -1638,11 +1649,8 @@ export default function VisualDock({
               }
               applyCommand("close", () => {
                 stopCommandNarration()
-                try { window.speechSynthesis.cancel() } catch (e) {}
-                callbacksRef.current.playClickAudio?.('Visual mode deactivated')
-                window.setTimeout(() => {
-                  callbacksRef.current.onClose()
-                }, 280)
+                isDeactivatingRef.current = true
+                callbacksRef.current.onClose?.(true)
               })
               return true
             }
@@ -1687,11 +1695,8 @@ export default function VisualDock({
               }
               applyCommand("close", () => {
                 stopCommandNarration()
-                try { window.speechSynthesis.cancel() } catch (e) {}
-                callbacksRef.current.playClickAudio?.('Visual mode deactivated')
-                window.setTimeout(() => {
-                  callbacksRef.current.onClose()
-                }, 280)
+                isDeactivatingRef.current = true
+                callbacksRef.current.onClose?.(true)
               })
               return true
             }
@@ -1725,7 +1730,7 @@ export default function VisualDock({
             // Rule 1 & 2 & 3: EAGER INTERIM EXECUTION + HOMOPHONE DICTIONARY MAPPING + EARLY REGEX BOUNDARIES
             const restartMatch = cleanText.match(/\b(restart|repeat|re start|re-start|replay|rewind|i start|first start|let s start)\b/i)
             const nextMatch = cleanText.match(/\b(next|necks|nex|skip|forward|next page|next sentence)\b/i)
-            const prevMatch = cleanText.match(/\b(previous|prev|back|go back|prior|before|preevious|preveous|previus|privious|review|reviews|re view|previous page|previous sentence|prior sentence|last sentence)\b/i)
+            const prevMatch = cleanText.match(/\b(previous|prev|back|go back|prior|before|preevious|preveous|previus|privious|previews|preview|previewing|review|reviews|re view|previous page|previous sentence|prior sentence|last sentence)\b/i)
             const stopMatch = cleanText.match(/\b(stop|pause|stop reading|stop playing|paused|pause reading|stahp)\b/i)
             const readMatch = cleanText.match(/\b(read|reed|reading|play|resume|continue|start reading)\b/i)
 
@@ -1957,7 +1962,9 @@ export default function VisualDock({
     return () => {
       isComponentMounted = false
       stopCommandNarration()
-      try { window.speechSynthesis.cancel() } catch (e) {}
+      if (!isDeactivatingRef.current) {
+        try { window.speechSynthesis.cancel() } catch (e) {}
+      }
       resetSilenceTimerRef.current = null
       window.removeEventListener("click", handleClick)
       window.removeEventListener("focus", handleFocus)

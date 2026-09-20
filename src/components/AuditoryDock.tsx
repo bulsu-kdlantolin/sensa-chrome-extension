@@ -24,7 +24,7 @@ import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
  * Real-time site audio visualizer and loud noise spike detection engine.
  * Connects to HTML5 media elements and Web Audio API streams.
  */
-const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boolean, isDark: boolean, isCaptionsActive?: boolean }) => {
+const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive, dockRootRef }: { isActive: boolean, isDark: boolean, isCaptionsActive?: boolean, dockRootRef?: React.RefObject<HTMLDivElement> }) => {
   const barsRef = useRef<(HTMLDivElement | null)[]>([])
   const currentHeights = useRef([4, 6, 8, 6, 4])
   const tickRef = useRef(0)
@@ -33,22 +33,28 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
   const flashIntensityRef = useRef(0)
   const loudNoiseEnabledRef = useRef(true)
   const warmupFramesRef = useRef(0)
+  const hasTriggeredAtMaxRef = useRef(false)
 
   useEffect(() => {
-    // Load loud noise alerts preference
+    // Load loud noise alerts preference (defaults to true unless explicitly disabled)
     chrome.storage.local.get(["sensa_loud_noise_alerts"], (res) => {
-      if (typeof res.sensa_loud_noise_alerts === "boolean") {
-        loudNoiseEnabledRef.current = res.sensa_loud_noise_alerts
+      if (res.sensa_loud_noise_alerts !== undefined) {
+        loudNoiseEnabledRef.current = res.sensa_loud_noise_alerts !== false && res.sensa_loud_noise_alerts !== "false"
       }
     })
     const onStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-      if (changes.sensa_loud_noise_alerts && typeof changes.sensa_loud_noise_alerts.newValue === "boolean") {
-        loudNoiseEnabledRef.current = changes.sensa_loud_noise_alerts.newValue
+      if (changes.sensa_loud_noise_alerts) {
+        const newVal = changes.sensa_loud_noise_alerts.newValue
+        loudNoiseEnabledRef.current = newVal !== false && newVal !== "false"
         // If turned off, immediately hide the flash overlay
-        if (!changes.sensa_loud_noise_alerts.newValue) {
+        if (!loudNoiseEnabledRef.current) {
           flashIntensityRef.current = 0
+          hasTriggeredAtMaxRef.current = false
           const overlay = document.getElementById('sensa-loud-noise-flash')
-          if (overlay) overlay.style.opacity = '0'
+          if (overlay) {
+            overlay.style.setProperty('opacity', '0', 'important')
+            overlay.style.setProperty('display', 'none', 'important')
+          }
         }
       }
     }
@@ -69,10 +75,31 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
     const shapeMask = [0.35, 0.7, 1.0, 0.7, 0.35]
     const maxHeights = [10, 14, 20, 14, 10]
     const idleHeights = [4, 6, 8, 6, 4]
-    const ENERGY_GATE = 0.06
+    const ENERGY_GATE = 0.02
     const GAME_SIGNAL_MIN = 18
 
     const borderBaseColor = isDark ? 'rgba(255,122,47,0.4)' : 'rgba(255,122,47,0.5)'
+
+    const getDockPills = (): HTMLElement[] => {
+      if (dockRootRef?.current) {
+        const list = Array.from(dockRootRef.current.querySelectorAll('.sensa-dock-pill')) as HTMLElement[]
+        if (list.length > 0) return list
+      }
+      const anchor = barsRef.current[0]
+      if (anchor) {
+        const dockEl = anchor.closest('[data-sensa-auditory-dock]')
+        if (dockEl) {
+          const list = Array.from(dockEl.querySelectorAll('.sensa-dock-pill')) as HTMLElement[]
+          if (list.length > 0) return list
+        }
+        const root = anchor.getRootNode() as Document | ShadowRoot | null
+        if (root && 'querySelectorAll' in root) {
+          const list = Array.from(root.querySelectorAll('.sensa-dock-pill')) as HTMLElement[]
+          if (list.length > 0) return list
+        }
+      }
+      return Array.from(document.querySelectorAll('.sensa-dock-pill')) as HTMLElement[]
+    }
 
     const lerp = (start: number, end: number, amt: number) => (1 - amt) * start + amt * end
 
@@ -163,6 +190,20 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
 
     let lastRequestTime = 0
     const handleVisibilityOrFocus = () => {
+      if (document.hidden) {
+        smoothedEnergyRef.current = 0
+        flashIntensityRef.current = 0
+        hasTriggeredAtMaxRef.current = false
+        const flash = document.getElementById('sensa-loud-noise-flash')
+        if (flash) {
+          flash.style.opacity = '0'
+        }
+        getDockPills().forEach(pill => {
+          pill.style.boxShadow = ''
+        })
+        return
+      }
+
       if ((document.visibilityState === 'visible' || document.hasFocus()) && isActive) {
         if (Date.now() - lastRequestTime < 1000) return
         lastRequestTime = Date.now()
@@ -200,11 +241,46 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
       window.addEventListener('yt-navigate-finish', handleShortsNavigation)
       window.addEventListener('popstate', handleShortsNavigation)
 
-      // Create screen-edge flash overlay for loud noise alerts
-      const flashOverlay = document.createElement('div')
-      flashOverlay.id = 'sensa-loud-noise-flash'
-      flashOverlay.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:99998;opacity:0;'
-      document.documentElement.appendChild(flashOverlay)
+      // Ensure body fallback overlay exists
+      let pageOverlay = document.getElementById('sensa-loud-noise-flash-page')
+      if (!pageOverlay) {
+        pageOverlay = document.createElement('div')
+        pageOverlay.id = 'sensa-loud-noise-flash-page'
+        pageOverlay.style.cssText = 'position:fixed !important;top:0 !important;left:0 !important;right:0 !important;bottom:0 !important;width:100vw !important;height:100vh !important;pointer-events:none !important;z-index:2147483647 !important;box-sizing:border-box !important;opacity:0;display:none;transition:opacity 0.05s ease-out;'
+        try { (document.body || document.documentElement).appendChild(pageOverlay) } catch {}
+      }
+
+      // Collect all active flash overlay targets across Shadow DOM, Page Body, and Fullscreen container
+      const getFlashOverlays = (): HTMLElement[] => {
+        const list: HTMLElement[] = []
+        // 1. Primary: inside Sensa Shadow DOM (guaranteed top layer, immune to site CSS)
+        const rootNode = dockRootRef?.current?.getRootNode() as Document | ShadowRoot | null
+        if (rootNode && 'querySelector' in rootNode) {
+          const shadowEl = rootNode.querySelector('#sensa-loud-noise-flash') as HTMLElement | null
+          if (shadowEl) list.push(shadowEl)
+        }
+        // 2. Secondary: in document body
+        const pageEl = document.getElementById('sensa-loud-noise-flash-page')
+        if (pageEl) list.push(pageEl)
+        // 3. Tertiary: in fullscreen element if active
+        const fsEl = document.fullscreenElement || (document as any).webkitFullscreenElement || null
+        if (fsEl) {
+          const fsTarget = fsEl.tagName && fsEl.tagName.toUpperCase() === 'VIDEO' && fsEl.parentElement
+            ? fsEl.parentElement
+            : fsEl
+          let fsFlash = fsTarget.querySelector('#sensa-loud-noise-flash-fs') as HTMLElement | null
+          if (!fsFlash) {
+            fsFlash = document.createElement('div')
+            fsFlash.id = 'sensa-loud-noise-flash-fs'
+            fsFlash.style.cssText = 'position:fixed !important;top:0 !important;left:0 !important;right:0 !important;bottom:0 !important;width:100% !important;height:100% !important;pointer-events:none !important;z-index:2147483647 !important;box-sizing:border-box !important;opacity:0;display:none;'
+            try { fsTarget.appendChild(fsFlash) } catch {}
+          }
+          if (fsFlash) list.push(fsFlash)
+        }
+        return list
+      }
+
+      let activeMediaEl: HTMLMediaElement | null = null
 
       hunterInterval = window.setInterval(() => {
         if (audioCtx && audioCtx.state === 'suspended') {
@@ -212,7 +288,10 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
         }
         const allMedia = findAllMediaElements(document)
         allMedia.forEach(media => {
-          if (!media.paused && media.currentTime > 0 && !media.muted) attachToSiteMediaSafe(media)
+          if (!media.paused && media.currentTime > 0 && !media.muted) {
+            attachToSiteMediaSafe(media)
+            activeMediaEl = media
+          }
         })
       }, 1500)
 
@@ -238,21 +317,11 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
         let dominantFrequencyIndex = 20
 
         let activeData: Uint8Array | null = null
-        const mediaPlaying = isMediaPlaying()
-
         const hasGamePacket = gameAudioArray && Date.now() - lastGameAudioTick < 350
-        let gameSignal = 0
-        if (hasGamePacket && gameAudioArray) {
-          let gameSum = 0
-          for (let i = 2; i < 40; i++) gameSum += gameAudioArray[i]
-          gameSignal = gameSum / 38
-        }
-
-        const hasStrongGameSignal = hasGamePacket && gameAudioArray && gameSignal >= GAME_SIGNAL_MIN
 
         if (hasGamePacket && gameAudioArray) {
           activeData = gameAudioArray
-        } else if (mediaPlaying && analyser && dataArray && connectedMediaCount > 0) {
+        } else if (analyser && dataArray && connectedMediaCount > 0) {
           analyser.getByteFrequencyData(dataArray as any)
           activeData = dataArray
         }
@@ -260,7 +329,8 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
         if (activeData) {
           let sum = 0
           for (let i = 2; i < 40; i++) sum += activeData[i]
-          rawEnergy = (sum / 38) / 255
+          const currentVol = activeMediaEl ? (activeMediaEl.muted ? 0 : activeMediaEl.volume) : 1.0
+          rawEnergy = ((sum / 38) / 255) * currentVol
 
           for (let i = 2; i < 11; i++) voiceMusicBaseline += activeData[i]
           voiceMusicBaseline = Math.max(1, voiceMusicBaseline / 9)
@@ -282,84 +352,29 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
           }
         }
 
+        // Responsive smoothing for natural speech cadence
         smoothedEnergyRef.current =
-          smoothedEnergyRef.current * 0.82 + rawEnergy * 0.18
+          smoothedEnergyRef.current * 0.72 + rawEnergy * 0.28
         const visualizerEnergy = smoothedEnergyRef.current
-        const hasAudio = visualizerEnergy >= ENERGY_GATE
+        const hasAudio = visualizerEnergy >= ENERGY_GATE || rawEnergy >= ENERGY_GATE
 
-        // Loud Noise Spike Detection (uses raw energy directly to react instantly to sudden spikes)
-        if (loudNoiseEnabledRef.current) {
-          if (rawEnergy > 0.01) {
-            if (slowEnergyRef.current < 0.01) {
-              // Seed baseline on first meaningful audio frame (ratio = 1.0, no false trigger)
-              slowEnergyRef.current = rawEnergy
-            } else {
-              slowEnergyRef.current = slowEnergyRef.current * 0.97 + rawEnergy * 0.03
-              // Only check spikes AFTER baseline is seeded (second frame onward)
-              const spikeRatio = rawEnergy / slowEnergyRef.current
-              if (spikeRatio > 2.5 && rawEnergy > 0.40) {
-                flashIntensityRef.current = Math.min(1, flashIntensityRef.current + 0.6)
-              }
-            }
-          } else {
-            // Gradually decay baseline during silence instead of hard-reset
-            slowEnergyRef.current *= 0.99
-            if (slowEnergyRef.current < 0.005) slowEnergyRef.current = 0
-          }
-        }
         // Framerate-independent decay (always decay so it fades if toggled off mid-flash)
-        flashIntensityRef.current *= Math.pow(0.92, dt * 60)
+        flashIntensityRef.current *= Math.pow(0.94, dt * 60)
 
-        let targetColor = "#FF7A2F"
+        const instantEnergy = Math.max(visualizerEnergy, rawEnergy * 0.85)
 
-        if (hasAudio) {
-          if (dominantFrequencyIndex < 15) {
-            targetColor = "#FF9660"
-          } else if (dominantFrequencyIndex < 30) {
-            targetColor = "#FFB347"
-          } else if (dominantFrequencyIndex < 50) {
-            targetColor = "#FFD700"
-          } else if (dominantFrequencyIndex < 70) {
-            targetColor = "#FF8C00"
-          } else {
-            targetColor = "#FF4444"
-          }
-        }
-
-        smoothedColor = targetColor
-
-        if (hasAudio) {
-          const isViolentSound = totalBroadbandEnergy > 160
-
-          if ((redAlarmPeak > 60 && redAlarmPeak > voiceMusicBaseline * 1.3) || isViolentSound) {
-            activeTheme = 'red'
-            themeHoldFrames = 50
-          } else if (greenPingPeak > 60 && greenPingPeak > voiceMusicBaseline * 1.25 && !isViolentSound) {
-            if (activeTheme !== 'red' || themeHoldFrames === 0) {
-              activeTheme = 'green'
-              themeHoldFrames = 50
-            }
-          }
-
-          if (themeHoldFrames > 0) {
-            themeHoldFrames--
-          } else {
-            activeTheme = 'orange'
-          }
-        } else if (themeHoldFrames > 0) {
-          themeHoldFrames--
-        } else {
-          activeTheme = 'orange'
-        }
+        // Balanced sensitivity curve: normalized 0..1 response with lively bounce in the middle, peaks on screams
+        const normalizedSignal = hasAudio
+          ? Math.min(1.0, Math.max(0, (instantEnergy - 0.02) * 1.65))
+          : 0
 
         barsRef.current.forEach((bar, i) => {
           if (!bar) return
           let targetHeight = idleHeights[i]
 
-          if (hasAudio) {
-            const curvedEnergy = Math.pow(visualizerEnergy, 1.3)
-            const voiceSpike = (curvedEnergy * 15) * shapeMask[i]
-            targetHeight = Math.min(maxHeights[i], idleHeights[i] + voiceSpike)
+          if (hasAudio && normalizedSignal > 0) {
+            // Natural proportionate height: low vol is gentle, normal speech bounces in the middle, screaming hits max
+            targetHeight = idleHeights[i] + (maxHeights[i] - idleHeights[i]) * normalizedSignal
           } else {
             // Organic, staggered wave using the Delta-Time tick
             const breath = Math.sin(tick * 0.03 - i * 0.15) * 1.2
@@ -367,7 +382,7 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
           }
 
           const isRising = targetHeight > currentHeights.current[i]
-          const baseAmt = hasAudio ? (isRising ? 0.65 : 0.22) : 0.10
+          const baseAmt = hasAudio ? (isRising ? 0.70 : 0.25) : 0.10
 
           // Framerate-independent lerp
           const amt = 1 - Math.pow(1 - baseAmt, dt * 60)
@@ -375,33 +390,99 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
 
           // Subpixel rendering via float values. NO Math.round() clamping!
           bar.style.height = `${currentHeights.current[i].toFixed(2)}px`
-          bar.style.backgroundColor = smoothedColor
         })
 
-        const dockPills = document.querySelectorAll('.sensa-dock-pill') as NodeListOf<HTMLElement>
-        dockPills.forEach(pill => {
-          pill.style.borderColor = smoothedColor
-          if (hasAudio) {
-            pill.style.boxShadow = `0 0 24px ${smoothedColor}70, inset 0 0 12px ${smoothedColor}20`
+        // Volume-based dynamic color: Orangish -> Yellowish -> Reddish
+        const middleBarHeight = currentHeights.current[2]
+
+        // Red is strictly reserved for max length volume detection (>= 18.5px out of 20px)
+        const isMaxLength = hasAudio && middleBarHeight >= 18.5
+
+        if (hasAudio) {
+          if (isMaxLength) {
+            smoothedColor = "#FF3B30" // Reddish (ONLY at max length volume detection)
+            activeTheme = 'red'
+          } else if (middleBarHeight >= 11.8) {
+            smoothedColor = "#FFD000" // Vibrant Yellowish (conversational & medium volume)
+            activeTheme = 'orange'
           } else {
-            pill.style.boxShadow = ''
+            smoothedColor = "#FF7A2F" // Warm Orangish (low volume)
+            activeTheme = 'orange'
           }
-        })
-
-        // Screen-edge flash rendering for loud noise alerts
-        const fi = flashIntensityRef.current
-        if (fi > 0.01) {
-          const flashColor = activeTheme === 'red'
-            ? `rgba(255, 50, 50, ${(fi * 0.55).toFixed(3)})`
-            : `rgba(255, 122, 47, ${(fi * 0.45).toFixed(3)})`
-          const spread = (80 + fi * 60).toFixed(1)
-          const bleed = (20 + fi * 30).toFixed(1)
-          flashOverlay.style.boxShadow = `inset 0 0 ${spread}px ${bleed}px ${flashColor}`
-          flashOverlay.style.opacity = '1'
         } else {
-          flashOverlay.style.opacity = '0'
+          smoothedColor = "#FF7A2F"
+          activeTheme = 'orange'
         }
 
+        barsRef.current.forEach((bar) => {
+          if (bar) bar.style.backgroundColor = smoothedColor
+        })
+
+        // Loud noise border alert: ONLY triggers at MAX RED LENGTH, and only once each time it reaches max red length
+        if (isMaxLength) {
+          if (!hasTriggeredAtMaxRef.current) {
+            hasTriggeredAtMaxRef.current = true
+            if (loudNoiseEnabledRef.current !== false) {
+              flashIntensityRef.current = 1.0
+            }
+          }
+        } else if (middleBarHeight < 16.0) {
+          // Re-arms as soon as volume drops below the max red threshold
+          hasTriggeredAtMaxRef.current = false
+        }
+
+        // Fully synchronize auditory dock glow with real-time visualizer audio reactions
+        const dockPills = getDockPills()
+        const audioRatio = Math.max(0, Math.min(1.0, (middleBarHeight - idleHeights[2]) / (maxHeights[2] - idleHeights[2])))
+
+        if (hasAudio && audioRatio > 0.02) {
+          // Dynamic glow synced seamlessly with every single audio reaction
+          const glowBlur = (12 + audioRatio * 20).toFixed(1)
+          const glowSpread = (2 + audioRatio * 8).toFixed(1)
+          const outerAlpha = (0.22 + audioRatio * 0.45).toFixed(2)
+          const innerAlpha = (0.08 + audioRatio * 0.18).toFixed(2)
+
+          const hexOuter = Math.round(Number(outerAlpha) * 255).toString(16).padStart(2, '0')
+          const hexInner = Math.round(Number(innerAlpha) * 255).toString(16).padStart(2, '0')
+
+          const glowStyle = `0 0 ${glowBlur}px ${glowSpread}px ${smoothedColor}${hexOuter}, inset 0 0 10px ${smoothedColor}${hexInner}`
+
+          dockPills.forEach(pill => {
+            pill.style.boxShadow = glowStyle
+          })
+        } else {
+          dockPills.forEach(pill => {
+            if (pill.style.boxShadow) {
+              pill.style.boxShadow = ''
+            }
+          })
+        }
+        // Screen-edge flash rendering across all targets (Shadow DOM, Page Body, Fullscreen)
+        const fi = flashIntensityRef.current
+        const overlays = getFlashOverlays()
+        if (fi > 0.01) {
+          const borderColor = `rgba(255, 59, 48, ${(fi * 0.95).toFixed(3)})`
+          const glowColor = `rgba(255, 59, 48, ${(fi * 0.70).toFixed(3)})`
+          const haloColor = `rgba(255, 59, 48, ${(fi * 0.25).toFixed(3)})`
+          const spread = (70 + fi * 60).toFixed(1)
+          const bleed = (25 + fi * 35).toFixed(1)
+
+          overlays.forEach(el => {
+            el.style.setProperty('display', 'block', 'important')
+            el.style.setProperty('border', `10px solid ${borderColor}`, 'important')
+            el.style.setProperty('box-shadow', `inset 0 0 ${spread}px ${bleed}px ${glowColor}, 0 0 40px ${glowColor}`, 'important')
+            el.style.setProperty('background', `radial-gradient(circle at center, transparent 60%, ${haloColor} 100%)`, 'important')
+            el.style.setProperty('opacity', '1', 'important')
+          })
+        } else {
+          overlays.forEach(el => {
+            el.style.setProperty('opacity', '0', 'important')
+            el.style.setProperty('display', 'none', 'important')
+            el.style.removeProperty('border')
+            el.style.removeProperty('box-shadow')
+            el.style.removeProperty('background')
+          })
+        }
         animationId = requestAnimationFrame(draw)
       }
 
@@ -409,35 +490,54 @@ const SiteAudioSystem = ({ isActive, isDark, isCaptionsActive }: { isActive: boo
     }
 
     return () => {
-      chrome.storage.onChanged.removeListener(onStorageChange)
-      window.removeEventListener('message', handleMessage)
-      chrome.runtime.onMessage.removeListener(handleRuntimeMessage)
-      document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
-      window.removeEventListener('focus', handleVisibilityOrFocus)
-      window.removeEventListener('yt-navigate-finish', handleShortsNavigation)
-      window.removeEventListener('popstate', handleShortsNavigation)
+      try { chrome.storage.onChanged.removeListener(onStorageChange) } catch {}
+      try { window.removeEventListener('message', handleMessage) } catch {}
+      try { chrome.runtime.onMessage.removeListener(handleRuntimeMessage) } catch {}
+      try { document.removeEventListener('visibilitychange', handleVisibilityOrFocus) } catch {}
+      try { window.removeEventListener('focus', handleVisibilityOrFocus) } catch {}
+      try { window.removeEventListener('yt-navigate-finish', handleShortsNavigation) } catch {}
+      try { window.removeEventListener('popstate', handleShortsNavigation) } catch {}
+      try {
+        const pageEl = document.getElementById('sensa-loud-noise-flash-page')
+        if (pageEl) pageEl.remove()
+      } catch {}
+      try {
+        const fsFlash = document.getElementById('sensa-loud-noise-flash-fs')
+        if (fsFlash) fsFlash.remove()
+      } catch {}
       if (animationId) cancelAnimationFrame(animationId)
       if (hunterInterval !== undefined) window.clearInterval(hunterInterval)
-      if (audioCtx) audioCtx.close().catch(() => undefined)
+      if (audioCtx) {
+        try { audioCtx.close().catch(() => undefined) } catch {}
+      }
       smoothedEnergyRef.current = 0
       slowEnergyRef.current = 0
       flashIntensityRef.current = 0
-      const existingFlash = document.getElementById('sensa-loud-noise-flash')
-      if (existingFlash) existingFlash.remove()
-      document.querySelectorAll('.sensa-dock-pill').forEach((pill) => {
-        const htmlPill = pill as HTMLElement
-        htmlPill.style.borderColor = borderBaseColor
-        htmlPill.style.boxShadow = ''
-      })
-      findAllMediaElements(document).forEach((mediaEl) => {
-        delete (mediaEl as any)._sensaConnected
-        delete (mediaEl as any)._sensaStream
-      })
+      try {
+        const existingFlash = document.getElementById('sensa-loud-noise-flash')
+        if (existingFlash) {
+          existingFlash.style.opacity = '0'
+          existingFlash.style.display = 'none'
+        }
+      } catch {}
+      try {
+        getDockPills().forEach((pill) => {
+          const htmlPill = pill as HTMLElement
+          htmlPill.style.borderColor = borderBaseColor
+          htmlPill.style.boxShadow = ''
+        })
+      } catch {}
+      try {
+        findAllMediaElements(document).forEach((mediaEl) => {
+          delete (mediaEl as any)._sensaConnected
+          delete (mediaEl as any)._sensaStream
+        })
+      } catch {}
       if (isActive) {
-        chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => { })
+        try { chrome.runtime.sendMessage({ type: "STOP_OFFSCREEN_CAPTURE" }).catch(() => { }) } catch {}
       }
     }
-  }, [isActive, isCaptionsActive])
+  }, [isActive])
 
   return (
     <div className="flex items-center justify-center gap-[2.5px] !w-[28px] !h-[20px] shrink-0">
@@ -536,9 +636,12 @@ export default function AuditoryDock({
     ? { backgroundImage: "linear-gradient(to right, transparent, rgba(255,255,255,0.1), transparent)" }
     : { backgroundImage: "linear-gradient(to right, transparent, rgba(0,0,0,0.1), transparent)" }
 
+  const dockRootRef = useRef<HTMLDivElement>(null)
+
   return (
     <div
       className="flex flex-col w-fit shrink-0 box-border relative z-50"
+      ref={dockRootRef}
       role="toolbar"
       aria-label="Auditory and Caption Controls"
       data-sensa-auditory-dock
@@ -558,7 +661,7 @@ export default function AuditoryDock({
         {/* Visualizer Frame */}
         <div className={`${btnBaseClass} bg-transparent cursor-default relative z-10`}>
           <SharedTooltip label="Sound Visualizer" isDark={isDark} isAuditory />
-          <SiteAudioSystem isActive={true} isDark={isDark} isCaptionsActive={isCaptionsActive} />
+          <SiteAudioSystem isActive={true} isDark={isDark} isCaptionsActive={isCaptionsActive} dockRootRef={dockRootRef} />
           <svg viewBox="0 0 24 24" fill="currentColor" className={`absolute !w-[18px] !h-[18px] shrink-0 opacity-10 pointer-events-none ${isDark ? 'text-white' : 'text-black'}`}>
             <rect x="5" y="10" width="2" height="4" rx="1" />
             <rect x="9" y="7" width="2" height="10" rx="1" />

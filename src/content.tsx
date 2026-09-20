@@ -21,8 +21,8 @@ import type { PlasmoCSConfig } from "plasmo"
 import React, { useState, useRef, useEffect, Component } from "react"
 import { createPortal } from "react-dom"
 
-class SafeErrorBoundary extends Component<{ children: React.ReactNode; name?: string }, { hasError: boolean }> {
-  constructor(props: { children: React.ReactNode; name?: string }) {
+class SafeErrorBoundary extends Component<{ children: React.ReactNode; name?: string; resetKey?: any }, { hasError: boolean }> {
+  constructor(props: { children: React.ReactNode; name?: string; resetKey?: any }) {
     super(props)
     this.state = { hasError: false }
   }
@@ -31,6 +31,11 @@ class SafeErrorBoundary extends Component<{ children: React.ReactNode; name?: st
   }
   componentDidCatch(error: any, errorInfo: any) {
     console.error(`[Sensa ErrorBoundary: ${this.props.name || "Component"}] Caught error:`, error, errorInfo)
+  }
+  componentDidUpdate(prevProps: { children: React.ReactNode; resetKey?: any }) {
+    if (this.state.hasError && (prevProps.children !== this.props.children || prevProps.resetKey !== this.props.resetKey)) {
+      this.setState({ hasError: false })
+    }
   }
   render() {
     if (this.state.hasError) {
@@ -202,6 +207,10 @@ function CaptionFullscreenPortal({ children }: { children: React.ReactNode }) {
 }
 
 export default function FloatingDockManager() {
+  // If inside an iframe, don't mount the floating dock (fullscreen iframe captions handled by iframeCaptionOverlay)
+  if (typeof window !== "undefined" && window.self !== window.top) {
+    return null
+  }
   const [activeMode, setActiveMode] = useState<"visual" | "auditory" | null>(null)
   const [userThemePref, setUserThemePref] = useState(false)
   const [isMinimized, setIsMinimized] = useState(false)
@@ -264,6 +273,18 @@ export default function FloatingDockManager() {
   const dragRef = useRef<HTMLDivElement>(null)
   const dragStartPos = useRef({ x: 0, y: 0 })
   const activeModeRef = useRef<"visual" | "auditory" | null>(null)
+
+  // Ensure single host instance: remove any stale/duplicate sensa-shadow-host elements
+  useEffect(() => {
+    try {
+      const hosts = document.querySelectorAll("#sensa-shadow-host")
+      if (hosts.length > 1) {
+        for (let i = 0; i < hosts.length - 1; i++) {
+          hosts[i].remove()
+        }
+      }
+    } catch { }
+  }, [])
   const isModeSelectionVoiceActiveRef = useRef(false)
 
   const isSettingsOverlayOpen =
@@ -428,6 +449,7 @@ export default function FloatingDockManager() {
   }, [activeMode])
 
   const syncActiveMode = (mode: "visual" | "auditory" | null) => {
+    activeModeRef.current = mode
     setActiveMode(mode)
     chrome.storage.local.set({
       sensa_visual_active: mode === "visual",
@@ -435,17 +457,34 @@ export default function FloatingDockManager() {
     })
   }
 
-  const deactivateDock = () => {
+  const deactivateDock = (speakConfirmation = false) => {
+    const wasVisual = activeModeRef.current === "visual"
+    activeModeRef.current = null
     setActiveMode(null) // Immediately clear React state so the dock disappears
-    try { window.speechSynthesis.cancel() } catch (e) {}
+    if (!wasVisual) {
+      try { window.speechSynthesis.cancel() } catch (e) {}
+    }
     chrome.storage.local.set({
       sensa_visual_active: false,
       sensa_auditory_active: false,
       sensa_voice_command_active: false
     })
-    chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null })
-    if (isPopupOpenRef.current) {
-      void startVisualModeVoiceListener()
+    chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null }).catch(() => {})
+    if (isPopupOpenRef.current && wasVisual) {
+      chrome.storage.local.get(["sensa_last_tab", "sensa_auditory_active"], (res) => {
+        if (res.sensa_last_tab !== "auditory" && !res.sensa_auditory_active) {
+          try { void startVisualModeVoiceListener() } catch (e) {}
+        } else {
+          stopVisualModeVoiceListener()
+        }
+      })
+    } else {
+      stopVisualModeVoiceListener()
+    }
+    if (speakConfirmation) {
+      window.setTimeout(() => {
+        speakOverlayFeedback("Visual mode deactivated")
+      }, 100)
     }
   }
 
@@ -453,7 +492,20 @@ export default function FloatingDockManager() {
   useEffect(() => {
     chrome.storage.local.set({ sensa_speech_supported: true })
     chrome.storage.local.get(["sensa_visual_active", "sensa_auditory_active", "sensa_user_profile", "sensa_visual_reading_speed", "sensa_visual_highlight_color", "sensa_visual_input_device_id", "sensa_visual_autoscroll_enabled", "sensa_visual_highlight_mouse_screen_reader", "sensa_visual_image_alt_reader_enabled", "sensa_auditory_caption_language", "sensa_source_lang", "sensa_auditory_text_size", "sensa_auditory_caption_transparency", "sensa_auditory_focus_mode", "sensa_auditory_settings", "sensa_voice_command_active", "sensa_mode_selection_listening"], (res) => {
-      const storedMode = res.sensa_visual_active ? "visual" : res.sensa_auditory_active ? "auditory" : null
+      let storedMode: "visual" | "auditory" | null = null
+      if (res.sensa_visual_active && !res.sensa_auditory_active) {
+        storedMode = "visual"
+      } else if (res.sensa_auditory_active && !res.sensa_visual_active) {
+        storedMode = "auditory"
+      } else if (res.sensa_visual_active && res.sensa_auditory_active) {
+        // Both were active (stale collision). Respect sensa_last_tab
+        storedMode = res.sensa_last_tab === "visual" ? "visual" : "auditory"
+        chrome.storage.local.set({
+          sensa_visual_active: storedMode === "visual",
+          sensa_auditory_active: storedMode === "auditory"
+        })
+      }
+      activeModeRef.current = storedMode
       setActiveMode(storedMode)
       if (res.sensa_user_profile?.globalSettings?.theme === "dark") setUserThemePref(true)
       if (typeof res.sensa_auditory_caption_language === "string") {
@@ -507,7 +559,7 @@ export default function FloatingDockManager() {
     ) => {
       if (message.type === "sensa-health-check") {
         sendResponse({ ok: true, activeMode: activeModeRef.current })
-        return true
+        return false
       }
 
       if (message.type === "sensa-mode-selection-voice") {
@@ -538,8 +590,15 @@ export default function FloatingDockManager() {
 
       if (message.type === "sensa-visual-mode-voice") {
         if (message.action === "start") {
-          void startVisualModeVoiceListener().then((started) => {
-            sendResponse({ ok: started })
+          chrome.storage.local.get(["sensa_last_tab", "sensa_auditory_active"], (res) => {
+            if (res.sensa_last_tab === "auditory" || res.sensa_auditory_active) {
+              stopVisualModeVoiceListener()
+              sendResponse({ ok: false })
+            } else {
+              void startVisualModeVoiceListener().then((started) => {
+                sendResponse({ ok: started })
+              })
+            }
           })
         } else {
           stopVisualModeVoiceListener()
@@ -548,82 +607,99 @@ export default function FloatingDockManager() {
         return true
       }
 
-      if (message.type !== "sensa-activate-mode") return
-
-      const prevMode = activeModeRef.current
-      syncActiveMode(message.mode ?? null)
-      if (message.mode === "visual") {
-        setIsAuditorySettingsOpen(false)
-        setIsCaptionLanguageOpen(false)
-        setIsTextSizeOpen(false)
-        setIsCaptionTransparencyOpen(false)
-        setIsCaptionsActive(false)
-      }
-      if (message.mode === "auditory") {
-        setIsVisualSettingsOpen(false)
-        setIsReadingSpeedOpen(false)
-        setIsVoiceCommandActive(false)
-      }
-      if (message.mode === null) {
-        setIsVisualSettingsOpen(false)
-        setIsAuditorySettingsOpen(false)
-        setIsCaptionLanguageOpen(false)
-        setIsTextSizeOpen(false)
-        setIsCaptionTransparencyOpen(false)
-        setIsReadingSpeedOpen(false)
-        setIsVoiceCommandActive(false)
-        setIsCaptionsActive(false)
-      }
-    }
-
-    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
-      if (changes.sensa_visual_active !== undefined) {
-        const nextVisual = !!changes.sensa_visual_active.newValue
-        const prevVisual = activeModeRef.current === "visual"
-        const nextAuditory = changes.sensa_auditory_active !== undefined
-          ? !!changes.sensa_auditory_active.newValue
-          : (activeModeRef.current === "auditory")
-
-        if (nextVisual && !prevVisual) {
-          stopModeSelectionVoiceListener()
-          setIsModeSelectionVoiceActive(false)
-          stopVisualModeVoiceListener()
-          setActiveMode("visual")
-          setIsVoiceCommandActive(false)
-          setIsAuditorySettingsOpen(false)
-          setIsCaptionLanguageOpen(false)
-          setIsTextSizeOpen(false)
-          setIsCaptionTransparencyOpen(false)
-        } else if (!nextVisual && prevVisual) {
-          setActiveMode(null)
-          setIsVisualSettingsOpen(false)
-          setIsReadingSpeedOpen(false)
-          setIsVoiceCommandActive(false)
-          try { window.speechSynthesis.cancel() } catch (e) {}
-          if (isPopupOpenRef.current) {
-            void startVisualModeVoiceListener()
-          }
-        }
-      }
-      if (changes.sensa_visual_highlight_color !== undefined && typeof changes.sensa_visual_highlight_color.newValue === "string") {
-        setHighlightColor(changes.sensa_visual_highlight_color.newValue)
-      }
-      if (changes.sensa_auditory_active !== undefined) {
-        if (changes.sensa_auditory_active.newValue) {
-          stopModeSelectionVoiceListener()
-          setIsModeSelectionVoiceActive(false)
-          setActiveMode("auditory")
-          setIsVisualSettingsOpen(false)
-          setIsReadingSpeedOpen(false)
-          setIsVoiceCommandActive(false)
-        } else if (activeModeRef.current === "auditory") {
-          setActiveMode(null)
+      if (message.type === "sensa-activate-mode") {
+        const targetMode = message.mode ?? null
+        activeModeRef.current = targetMode
+        setActiveMode(targetMode)
+        if (targetMode === "visual") {
           setIsAuditorySettingsOpen(false)
           setIsCaptionLanguageOpen(false)
           setIsTextSizeOpen(false)
           setIsCaptionTransparencyOpen(false)
           setIsCaptionsActive(false)
+        } else if (targetMode === "auditory") {
+          setIsVisualSettingsOpen(false)
+          setIsReadingSpeedOpen(false)
+          setIsVoiceCommandActive(false)
+        } else {
+          setIsVisualSettingsOpen(false)
+          setIsAuditorySettingsOpen(false)
+          setIsCaptionLanguageOpen(false)
+          setIsTextSizeOpen(false)
+          setIsCaptionTransparencyOpen(false)
+          setIsReadingSpeedOpen(false)
+          setIsVoiceCommandActive(false)
+          setIsCaptionsActive(false)
         }
+        sendResponse({ ok: true })
+        return false
+      }
+    }
+
+    const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }) => {
+      const hasVisualChange = changes.sensa_visual_active !== undefined
+      const hasAuditoryChange = changes.sensa_auditory_active !== undefined
+
+      if (hasVisualChange || hasAuditoryChange) {
+        const nextVisual = hasVisualChange ? !!changes.sensa_visual_active.newValue : (activeModeRef.current === "visual")
+        const nextAuditory = hasAuditoryChange ? !!changes.sensa_auditory_active.newValue : (activeModeRef.current === "auditory")
+
+        if (nextAuditory && !nextVisual) {
+          activeModeRef.current = "auditory"
+          setActiveMode("auditory")
+          stopModeSelectionVoiceListener()
+          setIsModeSelectionVoiceActive(false)
+          stopVisualModeVoiceListener()
+          setIsVisualSettingsOpen(false)
+          setIsReadingSpeedOpen(false)
+          setIsVoiceCommandActive(false)
+          try { window.speechSynthesis.cancel() } catch (e) {}
+        } else if (nextVisual && !nextAuditory) {
+          activeModeRef.current = "visual"
+          setActiveMode("visual")
+          stopModeSelectionVoiceListener()
+          setIsModeSelectionVoiceActive(false)
+          stopVisualModeVoiceListener()
+          setIsVoiceCommandActive(false)
+          setIsAuditorySettingsOpen(false)
+          setIsCaptionLanguageOpen(false)
+          setIsTextSizeOpen(false)
+          setIsCaptionTransparencyOpen(false)
+          setIsCaptionsActive(false)
+        } else if (nextVisual && nextAuditory) {
+          const winningMode = hasAuditoryChange && changes.sensa_auditory_active.newValue ? "auditory" : "visual"
+          activeModeRef.current = winningMode
+          setActiveMode(winningMode)
+          chrome.storage.local.set({
+            sensa_visual_active: winningMode === "visual",
+            sensa_auditory_active: winningMode === "auditory"
+          })
+        } else if (!nextVisual && !nextAuditory) {
+          activeModeRef.current = null
+          setActiveMode(null)
+          setIsVisualSettingsOpen(false)
+          setIsReadingSpeedOpen(false)
+          setIsVoiceCommandActive(false)
+          setIsAuditorySettingsOpen(false)
+          setIsCaptionLanguageOpen(false)
+          setIsTextSizeOpen(false)
+          setIsCaptionTransparencyOpen(false)
+          setIsCaptionsActive(false)
+          if (isPopupOpenRef.current) {
+            chrome.storage.local.get(["sensa_last_tab", "sensa_auditory_active"], (res) => {
+              if (res.sensa_last_tab !== "auditory" && !res.sensa_auditory_active) {
+                void startVisualModeVoiceListener()
+              } else {
+                stopVisualModeVoiceListener()
+              }
+            })
+          } else {
+            stopVisualModeVoiceListener()
+          }
+        }
+      }
+      if (changes.sensa_visual_highlight_color !== undefined && typeof changes.sensa_visual_highlight_color.newValue === "string") {
+        setHighlightColor(changes.sensa_visual_highlight_color.newValue)
       }
       if (changes.sensa_auditory_caption_language !== undefined && typeof changes.sensa_auditory_caption_language.newValue === "string") {
         setCaptionLanguage(changes.sensa_auditory_caption_language.newValue)
@@ -699,6 +775,34 @@ export default function FloatingDockManager() {
     document.addEventListener("visibilitychange", handleVisibilityChange)
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
   }, [isCaptionsActive])
+
+  // Sync active mode from storage immediately when tab becomes visible or receives focus
+  useEffect(() => {
+    const syncActiveModeOnFocus = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return
+      chrome.storage.local.get(["sensa_visual_active", "sensa_auditory_active", "sensa_last_tab"], (res) => {
+        let storedMode: "visual" | "auditory" | null = null
+        if (res.sensa_visual_active && !res.sensa_auditory_active) {
+          storedMode = "visual"
+        } else if (res.sensa_auditory_active && !res.sensa_visual_active) {
+          storedMode = "auditory"
+        } else if (res.sensa_visual_active && res.sensa_auditory_active) {
+          storedMode = res.sensa_last_tab === "visual" ? "visual" : "auditory"
+        }
+        if (activeModeRef.current !== storedMode) {
+          activeModeRef.current = storedMode
+          setActiveMode(storedMode)
+        }
+      })
+    }
+
+    document.addEventListener("visibilitychange", syncActiveModeOnFocus)
+    window.addEventListener("focus", syncActiveModeOnFocus)
+    return () => {
+      document.removeEventListener("visibilitychange", syncActiveModeOnFocus)
+      window.removeEventListener("focus", syncActiveModeOnFocus)
+    }
+  }, [])
 
   // --- DRAG PHYSICS ---
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -880,6 +984,28 @@ export default function FloatingDockManager() {
       {/* Overlays mounted outside the UI root so coordinates stay viewport-relative */}
       {isAuditoryActive && isFocusMode && <FocusModeOverlay intensity={0.7} />}
 
+      {/* Screen-Edge Flash Overlay for Loud Noise Alerts (100% viewport-relative, not transformed) */}
+      {isAuditoryActive && (
+        <div
+          id="sensa-loud-noise-flash"
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: "100vw",
+            height: "100vh",
+            pointerEvents: "none",
+            zIndex: 2147483647,
+            boxSizing: "border-box",
+            opacity: 0,
+            display: "none",
+            transition: "opacity 0.05s ease-out"
+          }}
+        />
+      )}
+
       {isAuditoryActive && isCaptionsActive && (
         <CaptionFullscreenPortal>
           <LiveCaptionBox
@@ -1018,8 +1144,8 @@ export default function FloatingDockManager() {
             }}
             className="fixed right-4 top-1/2 z-[99999] font-sans"
           >
-            {isVisualActive && (
-              <SafeErrorBoundary name="VisualDock">
+            {isVisualActive && !isAuditoryActive && (
+              <SafeErrorBoundary name="VisualDock" resetKey={activeMode} key={`visual-dock-${isVisualActive}`}>
                 <VisualDock
                   isDark={isDark}
                   isMinimized={isMinimized}
@@ -1053,14 +1179,13 @@ export default function FloatingDockManager() {
                     if (viaVoice) setIsVisualSettingsOpenViaVoice(true)
                   }}
                   onClose={() => {
-                    deactivateDock()
-                    chrome.runtime.sendMessage({ type: "sensa-activate-mode", mode: null })
+                    deactivateDock(true)
                   }}
                 />
               </SafeErrorBoundary>
             )}
 
-            {isAuditoryActive && (
+            {isAuditoryActive && !isVisualActive && (
               <AuditoryDock
                 isDark={isDark}
                 isMinimized={isMinimized}
@@ -1082,7 +1207,7 @@ export default function FloatingDockManager() {
                 }}
                 onOpenSettings={() => setIsAuditorySettingsOpen(true)}
                 onClose={() => {
-                  deactivateDock()
+                  deactivateDock(false)
                   setIsCaptionLanguageOpen(false)
                   setIsTranscriptHistoryOpen(false)
                   setIsTextSizeOpen(false)

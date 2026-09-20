@@ -488,6 +488,7 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
     let ignoreSpeechUntil = 0
     let lastCommandName = ""
     let lastCommandTime = 0
+    let lastCommandTranscript = ""
     let consumedKeywords: { word: string; expires: number }[] = []
     let recognition: SpeechRecognition | null = null
     let isPermanentlyDead = false

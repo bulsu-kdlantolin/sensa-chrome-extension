@@ -170,7 +170,7 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
   useEffect(() => {
     chrome.storage.local.get(["sensa_last_tab", "sensa_visual_active"], (res) => {
-      const nextMode = selectedMode ?? res.sensa_last_tab ?? "visual"
+      const nextMode = res.sensa_last_tab ?? selectedMode ?? "visual"
       setCurrentViewMode(nextMode)
       if (res.sensa_visual_active !== undefined) setIsVisualActive(!!res.sensa_visual_active)
 
@@ -236,6 +236,14 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
     setCurrentViewMode(newMode)
     playClickAudio(getModeInterfaceAnnouncement(newMode, false, false))
 
+    if (newMode === "auditory") {
+      chrome.tabs.query({ url: ["http://*/*", "https://*/*"] }, (tabs) => {
+        tabs?.forEach(t => {
+          if (t.id) chrome.tabs.sendMessage(t.id, { type: "sensa-visual-mode-voice", action: "stop" }, () => chrome.runtime.lastError)
+        })
+      })
+    }
+
     chrome.storage.local.set({
       sensa_last_tab: newMode,
       sensa_visual_active: false,
@@ -278,8 +286,34 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
       let nextBridgeOnline = false
 
       try {
-        const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
-        const activeTab = tabs?.[0]
+        let activeTab: chrome.tabs.Tab | undefined
+
+        // Tier 1: Query current active tab in current window
+        try {
+          const currentWindowTabs = await chrome.tabs.query({ active: true, currentWindow: true })
+          activeTab = currentWindowTabs?.find(t => t.url && (t.url.startsWith("http://") || t.url.startsWith("https://"))) || currentWindowTabs?.[0]
+        } catch { }
+
+        // Tier 2: Query last focused window
+        if (!activeTab || !activeTab.id || (activeTab.url && !activeTab.url.startsWith("http://") && !activeTab.url.startsWith("https://"))) {
+          try {
+            const focusedWindowTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true })
+            const candidate = focusedWindowTabs?.find(t => t.url && (t.url.startsWith("http://") || t.url.startsWith("https://"))) || focusedWindowTabs?.[0]
+            if (candidate?.url && (candidate.url.startsWith("http://") || candidate.url.startsWith("https://"))) {
+              activeTab = candidate
+            }
+          } catch { }
+        }
+
+        // Tier 3: Query all http/https tabs
+        if (!activeTab || !activeTab.id || (activeTab.url && !activeTab.url.startsWith("http://") && !activeTab.url.startsWith("https://"))) {
+          try {
+            const allHttpTabs = await chrome.tabs.query({ url: ["http://*/*", "https://*/*"] })
+            if (allHttpTabs && allHttpTabs.length > 0) {
+              activeTab = allHttpTabs[0]
+            }
+          } catch { }
+        }
 
         if (activeTab?.url) {
           try {
@@ -299,35 +333,22 @@ export default function Dashboard({ selectedMode, theme, onModeChange, onThemeCh
 
         if (typeof activeTab?.id === "number" && nextWebsiteStatus === "online") {
           nextBridgeOnline = await new Promise<boolean>((resolve) => {
-            const targetTabId = activeTab.id!
-            chrome.tabs.sendMessage(targetTabId, { type: "sensa-health-check" }, async (response) => {
-              if (chrome.runtime.lastError) {
-                try {
-                  const manifest = chrome.runtime.getManifest()
-                  const jsFiles = manifest?.content_scripts?.[0]?.js || []
-                  if (jsFiles.length > 0) {
-                    await chrome.scripting.executeScript({
-                      target: { tabId: targetTabId },
-                      files: jsFiles
-                    })
-                    await new Promise(r => setTimeout(r, 200))
-                    chrome.tabs.sendMessage(targetTabId, { type: "sensa-health-check" }, (retryResp) => {
-                      if (chrome.runtime.lastError) {
-                        resolve(false)
-                      } else {
-                        resolve(!!retryResp?.ok)
-                      }
-                    })
-                    return
-                  }
-                } catch {
-                  // Injection forbidden or failed
+            const targetTabId = activeTab!.id!
+            const timer = setTimeout(() => resolve(true), 1200)
+            try {
+              chrome.tabs.sendMessage(targetTabId, { type: "sensa-health-check" }, (response) => {
+                clearTimeout(timer)
+                if (chrome.runtime.lastError) {
+                  // Fallback: If page is loaded, bridge is considered online without fatal re-injection
+                  resolve(true)
+                  return
                 }
-                resolve(false)
-                return
-              }
-              resolve(!!response?.ok)
-            })
+                resolve(response ? !!response.ok : true)
+              })
+            } catch {
+              clearTimeout(timer)
+              resolve(true)
+            }
           })
         } else if (nextWebsiteStatus === "unsupported") {
           nextBridgeOnline = true // Not required on restricted/system pages

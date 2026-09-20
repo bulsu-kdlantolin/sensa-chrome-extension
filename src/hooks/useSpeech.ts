@@ -428,14 +428,16 @@ export function useSpeech(
     if (isVisualModeActive) return;
 
     speechSessionRef.current += 1;
-    window.speechSynthesis.resume();
-    window.speechSynthesis.cancel();
-    setIsPlaying(false);
-    setIsPaused(false);
+    if (isPlaying || isPaused) {
+      window.speechSynthesis.resume();
+      window.speechSynthesis.cancel();
+      setIsPlaying(false);
+      setIsPaused(false);
+    }
     currentSegmentIndexRef.current = 0;
     currentCharOffsetRef.current = 0;
     clearSentenceOverlay();
-  }, [clearSentenceOverlay, isVisualModeActive]);
+  }, [clearSentenceOverlay, isVisualModeActive, isPlaying, isPaused]);
 
   const extractReadableContent = useCallback(async () => {
     let elements: HTMLElement[] = [];
@@ -772,8 +774,8 @@ export function useSpeech(
 
   const next = useCallback(() => {
     const now = Date.now();
-    if (now - lastNavExecutionTimeRef.current < 750) {
-      console.log(`%c[useSpeech] 🛑 Ignored rapid duplicate next() call (${now - lastNavExecutionTimeRef.current}ms < 750ms)`, "color: #f59e0b; font-weight: bold;");
+    if (now - lastNavExecutionTimeRef.current < 1200) {
+      console.log(`%c[useSpeech] 🛑 Ignored rapid duplicate next() call (${now - lastNavExecutionTimeRef.current}ms < 1200ms)`, "color: #f59e0b; font-weight: bold;");
       return;
     }
     lastNavExecutionTimeRef.current = now;
@@ -789,8 +791,8 @@ export function useSpeech(
 
   const prev = useCallback(() => {
     const now = Date.now();
-    if (now - lastNavExecutionTimeRef.current < 750) {
-      console.log(`%c[useSpeech] 🛑 Ignored rapid duplicate prev() call (${now - lastNavExecutionTimeRef.current}ms < 750ms)`, "color: #f59e0b; font-weight: bold;");
+    if (now - lastNavExecutionTimeRef.current < 1200) {
+      console.log(`%c[useSpeech] 🛑 Ignored rapid duplicate prev() call (${now - lastNavExecutionTimeRef.current}ms < 1200ms)`, "color: #f59e0b; font-weight: bold;");
       return;
     }
     lastNavExecutionTimeRef.current = now;

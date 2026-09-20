@@ -294,6 +294,10 @@ const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageCha
     const nextActive = !!changes.sensa_visual_active.newValue
     isCurrentlyActive = nextActive
   }
+  if (changes.sensa_last_tab?.newValue === "auditory" || changes.sensa_auditory_active?.newValue === true) {
+    tabLog("[Sensa Tab Voice Bridge] 🛑 Stopping microphone: Auditory Mode is active/selected.", "log")
+    stopVisualModeVoiceListener()
+  }
 }
 
 const attachRecognitionHandlers = (instance: SpeechRecognition) => {
@@ -516,12 +520,18 @@ export async function startVisualModeVoiceListener(): Promise<boolean> {
     return false
   }
 
-  const isVisualActive = await new Promise<boolean>((resolve) => {
-    chrome.storage.local.get(["sensa_visual_active"], (res) => {
-      resolve(!!res.sensa_visual_active)
-    })
+  const storageState = await new Promise<any>((resolve) => {
+    chrome.storage.local.get(["sensa_visual_active", "sensa_last_tab", "sensa_auditory_active"], resolve)
   })
-  isCurrentlyActive = isVisualActive
+
+  // Mic should never be accessible in Auditory Mode
+  if (storageState?.sensa_last_tab === "auditory" || storageState?.sensa_auditory_active) {
+    tabLog("[Sensa Tab Voice Bridge] 🛡️ Microphone blocked: User is in Auditory Mode.", "log")
+    stopVisualModeVoiceListener()
+    return false
+  }
+
+  isCurrentlyActive = !!storageState?.sensa_visual_active
 
   if (isActive && recognition) {
     return true

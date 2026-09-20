@@ -466,7 +466,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     const isSpeechBusy = () => window.speechSynthesis.speaking || window.speechSynthesis.pending
 
     const checkReminder = () => {
-      if (document.visibilityState !== "visible" || isSpeechBusy()) {
+      if (document.visibilityState !== "visible" || isSpeechBusy() || isReadingVoiceListRef.current || overlayStateRef.current.isVoiceDropdownOpen) {
         loopTimer = window.setTimeout(checkReminder, 1000)
         return
       }
@@ -656,6 +656,8 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       const availableVoices = window.speechSynthesis.getVoices().filter(v => {
         if (v.name.includes("Vernon")) return false;
         if (isBrave && v.name.toLowerCase().includes("harley")) return false;
+        if (/google.*uk.*english.*female/i.test(v.name)) return false;
+        if (/google.*(español|spanish).*female/i.test(v.name) || /español.*estados unidos/i.test(v.name)) return false;
         return true;
       })
       if (availableVoices.length > 0) {
@@ -828,8 +830,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       czech: ["cs", "čeština", "czech"],
       hungarian: ["hu", "magyar", "hungarian"],
       indonesian: ["id", "bahasa indonesia", "indonesian"],
-      ukrainian: ["uk", "українська", "ukrainian"],
-      english: ["en", "english"]
+      ukrainian: ["uk", "українська", "ukrainian"]
     }
 
     const voiceSelectionMatches = (text: string) => {
@@ -839,7 +840,8 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       // Avoid matching generic brand/category words on their own
       const genericWords = [
         "google", "microsoft", "apple", "english", "voice", "voices", "select",
-        "selection", "list", "male", "female", "natural", "desktop", "united", "states"
+        "selection", "list", "male", "female", "natural", "desktop", "united", "states",
+        "american", "british", "change", "choose", "pick", "option", "options", "lang", "language", "default"
       ]
       if (genericWords.includes(cleanText)) {
         return false
@@ -847,6 +849,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
       let bestVoice: SpeechSynthesisVoice | null = null
       let maxScore = 0
+      let tieCount = 0
 
       for (const voice of overlayStateRef.current.voices) {
         const fullTitle = (voice.name || "").toLowerCase()
@@ -868,13 +871,35 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           }
         }
 
-        // Check specific voice names (David, Mark, Zira, Samantha, Alex, Victoria, etc.)
+        // Check specific distinct voice names
         const specificNames = [
-          "david", "mark", "zira", "samantha", "alex", "victoria", "daniel",
+          "mark", "zira", "samantha", "alex", "victoria", "daniel",
           "fred", "karen", "mora", "rishi", "george", "hazel", "susan", "catherine"
         ]
         for (const nameKey of specificNames) {
           if (cleanText.includes(nameKey) && (fullTitle.includes(nameKey) || simpleName.includes(nameKey))) {
+            score += 200
+          }
+        }
+        // Explicit match for David ONLY if 'david' was distinctly spoken
+        if (cleanText.includes("david") && (fullTitle.includes("david") || simpleName.includes("david"))) {
+          score += 200
+        }
+        // Explicit match for US English
+        if (cleanText.includes("us english") || cleanText.includes("american") || (cleanText.includes("us") && cleanText.includes("english"))) {
+          if (simpleName.includes("us english") || fullTitle.includes("us english") || fullTitle.includes("united states")) {
+            score += 200
+          }
+        }
+
+        // UK English & Spanish specific aliases
+        if (cleanText.includes("uk english") || cleanText.includes("british") || cleanText.includes("uk")) {
+          if (simpleName.includes("uk english") || fullTitle.includes("uk english") || lang.includes("en-gb")) {
+            score += 150
+          }
+        }
+        if (cleanText.includes("spanish") || cleanText.includes("espanol")) {
+          if (simpleName.includes("spanish") || fullTitle.includes("spanish") || lang.includes("es")) {
             score += 150
           }
         }
@@ -887,11 +912,18 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
         if (score > maxScore) {
           maxScore = score
           bestVoice = voice
+          tieCount = 1
+        } else if (score === maxScore && score > 0) {
+          tieCount++
         }
       }
 
-      // Require threshold score of >= 100 to prevent premature matching on partial interim words (e.g. 'google russ', 'google kore')
-      if (!bestVoice || maxScore < 100) return false
+      // Require a clear unique winner with score >= 150!
+      // If multiple voices tied for top score, or if score < 150, the speech was ambiguous or unclear — IGNORE IT!
+      if (!bestVoice || maxScore < 150 || tieCount > 1) {
+        console.log(`%c[Sensa Settings Voice] ❓ Voice speech ambiguous or unclear (maxScore=${maxScore}, tieCount=${tieCount}). Ignoring.`, "color: #94a3b8; font-style: italic;")
+        return false
+      }
 
       const matchedVoice = bestVoice
 
@@ -909,11 +941,11 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       selectedVoiceURIRef.current = matchedVoice.voiceURI
       setSpeakingVoiceURI(matchedVoice.voiceURI)
       updateSelectedVoice(matchedVoice.voiceURI, matchedVoice.name || "")
-      setIsVoiceDropdownOpen(true)
+      setIsVoiceDropdownOpen(false)
       speakFeedback(`${simplifyVoiceName(matchedVoice.name || "")} selected`)
       setSettingsState((state) => {
         state.selectedVoiceURI = matchedVoice.voiceURI
-        state.isVoiceDropdownOpen = true
+        state.isVoiceDropdownOpen = false
       })
       ignoreSpeechUntil = Date.now() + 1500
       setTimeout(() => {
@@ -1334,6 +1366,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     if (!isVoiceGuideEnabledRef.current) return
     stopReadingVoiceList()
     isReadingVoiceListRef.current = true
+    lastUISpeechTimeRef.current = Date.now() + 120000
     window.sensa_utterances = []
 
     const currentVoices = overlayStateRef.current.voices
@@ -1755,11 +1788,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
                   const willOpen = !isVoiceDropdownOpen
                   setIsVoiceDropdownOpen(willOpen)
                   if (willOpen) {
-                    if (isVoiceGuideEnabledRef.current) {
-                      startReadingVoiceList()
-                    } else {
-                      playClickAudio("Voice selection")
-                    }
+                    playClickAudio("Voice selection")
                   } else {
                     window.speechSynthesis.cancel()
                     isReadingVoiceListRef.current = false

@@ -220,11 +220,6 @@ export default function AudioProxy() {
             }).catch(() => { })
           }, 50)
 
-          if (msg.enableSTT === false) {
-            log("-> Radar capture mode active (STT disabled).")
-            return
-          }
-
           const connectWebSocket = () => {
             if (intentionalStop) return
 
@@ -397,6 +392,11 @@ export default function AudioProxy() {
             connectWebSocket()
           }
 
+          if (msg.enableSTT === false) {
+            log("-> Radar capture mode active (STT standby).")
+            return
+          }
+
           connectWebSocket()
         } catch (err: any) {
           log(`❌ CRITICAL OFFSCREEN ERROR: ${err.message}`)
@@ -436,7 +436,24 @@ export default function AudioProxy() {
 
     const listener = (msg: any, sender: any, sendResponse: any) => {
       if (msg.type === "PING_OFFSCREEN_CAPTURE") {
-        sendResponse({ isCapturing: !intentionalStop && currentCapturedTabId === msg.targetTabId })
+        const isStreamLive = !!(activeStream && activeStream.active && activeStream.getAudioTracks().some(t => t.readyState === "live"))
+        const isSTTActive = !intentionalStop && currentCapturedTabId === msg.targetTabId && isStreamLive && !!(socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING))
+        sendResponse({
+          isCapturing: !intentionalStop && currentCapturedTabId === msg.targetTabId && isStreamLive,
+          isSTTEnabled: isSTTActive
+        })
+        return false
+      }
+      if (msg.type === "ENABLE_STT") {
+        const isStreamLive = !!(activeStream && activeStream.active && activeStream.getAudioTracks().some(t => t.readyState === "live"))
+        if (!intentionalStop && currentCapturedTabId === msg.targetTabId && isStreamLive && reconnectWebSocketFn) {
+          if (msg.targetLang) currentTargetLang = msg.targetLang
+          if (msg.sourceLang) currentSourceLang = msg.sourceLang
+          reconnectWebSocketFn()
+          sendResponse({ ok: true })
+          return false
+        }
+        sendResponse({ ok: false })
         return false
       }
       if (msg.type === "EXECUTE_OFFSCREEN_CAPTURE" || msg.type === "STOP_OFFSCREEN_CAPTURE") {
