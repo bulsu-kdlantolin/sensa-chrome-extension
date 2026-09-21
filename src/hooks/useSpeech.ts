@@ -14,6 +14,9 @@
  *    - Breaks the extracted Readability text into spoken sentence boundaries while respecting common abbreviations.
  *    - Maps the spoken words back to the physical screen coordinates using the injected `data-sensa-id` tags.
  *    - Renders absolute-positioned overlay highlights and smoothly auto-scrolls to keep the active sentence vertically centered.
+ *
+ * 3. Navigation Cooldown Guard:
+ *    - Employs a 1200ms throttle guard on `next()` and `prev()` navigation commands to prevent rapid duplicate calls from speech recognition interims.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

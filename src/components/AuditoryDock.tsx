@@ -6,13 +6,16 @@
  * 1. Audio Capture & Visualizer (`SiteAudioSystem`):
  *    - Connects directly to page `<audio>` and `<video>` HTML5 elements via `.captureStream()`.
  *    - Also listens for Web Audio API frequency packets sent by the injected `audioInterceptorMain` content script (for HTML5 games or Web Audio sites).
- *    - Performs FFT analysis to render smooth, framerate-independent audio visualizer bars.
+ *    - Performs FFT analysis to render smooth, framerate-independent audio visualizer bars directly on the dock.
  *
  * 2. Loud Noise Spike Detection:
  *    - Monitors raw instantaneous audio energy (independent of visualizer smoothing).
  *    - When sudden audio spikes occur (ratio > 2.0x baseline), it triggers a non-intrusive screen-edge flash overlay to alert deaf or hard-of-hearing users.
  *
- * 3. Dock UI & Overlays:
+ * 3. Microphone Isolation & Safety:
+ *    - Deactivates microphone speech recognition while Auditory Mode is active, preventing accidental voice commands or mode switches.
+ *
+ * 4. Dock UI & Overlays:
  *    - Renders a floating glassmorphism dock with controls for toggling live captions, opening transcript history, focus mode, and adjusting text size/transparency.
  */
 

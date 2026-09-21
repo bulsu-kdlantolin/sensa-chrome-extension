@@ -1,14 +1,16 @@
 /**
  * @file VisualSettingsModal.tsx
- * @description Configuration modal for Visual Mode, managing TTS voice selection, reading speed, highlight styling, and custom voice commands.
+ * @description Configuration modal for Visual Mode, managing TTS voice selection, reading speed, highlight styling, and voice commands.
  *
  * Architectural Overview:
  * 1. Screen Reader Customization:
  *    - Manages TTS reading speed (`sensa_visual_reading_speed`), sentence highlight color (`sensa_visual_highlight_color`), and automatic vertical scrolling (`sensa_visual_autoscroll`).
- *    - Enumerates available system speech voices (`window.speechSynthesis.getVoices`) with search/filter capabilities.
+ *    - Enumerates available system speech voices (`window.speechSynthesis.getVoices`) via centralized `voiceResolver`.
  *
- * 2. Voice Command Customization:
- *    - Allows users to define custom trigger phrases for activating/deactivating modes and controlling speech navigation (`sensa_custom_voice_commands`).
+ * 2. Intelligent Voice Selection UX:
+ *    - Differentiates manual mouse clicks (visual dropdown without reading all voices sequentially) from hands-free voice command navigation (sequential narration with auto-close upon selection).
+ *    - Curated Voice Filtering: Filters out legacy/robotic voices (Google UK English Female, Google Spanish Female) and strips redundant `"Male"` labels.
+ *    - Tie-Break Rejection: Prevents unclear voice command recognition from arbitrarily defaulting to Microsoft David.
  *
  * 3. Sensory Feedback & Persistence:
  *    - Controls sound effects (`sensa_visual_sound_effects_enabled`) and voice guide announcements (`sensa_visual_voice_guide_enabled`).

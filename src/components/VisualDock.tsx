@@ -3,9 +3,13 @@
  * @description Visual accommodation dock providing screen reading controls, voice command recognition, screen magnification, and sensory settings.
  *
  * Architectural Overview:
- * 1. Voice Command Recognition & Fuzzy Matching:
- *    - Implements Levenshtein distance calculation (`getLevenshteinDistance`) and n-gram sliding window matching (`fuzzyMatch`).
- *    - Allows robust recognition of spoken commands (e.g., "next", "previous", "play", "pause", "faster", "slower") even under slight mispronunciation or speech recognition noise.
+ * 1. Voice Command Recognition & Utterance Debounce:
+ *    - Implements Levenshtein distance calculation (`getLevenshteinDistance`), homophone mappings, and n-gram sliding window matching (`fuzzyMatch`).
+ *    - Supports navigation (`"next"`, `"previous"`, `"restart"`), playback (`"play"`, `"pause"`, `"stop"`, `"resume"`), and controls (`"speed"`, `"settings"`, `"close"`).
+ *    - Enforces an active 1500ms speech lock window (`ignoreSpeechUntil`) to discard trailing interim/final recognition slices, guaranteeing single execution per utterance.
+ *    - Implements consumed keyword queues (`consumedKeywords`) to strip executed tokens from continuous recognition streams.
+ *    - Integrates `ttsEchoFilter` to prevent synthesized computer speech from self-triggering microphone commands.
+ *    - Supports customizable wake word detection (default: `"Sensa"`).
  *
  * 2. Voice Command Visualizer (`GodTierMicIcon`):
  *    - Captures user microphone input via `getUserMedia` and Web Audio API `AnalyserNode`.

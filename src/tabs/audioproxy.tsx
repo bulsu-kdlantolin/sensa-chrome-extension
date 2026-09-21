@@ -15,6 +15,9 @@
  *    - When STT is enabled, extracts 16kHz mono linear16 PCM audio buffers using `ScriptProcessorNode`.
  *    - Streams raw PCM packets over WebSocket (`wss://sensa-chrome-extension-backend.onrender.com`) to Deepgram / Azure Translator.
  *    - Forwards returned transcription packets back to `background.ts` -> active tab via `FORWARD_TO_TAB`.
+ *
+ * 4. Automatic Session Reconnection:
+ *    - Automatically handles tab reloads via `ENABLE_STT`, re-establishing audio streams and WebSocket sessions without requiring manual dock re-activation.
  */
 
 import { useEffect } from "react"

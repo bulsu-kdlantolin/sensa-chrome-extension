@@ -1,14 +1,15 @@
 /**
  * @file TranscriptHistoryOverlay.tsx
- * @description Slide-out sidebar modal for viewing chronological live caption logs and exporting transcription archives.
+ * @description Slide-out sidebar modal for viewing chronological live caption logs and exporting transcription archives in formatted .txt and high-res .pdf.
  *
  * Architectural Overview:
  * 1. Log Management & Scroll Lock:
  *    - Renders historical subtitle blocks (`CaptionBlock`) containing both original source transcriptions and translated target texts.
  *    - Implements intelligent scroll-lock physics (`isAtBottomRef`), automatically pinning the viewport to new incoming captions unless the user scrolls up to review earlier dialogue.
  *
- * 2. Archive Export Engine:
- *    - Converts caption history into formatted plain-text archives (`.txt`) and initiates client-side file downloads via `URL.createObjectURL`.
+ * 2. Multi-Format Archive Export Engine:
+ *    - Formatted Plain-Text (`.txt`): Exports dialogue blocks with timestamps and metadata, encoded with UTF-8 Byte Order Mark (`\uFEFF`) for universal script fidelity across all text editors.
+ *    - High-Resolution Multi-Page PDF (`.pdf`): Rasterizes dialogue elements via HTML5 Canvas into `jsPDF` at 2x Device Pixel Ratio, flawlessly rendering non-Latin alphabets (Arabic, Hebrew, Japanese, Chinese, Cyrillic, Filipino, and emoji) without missing glyphs or garbled symbols.
  */
 
 import React, { useEffect, useRef, useState } from "react"
