@@ -214,14 +214,8 @@ export default function VisualWelcomeOverlay({ theme, onGetStarted }: WelcomePro
     let attempts = 0
     const checkReady = () => {
       const voices = window.speechSynthesis.getVoices()
-      const readyVoice =
-        voices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current) ||
-        voices.find((voice) => !voice.name.includes("David") && voice.name === selectedVoiceNameRef.current) ||
-        voices.find((voice) => !voice.name.includes("David") && selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
-        voices.find((voice) => voice.name.includes("Google US English")) ||
-        voices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
-        voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
-        voices[0]
+      if (voices.length === 0) return false
+      const readyVoice = resolveVoice(voices, selectedVoiceURIRef.current, selectedVoiceNameRef.current)
 
       if (readyVoice) {
         setVoiceReady(true)

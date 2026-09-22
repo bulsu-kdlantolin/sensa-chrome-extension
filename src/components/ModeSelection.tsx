@@ -16,6 +16,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import sensaLogo from "data-base64:../../assets/sensa-logo.png"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 import { isBraveBrowser } from "../lib/browserUtils"
+import { resolveVoice } from "../lib/voiceResolver"
 
 const getLevenshteinDistance = (a: string, b: string): number => {
   const tmp: number[][] = [];
@@ -366,14 +367,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
       return
     }
 
-    const preferredVoice =
-      voices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current) ||
-      voices.find((voice) => !voice.name.includes("David") && voice.name === selectedVoiceNameRef.current) ||
-      voices.find((voice) => !voice.name.includes("David") && selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
-      voices.find((voice) => voice.name.includes("Google US English")) ||
-      voices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
-      voices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
-      voices[0]
+    const preferredVoice = resolveVoice(voices, selectedVoiceURIRef.current, selectedVoiceNameRef.current)
 
     if (!preferredVoice && (selectedVoiceURIRef.current || selectedVoiceNameRef.current)) {
       pendingUtteranceRef.current = text
@@ -387,14 +381,7 @@ export default function ModeSelection({ theme, onSelectMode }: ModeSelectionProp
           }
 
           const refreshedVoices = window.speechSynthesis.getVoices()
-          const readyVoice =
-            refreshedVoices.find((voice) => !voice.name.includes("David") && voice.voiceURI === selectedVoiceURIRef.current) ||
-            refreshedVoices.find((voice) => !voice.name.includes("David") && voice.name === selectedVoiceNameRef.current) ||
-            refreshedVoices.find((voice) => !voice.name.includes("David") && selectedVoiceNameRef.current && voice.name.includes(selectedVoiceNameRef.current)) ||
-            refreshedVoices.find((voice) => voice.name.includes("Google US English")) ||
-            refreshedVoices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David")) ||
-            refreshedVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
-            refreshedVoices[0]
+          const readyVoice = resolveVoice(refreshedVoices, selectedVoiceURIRef.current, selectedVoiceNameRef.current)
 
           if (readyVoice || attempts++ >= 20) {
             window.clearInterval(voiceReadyRetryRef.current as number)

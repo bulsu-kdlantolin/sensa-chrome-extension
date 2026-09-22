@@ -16,6 +16,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { isBraveBrowser } from "../lib/browserUtils"
+import { resolveVoice } from "../lib/voiceResolver"
 
 interface VisualModeProps {
   isActiveView?: boolean
@@ -169,12 +170,8 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
       const checkAndResolve = () => {
         const voices = window.speechSynthesis.getVoices()
         if (voices.length === 0) return false
-        const hasPreferredOrGoogle =
-          (selectedVoiceURIRef.current && voices.some((v) => v.voiceURI === selectedVoiceURIRef.current && !v.name.includes("David"))) ||
-          (selectedVoiceNameRef.current && voices.some((v) => (v.name === selectedVoiceNameRef.current || v.name?.includes(selectedVoiceNameRef.current)) && !v.name.includes("David"))) ||
-          voices.some((v) => v.name.includes("Google US English")) ||
-          voices.some((v) => v.name.includes("Google"))
-        if (hasPreferredOrGoogle) {
+        const preferred = resolveVoice(voices, selectedVoiceURIRef.current, selectedVoiceNameRef.current)
+        if (preferred) {
           if (intervalId !== undefined) window.clearInterval(intervalId)
           window.speechSynthesis.removeEventListener("voiceschanged", checkAndResolve)
           resolve(voices)
@@ -235,34 +232,7 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
     }
 
     const availableVoices = await waitForVoices()
-    let preferredVoice = availableVoices.find(
-      (voice) => voice.voiceURI === selectedVoiceURIRef.current && !voice.name.includes("David")
-    )
-
-    if (!preferredVoice && selectedVoiceNameRef.current && !selectedVoiceNameRef.current.includes("David")) {
-      preferredVoice = availableVoices.find(
-        (voice) =>
-          !voice.name.includes("David") &&
-          (voice.name === selectedVoiceNameRef.current || voice.name?.includes(selectedVoiceNameRef.current))
-      )
-    }
-
-    if (!preferredVoice) {
-      preferredVoice = availableVoices.find((voice) => voice.name.includes("Google US English"))
-    }
-
-    if (!preferredVoice) {
-      preferredVoice =
-        availableVoices.find((voice) => (voice.lang === "en-US" || voice.lang.startsWith("en")) && !voice.name.includes("David") && !voice.name.includes("Mark") && !voice.name.includes("Zira")) ||
-        availableVoices.find((voice) => voice.lang === "en-US" || voice.lang.startsWith("en")) ||
-        availableVoices[0]
-    }
-
-    if (preferredVoice && !preferredVoice.name.includes("David") && !preferredVoice.name.includes("Mark") && (selectedVoiceNameRef.current?.includes("David") || selectedVoiceURIRef.current?.includes("David") || selectedVoiceNameRef.current?.includes("Mark") || selectedVoiceURIRef.current?.includes("Mark"))) {
-      chrome.storage.local.set({ sensa_visual_voice_uri: preferredVoice.voiceURI, sensa_visual_voice_name: preferredVoice.name })
-      selectedVoiceURIRef.current = preferredVoice.voiceURI
-      selectedVoiceNameRef.current = preferredVoice.name
-    }
+    const preferredVoice = resolveVoice(availableVoices, selectedVoiceURIRef.current, selectedVoiceNameRef.current)
 
     if (!preferredVoice) {
       return
@@ -272,6 +242,7 @@ export default function VisualMode({ isActiveView = true }: VisualModeProps) {
 
     const utterance = new SpeechSynthesisUtterance(message)
     utterance.voice = preferredVoice
+    utterance.lang = preferredVoice.lang
 
     utterance.rate = 1
     utterance.pitch = 1
