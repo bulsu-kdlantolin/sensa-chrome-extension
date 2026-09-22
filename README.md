@@ -1,6 +1,6 @@
 # 🌟 Sensa: Advanced Sensory & Accessibility Assistant
 
-[![Extension Version](https://img.shields.io/badge/Version-1.0.4-orange?style=for-the-badge)](https://github.com/bulsu-kdlantolin/sensa-chrome-extension)
+[![Extension Version](https://img.shields.io/badge/Version-1.0.5-orange?style=for-the-badge)](https://github.com/bulsu-kdlantolin/sensa-chrome-extension)
 [![Chrome Manifest V3](https://img.shields.io/badge/Chrome-Manifest%20V3-0052FF?style=for-the-badge&logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/mv3/)
 [![Plasmo Framework](https://img.shields.io/badge/Built%20with-Plasmo-FF7A2F?style=for-the-badge&logo=react&logoColor=white)](https://docs.plasmo.com/)
 [![React 18](https://img.shields.io/badge/React-18.2.0-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.js.org/)

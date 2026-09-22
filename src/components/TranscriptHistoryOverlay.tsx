@@ -14,7 +14,7 @@
 
 import React, { useEffect, useRef, useState } from "react"
 import type { CaptionBlock } from "../hooks/useLiveCaptions"
-import { jsPDF } from "jspdf"
+import { exportCanvasesAsPdf } from "../lib/pdfGenerator"
 
 interface TranscriptHistoryOverlayProps {
   isDark: boolean
@@ -334,19 +334,9 @@ export default function TranscriptHistoryOverlay({ isDark, captions, onClose }: 
       pageCtx.textAlign = "left"
     })
 
-    // Construct multi-page PDF using high-resolution raster canvases
-    const doc = new jsPDF({ unit: "pt", format: "a4" })
-    const pdfPageWidth = doc.internal.pageSize.getWidth()
-    const pdfPageHeight = doc.internal.pageSize.getHeight()
-
-    pages.forEach((pCanvas, pIndex) => {
-      if (pIndex > 0) doc.addPage()
-      const dataUrl = pCanvas.toDataURL("image/png")
-      doc.addImage(dataUrl, "PNG", 0, 0, pdfPageWidth, pdfPageHeight, undefined, "FAST")
-    })
-
+    // Construct multi-page PDF using zero-dependency, Manifest V3 compliant compiler
     const filename = `Sensa_Transcript_${now.toISOString().slice(0, 10)}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}.pdf`
-    doc.save(filename)
+    exportCanvasesAsPdf(pages, filename)
   }
 
   const modalBg = isDark ? "bg-[#17171A]" : "bg-white"

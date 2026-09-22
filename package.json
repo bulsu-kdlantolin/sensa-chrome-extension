@@ -1,7 +1,7 @@
 {
   "name": "sensa-chrome-extension",
   "displayName": "Sensa - Accessibility & Sensory Assistant",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Dual-mode accessibility extension with live AI subtitles, translation, text-to-speech reading, and sensory customization.",
   "author": "Sensa",
   "scripts": {
@@ -14,7 +14,6 @@
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
     "annyang": "^3.0.0",
-    "jspdf": "^4.2.1",
     "motion": "^12.38.0",
     "plasmo": "0.90.5",
     "react": "18.2.0",
@@ -38,7 +37,7 @@
     "typescript": "5.3.3"
   },
   "manifest": {
-    "version": "1.0.4",
+    "version": "1.0.5",
     "description": "Dual-mode accessibility extension with live AI subtitles, translation, text-to-speech reading, and sensory customization.",
     "permissions": [
       "scripting",
