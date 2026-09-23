@@ -23,7 +23,7 @@ import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 import { startVisualModeVoiceListener, stopVisualModeVoiceListener } from "../lib/visualModeVoiceBridge"
 import { isBraveBrowser } from "../lib/browserUtils"
 import { ttsEchoFilter } from "../lib/ttsEchoFilter"
-import { resolveVoice, updateSelectedVoice, speakWithUserVoice, simplifyVoiceName } from "../lib/voiceResolver"
+import { resolveVoice, updateSelectedVoice, speakWithUserVoice, simplifyVoiceName, matchVoiceFromSpeech } from "../lib/voiceResolver"
 
 const getLevenshteinDistance = (a: string, b: string): number => {
   const tmp: number[][] = []
@@ -839,95 +839,15 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       const cleanText = text.toLowerCase().trim()
       if (!cleanText) return false
 
-      // Avoid matching generic brand/category words on their own
-      const genericWords = [
-        "google", "microsoft", "apple", "english", "voice", "voices", "select",
-        "selection", "list", "male", "female", "natural", "desktop", "united", "states",
-        "american", "british", "change", "choose", "pick", "option", "options", "lang", "language", "default"
-      ]
-      if (genericWords.includes(cleanText)) {
+      const availableVoices = overlayStateRef.current.voices.length > 0
+        ? overlayStateRef.current.voices
+        : (typeof window !== "undefined" && window.speechSynthesis ? window.speechSynthesis.getVoices() : [])
+
+      const matchedVoice = matchVoiceFromSpeech(cleanText, availableVoices)
+
+      if (!matchedVoice) {
         return false
       }
-
-      let bestVoice: SpeechSynthesisVoice | null = null
-      let maxScore = 0
-      let tieCount = 0
-
-      for (const voice of overlayStateRef.current.voices) {
-        const fullTitle = (voice.name || "").toLowerCase()
-        const simpleName = simplifyVoiceName(voice.name || "").toLowerCase()
-        const lang = (voice.lang || "").toLowerCase()
-        let score = 0
-
-        // Exact full name or simple name match
-        if (cleanText === fullTitle || cleanText === simpleName) {
-          score += 300
-        }
-
-        // Check mapping for language keywords
-        for (const [langName, aliases] of Object.entries(LANG_MAP)) {
-          if (cleanText.includes(langName)) {
-            if (aliases.some(a => lang.startsWith(a) || fullTitle.includes(a) || simpleName.includes(a))) {
-              score += 150
-            }
-          }
-        }
-
-        // Check specific distinct voice names
-        const specificNames = [
-          "mark", "zira", "samantha", "alex", "victoria", "daniel",
-          "fred", "karen", "mora", "rishi", "george", "hazel", "susan", "catherine"
-        ]
-        for (const nameKey of specificNames) {
-          if (cleanText.includes(nameKey) && (fullTitle.includes(nameKey) || simpleName.includes(nameKey))) {
-            score += 200
-          }
-        }
-        // Explicit match for David ONLY if 'david' was distinctly spoken
-        if (cleanText.includes("david") && (fullTitle.includes("david") || simpleName.includes("david"))) {
-          score += 200
-        }
-        // Explicit match for US English
-        if (cleanText.includes("us english") || cleanText.includes("american") || (cleanText.includes("us") && cleanText.includes("english"))) {
-          if (simpleName.includes("us english") || fullTitle.includes("us english") || fullTitle.includes("united states")) {
-            score += 200
-          }
-        }
-
-        // UK English & Spanish specific aliases
-        if (cleanText.includes("uk english") || cleanText.includes("british") || cleanText.includes("uk")) {
-          if (simpleName.includes("uk english") || fullTitle.includes("uk english") || lang.includes("en-gb")) {
-            score += 150
-          }
-        }
-        if (cleanText.includes("spanish") || cleanText.includes("espanol")) {
-          if (simpleName.includes("spanish") || fullTitle.includes("spanish") || lang.includes("es")) {
-            score += 150
-          }
-        }
-
-        // Provider matching (google, microsoft, apple)
-        if (cleanText.includes("google") && fullTitle.includes("google")) score += 10
-        if (cleanText.includes("microsoft") && fullTitle.includes("microsoft")) score += 10
-        if (cleanText.includes("apple") && fullTitle.includes("apple")) score += 10
-
-        if (score > maxScore) {
-          maxScore = score
-          bestVoice = voice
-          tieCount = 1
-        } else if (score === maxScore && score > 0) {
-          tieCount++
-        }
-      }
-
-      // Require a clear unique winner with score >= 150!
-      // If multiple voices tied for top score, or if score < 150, the speech was ambiguous or unclear — IGNORE IT!
-      if (!bestVoice || maxScore < 150 || tieCount > 1) {
-        console.log(`%c[Sensa Settings Voice] ❓ Voice speech ambiguous or unclear (maxScore=${maxScore}, tieCount=${tieCount}). Ignoring.`, "color: #94a3b8; font-style: italic;")
-        return false
-      }
-
-      const matchedVoice = bestVoice
 
       // CRITICAL: If the system is currently reading this EXACT voice out loud via TTS,
       // this matches the acoustic self-echo from the speakers. Do NOT select it!
@@ -939,12 +859,13 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       // Cancel ongoing sequential TTS narration instantly if user speaks a voice name
       stopReadingVoiceList()
 
+      const displayName = simplifyVoiceName(matchedVoice.name || "")
       setSelectedVoiceURI(matchedVoice.voiceURI)
       selectedVoiceURIRef.current = matchedVoice.voiceURI
       setSpeakingVoiceURI(matchedVoice.voiceURI)
       updateSelectedVoice(matchedVoice.voiceURI, matchedVoice.name || "")
       setIsVoiceDropdownOpen(false)
-      speakFeedback(`${simplifyVoiceName(matchedVoice.name || "")} selected`)
+      speakWithUserVoice(`Voice set to ${displayName}`, { cancelPrevious: true })
       setSettingsState((state) => {
         state.selectedVoiceURI = matchedVoice.voiceURI
         state.isVoiceDropdownOpen = false
@@ -1177,6 +1098,12 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           }
         } else {
           // 6. Active voice commands for main settings
+          // Check for specific voice selection first (e.g. "Google German", "choose Google German", "David", etc.)
+          if (voiceSelectionMatches(cleanText)) {
+            applyCommand("select specific voice", [cleanText], () => {})
+            return
+          }
+
           if (check("help", "commands", "command") || fuzzyCheck("help", 1) || fuzzyCheck("command", 1)) {
             applyCommand("help", ["help", "commands", "command"], () => {
               startCommandsNarration()

@@ -241,3 +241,160 @@ export function speakWithUserVoice(
   return true
 }
 
+const VOICE_LANG_MAP: Record<string, { codes: string[]; words: string[] }> = {
+  german: { codes: ["de"], words: ["german", "deutsch", "allemand"] },
+  korean: { codes: ["ko"], words: ["korean", "한국어"] },
+  russian: { codes: ["ru"], words: ["russian", "русский"] },
+  italian: { codes: ["it"], words: ["italian", "italiano"] },
+  french: { codes: ["fr"], words: ["french", "français", "francais"] },
+  spanish: { codes: ["es"], words: ["spanish", "español", "espanol"] },
+  portuguese: { codes: ["pt"], words: ["portuguese", "português", "portugues"] },
+  japanese: { codes: ["ja"], words: ["japanese", "日本語"] },
+  chinese: { codes: ["zh"], words: ["chinese", "中文"] },
+  mandarin: { codes: ["zh"], words: ["mandarin", "普通话", "國語", "国语"] },
+  cantonese: { codes: ["zh-hk"], words: ["cantonese", "粵語", "粤语"] },
+  hindi: { codes: ["hi"], words: ["hindi", "हिन्दी"] },
+  dutch: { codes: ["nl"], words: ["dutch", "nederlands"] },
+  polish: { codes: ["pl"], words: ["polish", "polski"] },
+  tagalog: { codes: ["tl", "fil"], words: ["tagalog", "filipino"] },
+  filipino: { codes: ["fil", "tl"], words: ["filipino", "tagalog"] },
+  vietnamese: { codes: ["vi"], words: ["vietnamese", "tiếng việt"] },
+  thai: { codes: ["th"], words: ["thai", "ไทย"] },
+  turkish: { codes: ["tr"], words: ["turkish", "türkçe"] },
+  arabic: { codes: ["ar"], words: ["arabic", "العربية"] },
+  greek: { codes: ["el"], words: ["greek", "ελληνικά"] },
+  hebrew: { codes: ["he"], words: ["hebrew", "עברית"] },
+  swedish: { codes: ["sv"], words: ["swedish", "svenska"] },
+  finnish: { codes: ["fi"], words: ["finnish", "suomi"] },
+  danish: { codes: ["da"], words: ["danish", "dansk"] },
+  norwegian: { codes: ["no"], words: ["norwegian", "norsk"] },
+  czech: { codes: ["cs"], words: ["czech", "čeština"] },
+  hungarian: { codes: ["hu"], words: ["hungarian", "magyar"] },
+  indonesian: { codes: ["id"], words: ["indonesian", "bahasa indonesia"] },
+  ukrainian: { codes: ["uk"], words: ["ukrainian", "українська"] },
+  english: { codes: ["en"], words: ["english", "inglés"] }
+}
+
+const SPECIFIC_VOICE_NAMES = [
+  "david", "mark", "zira", "samantha", "alex", "victoria", "daniel",
+  "fred", "karen", "mora", "rishi", "george", "hazel", "susan", "catherine",
+  "hedda", "stefan", "katja"
+]
+
+/**
+ * Intelligent voice matching engine that extracts and resolves target voices from user speech utterances.
+ * Strips command prefixes ("choose", "select", "switch to", "voice") and scores candidate voices
+ * based on exact simplified names, language codes/keywords, and provider identifiers.
+ */
+export function matchVoiceFromSpeech(
+  text: string,
+  voices: SpeechSynthesisVoice[]
+): SpeechSynthesisVoice | null {
+  if (!text || !voices || voices.length === 0) return null
+
+  const rawClean = text.toLowerCase().trim()
+  if (!rawClean) return null
+
+  // Strip command action prefixes & filler suffixes
+  const stripped = rawClean
+    .replace(/^(choose|select|switch\s+to|change\s+to|change\s+voice\s+to|set\s+to|set\s+voice\s+to|use|pick|voice)\s+/i, "")
+    .replace(/\s+(voice|voices|please)$/i, "")
+    .trim()
+
+  if (!stripped) return null
+
+  const genericWords = [
+    "voice", "voices", "select", "selection", "list", "change", "choose", "pick", "option", "options", "default"
+  ]
+  if (genericWords.includes(stripped)) return null
+
+  let bestVoice: SpeechSynthesisVoice | null = null
+  let maxScore = 0
+  let tieCount = 0
+
+  for (const voice of voices) {
+    const fullTitle = (voice.name || "").toLowerCase()
+    const simpleName = simplifyVoiceName(voice.name || "").toLowerCase()
+    const lang = (voice.lang || "").toLowerCase()
+    let score = 0
+
+    // 1. Exact match against simplified name or full title
+    if (stripped === simpleName || stripped === fullTitle) {
+      score += 350
+    } else if (rawClean === simpleName || rawClean === fullTitle) {
+      score += 300
+    }
+
+    // 2. Substring match for simplified name (e.g. "google german" within longer utterance)
+    if (stripped.includes(simpleName) || simpleName.includes(stripped)) {
+      if (stripped.length >= 5 && simpleName.length >= 5) {
+        score += 150
+      }
+    }
+
+    // 3. Provider match
+    const hasGoogleInSpeech = stripped.includes("google") || rawClean.includes("google")
+    const hasMicrosoftInSpeech = stripped.includes("microsoft") || rawClean.includes("microsoft")
+
+    if (hasGoogleInSpeech) {
+      if (fullTitle.includes("google")) score += 60
+      else if (fullTitle.includes("microsoft")) score -= 50
+    }
+    if (hasMicrosoftInSpeech) {
+      if (fullTitle.includes("microsoft")) score += 60
+      else if (fullTitle.includes("google")) score -= 50
+    }
+
+    // 4. Language match (checking language name and aliases)
+    for (const [langKey, entry] of Object.entries(VOICE_LANG_MAP)) {
+      const speechMentionsLang =
+        stripped.includes(langKey) ||
+        rawClean.includes(langKey) ||
+        entry.words.some(w => stripped.includes(w) || rawClean.includes(w))
+
+      if (speechMentionsLang) {
+        // Only check language codes against voice.lang (prevents "Desktop" from false-matching "de")
+        if (entry.codes.some(c => lang.startsWith(c))) {
+          score += 150
+        }
+        // Check keywords against title or simple name
+        if (entry.words.some(w => fullTitle.includes(w) || simpleName.includes(w))) {
+          score += 50
+        }
+      }
+    }
+
+    // 5. Specific individual voice names
+    for (const nameKey of SPECIFIC_VOICE_NAMES) {
+      if ((stripped.includes(nameKey) || rawClean.includes(nameKey)) && (fullTitle.includes(nameKey) || simpleName.includes(nameKey))) {
+        score += 200
+      }
+    }
+
+    // 6. US / UK English nuances
+    if (stripped.includes("us english") || stripped.includes("american")) {
+      if (lang === "en-us" || fullTitle.includes("us english") || fullTitle.includes("united states")) {
+        score += 150
+      }
+    }
+
+    // 7. Small tie-breaker for Google built-in voices in Chrome
+    if (fullTitle.includes("google")) {
+      score += 5
+    }
+
+    if (score > maxScore) {
+      maxScore = score
+      bestVoice = voice
+      tieCount = 1
+    } else if (score === maxScore && score > 0) {
+      tieCount++
+    }
+  }
+
+  if (!bestVoice || maxScore < 150 || tieCount > 1) {
+    return null
+  }
+
+  return bestVoice
+}

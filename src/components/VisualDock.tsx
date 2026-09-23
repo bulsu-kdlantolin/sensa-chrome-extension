@@ -28,7 +28,7 @@ import { Tooltip } from "./Tooltip"
 import { useUIHoverAudio } from "../hooks/useUIHoverAudio"
 import { isBraveBrowser } from "../lib/browserUtils"
 import { ttsEchoFilter } from "../lib/ttsEchoFilter"
-import { resolveVoice } from "../lib/voiceResolver"
+import { resolveVoice, matchVoiceFromSpeech, simplifyVoiceName, speakWithUserVoice, updateSelectedVoice } from "../lib/voiceResolver"
 
 const DEFAULT_WAKE_WORD = "Sensa"
 
@@ -774,6 +774,21 @@ export default function VisualDock({
   const [voiceActiveBtn, setVoiceActiveBtn] = useState<string | null>(null)
   const voiceActiveTimeoutRef = useRef<number | null>(null)
 
+  const voicesRef = useRef<SpeechSynthesisVoice[]>([])
+  useEffect(() => {
+    const loadVoices = () => {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        const v = window.speechSynthesis.getVoices()
+        if (v.length > 0) voicesRef.current = v
+      }
+    }
+    loadVoices()
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.addEventListener("voiceschanged", loadVoices)
+      return () => window.speechSynthesis.removeEventListener("voiceschanged", loadVoices)
+    }
+  }, [])
+
   const isNarratingCommandsRef = useRef(false)
   const commandNarrationTimeoutRef = useRef<number | null>(null)
   const isMountedRef = useRef(true)
@@ -1376,6 +1391,7 @@ export default function VisualDock({
         case "expand": return ["expand", "maximize", "show", "open", "expend", "span"]
         case "close": return ["close", "closed", "clothes", "clos", "clause", "close dock", "close visual", "close visual mode", "close it", "exit", "shut", "dismiss", "deactivate", "deactivate visual mode", "turn off", "turn off visual mode"]
         case "deactivate-voice": return ["stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening"]
+        case "select-voice": return ["voice", "choose", "select", "switch", "change", "german", "deutsch", "david", "zira", "google", "english"]
         default: return []
       }
     }
@@ -1630,6 +1646,7 @@ export default function VisualDock({
               case "settings": callbacksRef.current.triggerVoiceHighlight?.("settings"); break;
               case "close": callbacksRef.current.triggerVoiceHighlight?.("close"); break;
               case "activate-voice": case "deactivate-voice": callbacksRef.current.triggerVoiceHighlight?.("mic"); break;
+              case "select-voice": callbacksRef.current.triggerVoiceHighlight?.("settings"); break;
             }
             const ts = new Date().toISOString().substring(11, 23)
             console.log(`%c[Sensa Dock Voice] ⚡ Executing command: "${commandName}"`, "color: #10b981; font-weight: bold; background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px;")
@@ -1855,6 +1872,21 @@ export default function VisualDock({
                 window.setTimeout(() => {
                   callbacksRef.current.onClose()
                 }, 280)
+              })
+              return true
+            }
+
+            // Rule 5: VOICE SELECTION (e.g. "Google German", "choose Google German", "switch to Microsoft David", etc.)
+            const currentVoices = voicesRef.current.length > 0
+              ? voicesRef.current
+              : (typeof window !== "undefined" && window.speechSynthesis ? window.speechSynthesis.getVoices() : [])
+
+            const matchedVoice = matchVoiceFromSpeech(cleanText, currentVoices)
+            if (matchedVoice) {
+              const displayName = simplifyVoiceName(matchedVoice.name || "")
+              applyCommand("select-voice", () => {
+                updateSelectedVoice(matchedVoice.voiceURI, matchedVoice.name || "")
+                speakWithUserVoice(`Voice set to ${displayName}`, { cancelPrevious: true })
               })
               return true
             }
