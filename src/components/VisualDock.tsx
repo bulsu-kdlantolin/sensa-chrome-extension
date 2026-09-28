@@ -841,7 +841,6 @@ export default function VisualDock({
       { key: "next", text: "Next. This skips forward." },
       { key: "prev", text: "Previous. This goes back." },
       { key: "restart", text: "Repeat. This starts reading from the beginning." },
-      { key: "magnifier", text: "Screen magnifier. This magnifies the screen." },
       { key: "speed", text: "Reading speed. This adjusts speed." },
       { key: "settings", text: "Settings. This opens settings." },
       { key: "minimize", text: "Minimize. This shrinks the dock." },
@@ -1380,7 +1379,7 @@ export default function VisualDock({
     const getKeywordsForCommand = (cmd: string) => {
       switch (cmd) {
         case "play":
-        case "read": return ["play", "resume", "continue", "start reading", "read", "reed", "reading", "start", "go", "speak", "begin"]
+        case "read": return ["play", "resume", "continue", "start reading", "read", "reed", "start", "go", "speak", "begin"]
         case "stop": return ["stop", "pause", "halt", "stop reading", "stop playing", "pause reading", "shut up", "hush", "shh", "stop it", "stahp", "cease", "freeze", "silence", "quiet"]
         case "next": return ["next", "skip", "forward", "necks", "nex", "next page", "next sentence"]
         case "previous": return ["previous", "prev", "go back", "back", "prior", "before", "preevious", "preveous", "previus", "privious", "previews", "preview", "previewing", "review", "reviews", "re view", "previous page", "previous sentence", "prior sentence", "last sentence"]
@@ -1390,7 +1389,13 @@ export default function VisualDock({
         case "minimize": return ["minimize", "collapse", "hide", "mini"]
         case "expand": return ["expand", "maximize", "show", "open", "expend", "span"]
         case "close": return ["close", "closed", "clothes", "clos", "clause", "close dock", "close visual", "close visual mode", "close it", "exit", "shut", "dismiss", "deactivate", "deactivate visual mode", "turn off", "turn off visual mode"]
-        case "deactivate-voice": return ["stop listening", "stop voice", "sleep", "mute", "quiet", "deactivate voice", "deactivate voice command", "deactivate listening"]
+        case "deactivate-voice": return [
+          "stop listening", "stop listen", "stop voice", "stop voice command", "stop voice commands",
+          "deactivate voice", "deactivate voice command", "deactivate voice commands", "deactivate listening",
+          "turn off voice", "turn off voice command", "turn off voice commands", "turn off listening",
+          "turn off mic", "turn off the mic", "disable voice", "disable voice command", "disable voice commands",
+          "disable listening", "quit listening", "end listening", "mute voice", "mute mic", "mute", "sleep"
+        ]
         case "select-voice": return ["voice", "choose", "select", "switch", "change", "german", "deutsch", "david", "zira", "google", "english"]
         default: return []
       }
@@ -1461,28 +1466,6 @@ export default function VisualDock({
         lastSpeechActivityTime = Date.now()
         resetSilenceTimer()
 
-        // Speech Debounce: drop trailing interims / echo while locked
-        if (Date.now() < ignoreSpeechUntil) {
-          return
-        }
-
-        // Utterance Boundary Lock: Result index tracking
-
-        const timeSinceCmd = Date.now() - lastCommandTime
-
-        if (event.resultIndex !== currentResultIndex) {
-          currentResultIndex = event.resultIndex
-          if (timeSinceCmd > 1600) {
-            consumedKeywords = []
-            lastCommandTranscript = ""
-            lastCommandResultIndex = -1
-          }
-        } else if (timeSinceCmd > 2500) {
-          lastCommandTranscript = ""
-          lastCommandResultIndex = -1
-          consumedKeywords = []
-        }
-
         let rawTranscript = ""
         let minConfidence = 1.0
         let hasConfidence = false
@@ -1499,6 +1482,29 @@ export default function VisualDock({
         }
         rawTranscript = rawTranscript.trim()
         if (!rawTranscript) return
+
+        const isPriorityUtterance = /\b(speed|reading\s+speed|read\s+speed|stop\s+listening|stop\s+voice|deactivate\s+voice|turn\s+off\s+voice|mute|close|exit)\b/i.test(rawTranscript)
+
+        // Speech Debounce: drop trailing interims / echo while locked (unless priority command like speed/deactivate/close)
+        if (Date.now() < ignoreSpeechUntil && !isPriorityUtterance) {
+          return
+        }
+
+        // Utterance Boundary Lock: Result index tracking
+        const timeSinceCmd = Date.now() - lastCommandTime
+
+        if (event.resultIndex !== currentResultIndex) {
+          currentResultIndex = event.resultIndex
+          if (timeSinceCmd > 1600) {
+            consumedKeywords = []
+            lastCommandTranscript = ""
+            lastCommandResultIndex = -1
+          }
+        } else if (timeSinceCmd > 2500) {
+          lastCommandTranscript = ""
+          lastCommandResultIndex = -1
+          consumedKeywords = []
+        }
 
         let hasFinal = false
         for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -1557,7 +1563,16 @@ export default function VisualDock({
             cleanText = cleanText.replace(/\s+/g, " ").trim()
           }
 
-          if (!cleanText || Date.now() < ignoreSpeechUntil) return false
+          const deactivateVoiceRegex = /\b(stop\s+listening|stop\s+listen|stop\s+voice(?:\s+commands?)?|deactivate\s+voice(?:\s+commands?)?|deactivate\s+listening|turn\s+off\s+voice(?:\s+commands?)?|turn\s+off\s+listening|turn\s+off\s+(?:the\s+)?mic(?:rophone)?|disable\s+voice(?:\s+commands?)?|disable\s+listening|quit\s+listening|end\s+listening|mute\s+voice|mute\s+mic|mute|sleep)\b/i
+          const isDeactivateCandidate = deactivateVoiceRegex.test(rawCleanText) || deactivateVoiceRegex.test(cleanText)
+
+          const speedRegex = /\b(speed|reading\s+speed|read\s+speed|voice\s+speed|reeding\s+speed|reed\s+speed|breathing\s+speed|eating\s+speed|reading\s+rate|voice\s+rate|rate)\b/i
+          const isSpeedCandidate = speedRegex.test(cleanText) || speedRegex.test(rawCleanText)
+
+          const isPriorityCandidate = isDeactivateCandidate || isSpeedCandidate
+
+          // Emergency bypass: deactivate-voice and reading speed commands MUST NEVER be blocked by echo drops or debounce locks
+          if ((!cleanText && !isPriorityCandidate) || (Date.now() < ignoreSpeechUntil && !isPriorityCandidate)) return false
 
           const ts = new Date().toISOString().substring(11, 23)
           const confLabel = hasFinal ? (hasConfidence && minConfidence > 0 ? minConfidence.toFixed(2) : "1.00") : "interim"
@@ -1693,9 +1708,20 @@ export default function VisualDock({
           }
 
           if (shouldProcessCommands) {
-            if (callbacksRef.current.isVoiceCommandActive && canToggleVoiceMode && (rawCheck("stop listening", "deactivate voice", "deactivate voice command", "deactivate listening", "stop voice", "mute"))) {
+            // Priority 1: DEACTIVATE VOICE COMMANDS (Unconditional & highest priority when voice is active)
+            const isDeactivateCommand = callbacksRef.current.isVoiceCommandActive && (
+              isDeactivateCandidate ||
+              rawCheck("stop listening", "deactivate voice", "deactivate voice command", "deactivate listening", "stop voice", "mute", "sleep") ||
+              check("stop listening", "deactivate voice", "deactivate voice command", "deactivate listening", "stop voice", "mute", "sleep")
+            )
+
+            if (isDeactivateCommand) {
+              if (commandTimeout) {
+                window.clearTimeout(commandTimeout)
+                commandTimeout = null
+              }
               applyCommand("deactivate-voice", () => {
-                lockVoiceToggle()
+                callbacksRef.current.stopCommandNarration?.()
                 callbacksRef.current.playClickAudio?.('Voice commands deactivated')
                 try { callbacksRef.current.onToggleVoiceCommand?.(false) } catch { }
               })
@@ -1727,13 +1753,13 @@ export default function VisualDock({
               })
               return true
             }
-            else if (check("speed", "reading speed", "read speed", "breathing speed", "eating speed", "reeding speed", "reed speed") || fuzzyCheck("speed", 1)) {
+            else if (isSpeedCandidate || check("speed", "reading speed", "read speed", "voice speed", "breathing speed", "eating speed", "reeding speed", "reed speed") || fuzzyCheck("speed", 1)) {
               if (commandTimeout) {
                 window.clearTimeout(commandTimeout)
                 commandTimeout = null
               }
-              // If read was triggered within the last 650ms due to an overlapping race condition, cancel it immediately
-              if (lastCommandName === "read" && Date.now() - lastCommandTime < 650) {
+              // If read was triggered within the last 1500ms due to an overlapping race condition, cancel it immediately
+              if (lastCommandName === "read" && Date.now() - lastCommandTime < 1500) {
                 callbacksRef.current.handleStopReading()
               }
               applyCommand("speed", () => {
@@ -1752,8 +1778,8 @@ export default function VisualDock({
             const restartMatch = cleanText.match(/\b(restart|repeat|re start|re-start|replay|rewind|i start|first start|let s start)\b/i)
             const nextMatch = cleanText.match(/\b(next|necks|nex|skip|forward|next page|next sentence)\b/i)
             const prevMatch = cleanText.match(/\b(previous|prev|back|go back|prior|before|preevious|preveous|previus|privious|previews|preview|previewing|review|reviews|re view|previous page|previous sentence|prior sentence|last sentence)\b/i)
-            const stopMatch = cleanText.match(/\b(stop|pause|stop reading|stop playing|paused|pause reading|stahp)\b/i)
-            const readMatch = cleanText.match(/\b(read|reed|reading|play|resume|continue|start reading)\b/i)
+            const stopMatch = !isDeactivateCandidate && cleanText.match(/\b(stop|pause|stop reading|stop playing|paused|pause reading|stahp)\b/i)
+            const readMatch = !isSpeedCandidate && cleanText.match(/\b(read|reed|play|resume|continue|start reading)\b/i)
 
             if (restartMatch) {
               currentMatchedKeyword = restartMatch[0].toLowerCase()
@@ -1780,9 +1806,9 @@ export default function VisualDock({
             else if (((callbacksRef.current.isPlaying && !callbacksRef.current.isPaused) || callbacksRef.current.isPlayOptimistic || stopMatch) && stopMatch) {
               currentMatchedKeyword = stopMatch[0].toLowerCase()
 
-              // If it's just "stop" alone, delay briefly to allow "stop listening" to arrive
-              const isSingleWordStop = cleanText === "stop" || cleanText === "pause" || cleanText === "stahp"
-              if (isSingleWordStop && callbacksRef.current.isVoiceCommandActive) {
+              // If it's just "stop" alone, delay briefly to allow compound "stop listening" to arrive
+              const isPotentialStopVoicePrefix = cleanText === "stop" || cleanText === "stahp"
+              if (isPotentialStopVoicePrefix && callbacksRef.current.isVoiceCommandActive) {
                 if (commandTimeout) {
                   window.clearTimeout(commandTimeout)
                   commandTimeout = null
@@ -1792,7 +1818,7 @@ export default function VisualDock({
                   applyCommand("stop", () => {
                     callbacksRef.current.handleStopReading()
                   })
-                }, 280)
+                }, 500)
                 return true
               }
 
@@ -1802,7 +1828,7 @@ export default function VisualDock({
               return true
             }
             else if (((!callbacksRef.current.isPlaying || callbacksRef.current.isPaused) || !callbacksRef.current.isPlayOptimistic || readMatch) && readMatch) {
-              if (check("speed", "reading speed", "read speed", "breathing speed", "eating speed", "reeding speed", "reed speed") || fuzzyCheck("speed", 1)) {
+              if (isSpeedCandidate || check("speed", "reading speed", "read speed", "voice speed", "breathing speed", "eating speed", "reeding speed", "reed speed") || fuzzyCheck("speed", 1)) {
                 if (commandTimeout) {
                   window.clearTimeout(commandTimeout)
                   commandTimeout = null
@@ -1816,16 +1842,17 @@ export default function VisualDock({
 
               currentMatchedKeyword = readMatch[0].toLowerCase()
               const matchedWord = currentMatchedKeyword
-              const isPotentialSpeedPrefix = matchedWord === "reading" || matchedWord === "reeding"
+              const isPotentialSpeedPrefix = matchedWord === "read" || matchedWord === "reed"
 
-              if (isPotentialSpeedPrefix) {
-                // Only if user said "reading" alone, briefly pause to see if "speed" is next
+              // If the user says "read" alone, wait for utterance completion or 850ms before starting reading,
+              // ensuring compound commands like "read speed" or "reading speed" have time to complete.
+              if (isPotentialSpeedPrefix && !hasFinal) {
                 commandTimeout = window.setTimeout(() => {
                   commandTimeout = null
                   applyCommand("read", () => {
                     callbacksRef.current.handleStartReading()
                   })
-                }, 280)
+                }, 850)
                 return true
               }
 

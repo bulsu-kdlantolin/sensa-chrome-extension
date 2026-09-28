@@ -730,8 +730,9 @@ export default function ReadingSpeedOverlay({ onClose, initialSpeed = 1, onSpeed
         }
 
         // 3. Voice command deactivation
-        if (check("stop listening", "deactivate voice", "deactivate voice command", "deactivate listening")) {
-          applyCommand("deactivate-voice", ["stop listening", "deactivate voice", "deactivate voice command", "deactivate listening"], () => {
+        const deactivateVoiceRegex = /\b(stop\s+listening|stop\s+listen|stop\s+voice(?:\s+commands?)?|deactivate\s+voice(?:\s+commands?)?|deactivate\s+listening|turn\s+off\s+voice(?:\s+commands?)?|turn\s+off\s+listening|turn\s+off\s+(?:the\s+)?mic(?:rophone)?|disable\s+voice(?:\s+commands?)?|disable\s+listening|quit\s+listening|end\s+listening|mute\s+voice|mute\s+mic|mute|sleep)\b/i
+        if (deactivateVoiceRegex.test(cleanText) || check("stop listening", "deactivate voice", "deactivate voice command", "deactivate listening", "stop voice", "mute")) {
+          applyCommand("deactivate-voice", ["stop listening", "deactivate voice", "deactivate voice command", "deactivate listening", "stop voice", "mute"], () => {
             wrappedPlayClickAudio("Voice commands deactivated")
             onToggleVoiceCommand?.()
           })

@@ -27,7 +27,8 @@ const COMMAND_HOMOPHONES: Record<string, string[]> = {
 // Critical exit/close words that must NEVER be suppressed by the acoustic echo filter.
 // Users must always be able to close overlays and modals without any delay or suppression.
 const NEVER_ECHO_FILTER = new Set([
-  "close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back", "done", "finish", "deactivate", "deactivated"
+  "close", "closed", "clothes", "clos", "exit", "shut", "leave", "cancel", "dismiss", "back", "done", "finish", "deactivate", "deactivated",
+  "listening", "listen", "mute", "sleep", "voice", "speed", "rate"
 ])
 
 // Reverse lookup: any variant points to its full cluster
