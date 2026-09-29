@@ -22,6 +22,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Readability } from "@mozilla/readability";
 import { resolveVoice } from "../lib/voiceResolver";
+import { ttsEchoFilter } from "../lib/ttsEchoFilter";
 
 declare global {
   interface Window {
@@ -606,6 +607,9 @@ export function useSpeech(
       const utterance = new SpeechSynthesisUtterance(speechText);
       utterance.rate = getSpeechRate(readingSpeed);
 
+      // Register upcoming article segment into the echo lookahead filter
+      ttsEchoFilter.registerArticleSegment(speechText, utterance.rate);
+
       const availableVoices = window.speechSynthesis.getVoices();
       if (availableVoices.length > 0) {
         const preferredVoice = resolveVoice(availableVoices, selectedVoiceURIRef.current, selectedVoiceNameRef.current);
@@ -622,6 +626,7 @@ export function useSpeech(
 
       utterance.onboundary = (event) => {
         if (sessionId !== speechSessionRef.current) return;
+        ttsEchoFilter.notifyBoundary(event.charIndex, event.charLength);
         const boundaryIndex = Math.min(
           Math.max(0, event.charIndex ?? 0),
           Math.max(0, normalizedToSource.length - 1)
@@ -632,6 +637,7 @@ export function useSpeech(
 
       utterance.onend = () => {
         if (sessionId !== speechSessionRef.current) return;
+        ttsEchoFilter.clearArticleSegment();
 
         const oldIndex = currentSegmentIndexRef.current;
         const nextIndex = findAdjacentSegment(oldIndex, 1);
@@ -651,6 +657,7 @@ export function useSpeech(
 
       utterance.onerror = (e) => {
         if (sessionId !== speechSessionRef.current) return;
+        ttsEchoFilter.clearArticleSegment();
         if (e.error !== "canceled" && e.error !== "interrupted") {
           console.error("Speech error:", e);
         }
@@ -718,6 +725,7 @@ export function useSpeech(
     return () => {
       window.clearTimeout(timeout);
       speechSessionRef.current += 1;
+      ttsEchoFilter.clearArticleSegment();
       window.speechSynthesis.resume();
       window.speechSynthesis.cancel();
       clearSentenceOverlay();
@@ -750,6 +758,7 @@ export function useSpeech(
     if (!segmentsRef.current.length) return;
 
     if (isPlaying && !isPaused) {
+      ttsEchoFilter.clearArticleSegment();
       speechSessionRef.current += 1;
       window.speechSynthesis.resume();
       window.speechSynthesis.cancel();
@@ -817,6 +826,7 @@ export function useSpeech(
   }, [extractReadableContent, speakAtSegment]);
 
   const pauseSpeech = useCallback(() => {
+    ttsEchoFilter.clearArticleSegment();
     speechSessionRef.current += 1;
     window.speechSynthesis.resume();
     window.speechSynthesis.cancel();
