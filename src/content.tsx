@@ -612,6 +612,12 @@ export default function FloatingDockManager() {
         activeModeRef.current = targetMode
         setActiveMode(targetMode)
         if (targetMode === "visual") {
+          stopVisualModeVoiceListener()
+          stopModeSelectionVoiceListener()
+          stopWelcomeVoiceListener()
+          setIsModeSelectionVoiceActive(false)
+          setIsVoiceCommandActive(false)
+          chrome.storage.local.set({ sensa_voice_command_active: false })
           setIsAuditorySettingsOpen(false)
           setIsCaptionLanguageOpen(false)
           setIsTextSizeOpen(false)
@@ -661,6 +667,7 @@ export default function FloatingDockManager() {
           setIsModeSelectionVoiceActive(false)
           stopVisualModeVoiceListener()
           setIsVoiceCommandActive(false)
+          chrome.storage.local.set({ sensa_voice_command_active: false })
           setIsAuditorySettingsOpen(false)
           setIsCaptionLanguageOpen(false)
           setIsTextSizeOpen(false)
@@ -1073,6 +1080,7 @@ export default function FloatingDockManager() {
                   return next
                 })
               }}
+              openedViaVoice={isReadingSpeedOpenViaVoice}
             />
           </SafeErrorBoundary>
         )}
@@ -1172,7 +1180,6 @@ export default function FloatingDockManager() {
                   onOpenReadingSpeed={(viaVoice) => {
                     setIsReadingSpeedOpen(true)
                     if (viaVoice) setIsReadingSpeedOpenViaVoice(true)
-                    speakOverlayFeedback("Reading speed opened")
                   }}
                   onOpenSettings={(viaVoice) => {
                     setIsVisualSettingsOpen(true)

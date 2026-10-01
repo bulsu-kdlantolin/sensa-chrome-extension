@@ -792,15 +792,12 @@ export default function VisualDock({
   const isNarratingCommandsRef = useRef(false)
   const commandNarrationTimeoutRef = useRef<number | null>(null)
   const isMountedRef = useRef(true)
-
-  useEffect(() => {
-    isMountedRef.current = true
-    return () => {
-      isMountedRef.current = false
-    }
-  }, [])
+  const narrationSessionRef = useRef(0)
+  const activeNarrationUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const lastCommandsSpokenAtRef = useRef(0)
 
   const stopCommandNarration = useCallback(() => {
+    narrationSessionRef.current += 1
     isNarratingCommandsRef.current = false
     if (commandNarrationTimeoutRef.current !== null) {
       window.clearTimeout(commandNarrationTimeoutRef.current)
@@ -811,6 +808,12 @@ export default function VisualDock({
       voiceActiveTimeoutRef.current = null
     }
     setVoiceActiveBtn(null)
+    if (activeNarrationUtteranceRef.current) {
+      activeNarrationUtteranceRef.current.onend = null
+      activeNarrationUtteranceRef.current.onerror = null
+      activeNarrationUtteranceRef.current.onstart = null
+      activeNarrationUtteranceRef.current = null
+    }
     try {
       if (typeof window !== "undefined" && window.speechSynthesis) {
         window.speechSynthesis.cancel()
@@ -818,21 +821,26 @@ export default function VisualDock({
     } catch (e) {}
   }, [])
 
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      stopCommandNarration()
+    }
+  }, [stopCommandNarration])
+
   const startCommandsNarration = useCallback(() => {
     cancelHoverAudio?.()
-    try {
-      if (typeof window !== "undefined" && window.speechSynthesis) {
-        window.speechSynthesis.cancel()
-      }
-    } catch (e) {}
     stopCommandNarration()
+
+    const currentSession = ++narrationSessionRef.current
+    isNarratingCommandsRef.current = true
+    lastCommandsSpokenAtRef.current = Date.now()
+    lastVoiceReminderSpokenAtRef.current = Date.now() + 90000
 
     if (callbacksRef.current.isMinimized) {
       callbacksRef.current.onMinimizeToggle?.()
     }
-
-    isNarratingCommandsRef.current = true
-    lastVoiceReminderSpokenAtRef.current = Date.now() + 90000
 
     const commandSteps: Array<{ key: string | null; text: string }> = [
       { key: null, text: "Here are the commands." },
@@ -848,7 +856,7 @@ export default function VisualDock({
     ]
 
     chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
-      if (!isNarratingCommandsRef.current) return
+      if (narrationSessionRef.current !== currentSession || !isMountedRef.current) return
       const voiceURI = typeof res.sensa_visual_voice_uri === "string" ? res.sensa_visual_voice_uri : ""
       const voiceName = typeof res.sensa_visual_voice_name === "string" ? res.sensa_visual_voice_name : ""
 
@@ -856,7 +864,7 @@ export default function VisualDock({
       const preferredVoice = resolveVoice(voices, voiceURI, voiceName)
 
       const speakStep = (index: number) => {
-        if (!isNarratingCommandsRef.current || !isMountedRef.current) return
+        if (narrationSessionRef.current !== currentSession || !isMountedRef.current) return
         if (index >= commandSteps.length) {
           stopCommandNarration()
           return
@@ -869,6 +877,10 @@ export default function VisualDock({
         }
         setVoiceActiveBtn(step.key)
         console.log(`%c[Sensa Commands Guide] 🗣️ Announcing (${index + 1}/${commandSteps.length}): "${step.text}" (Key: ${step.key || 'none'})`, "color: #38bdf8; font-weight: bold;")
+        
+        lastUISpeechTimeRef.current = Date.now()
+        lastUISpeechDurationRef.current = Math.max(1600, step.text.length * 90)
+
         try { window.speechSynthesis.resume() } catch (e) {}
 
         const utterance = new SpeechSynthesisUtterance(step.text)
@@ -878,17 +890,20 @@ export default function VisualDock({
         }
         utterance.rate = 0.88
 
+        activeNarrationUtteranceRef.current = utterance
+
         let advanced = false
         const advance = () => {
           if (advanced) return
           advanced = true
+          if (narrationSessionRef.current !== currentSession || !isMountedRef.current) return
           if (commandNarrationTimeoutRef.current !== null) {
             window.clearTimeout(commandNarrationTimeoutRef.current)
             commandNarrationTimeoutRef.current = null
           }
-          if (!isNarratingCommandsRef.current || !isMountedRef.current) return
+          activeNarrationUtteranceRef.current = null
           commandNarrationTimeoutRef.current = window.setTimeout(() => {
-            if (!isNarratingCommandsRef.current || !isMountedRef.current) return
+            if (narrationSessionRef.current !== currentSession || !isMountedRef.current) return
             speakStep(index + 1)
           }, 140)
         }
@@ -907,7 +922,7 @@ export default function VisualDock({
 
       speakStep(0)
     })
-  }, [stopCommandNarration])
+  }, [stopCommandNarration, cancelHoverAudio])
 
   const triggerVoiceHighlight = useCallback((btnKey: string) => {
     setVoiceActiveBtn(btnKey)
@@ -1359,6 +1374,7 @@ export default function VisualDock({
     let restartTimer: number | null = null
     let voiceToggleLockUntil = 0
     let isPermanentlyDead = false
+    let consecutiveNotAllowedCount = 0
     let silenceTimer: number | null = null
     let commandTimeout: number | null = null
     let currentResultIndex = 0
@@ -1453,6 +1469,7 @@ export default function VisualDock({
       instance.lang = 'en-US'
 
       instance.onstart = () => {
+        consecutiveNotAllowedCount = 0
         lastSpeechActivityTime = Date.now()
         currentResultIndex = 0
         executedResultIndex = -1
@@ -1530,8 +1547,12 @@ export default function VisualDock({
 
         // Prevent Chrome memory leak from prolonged continuous speech recognition
         if (event.results.length > 40) {
-          teardownRecognition()
-          scheduleRestart(150)
+          try {
+            instance.stop()
+          } catch (e) {
+            teardownRecognition()
+            scheduleRestart(200)
+          }
           return
         }
 
@@ -1539,9 +1560,10 @@ export default function VisualDock({
           let rawCleanText = normalizeInput(text)
 
           // Block feedback loops from the system's own speech for the "help/commands" trigger words
-          const systemRecentlySpoke = Date.now() - lastUISpeechTimeRef.current < lastUISpeechDurationRef.current
+          const isCurrentlyNarrating = isNarratingCommandsRef.current
+          const systemRecentlySpoke = isCurrentlyNarrating || (Date.now() - lastUISpeechTimeRef.current < lastUISpeechDurationRef.current)
           if (systemRecentlySpoke) {
-            rawCleanText = rawCleanText.replace(/\b(help|commands|command)\b/gi, " ")
+            rawCleanText = rawCleanText.replace(/\b(help|commands|command|guide|instructions)\b/gi, " ")
           }
 
           let cleanText = rawCleanText
@@ -1597,6 +1619,18 @@ export default function VisualDock({
 
           const applyCommand = (commandName: string, action: () => void) => {
             const timeSinceLastCmd = Date.now() - lastCommandTime
+
+            // Automatically cancel commands guide narration on any action command
+            if (commandName !== "help") {
+              callbacksRef.current.stopCommandNarration?.()
+            } else {
+              // Deduplicate rapid "commands" triggers (e.g. repeated utterances or acoustic self-echo)
+              if (timeSinceLastCmd < 2000 || Date.now() - lastCommandsSpokenAtRef.current < 2000) {
+                const ts = new Date().toISOString().substring(11, 23)
+                console.log(`%c[Sensa Dock Voice] ⏸️ Ignored duplicate/rapid 'commands' trigger (within 2000ms cooldown)`, "color: #f59e0b; font-weight: bold;")
+                return
+              }
+            }
 
             const isNavCommand = (cmd: string) => cmd === "next" || cmd === "previous" || cmd === "prev" || cmd === "restart"
             const wasNavCommand = isNavCommand(lastCommandName)
@@ -1935,16 +1969,22 @@ export default function VisualDock({
           scheduleRestart(250)
           return
         }
-        console.error("[Sensa VisualDock SpeechRecognition Error]", event.error)
+        console.warn("[Sensa VisualDock SpeechRecognition Error]", event.error)
         if (event.error === "not-allowed") {
-          isPermanentlyDead = true
+          consecutiveNotAllowedCount++
+          if (consecutiveNotAllowedCount > 5) {
+            console.error("[Sensa VisualDock] Microphone access not allowed after 5 retries.")
+            isPermanentlyDead = true
+            return
+          }
+          scheduleRestart(1000 * consecutiveNotAllowedCount)
           return
         }
         if (event.error === "service-not-allowed" || event.error === "network" || event.error === "audio-capture") {
           scheduleRestart(600)
           return
         }
-        scheduleRestart(150)
+        scheduleRestart(250)
       }
 
       instance.onend = () => {
@@ -1954,7 +1994,7 @@ export default function VisualDock({
       try {
         instance.start()
       } catch (e: any) {
-        scheduleRestart(150)
+        scheduleRestart(250)
       }
     }
 
@@ -1999,22 +2039,22 @@ export default function VisualDock({
       if (!isComponentMounted || isVoiceCommandsSuspended || !isTabVisible) return
 
       const now = Date.now()
-      if (now - lastRevivedTime < 1200) return
+      if (now - lastRevivedTime < 1500) return
 
-      if (force || isPermanentlyDead || !recognition || (now - lastSpeechActivityTime > 3000)) {
+      // Only restart if explicitly forced (window focus / visibility return) or if recognition object is missing/dead
+      if (force || isPermanentlyDead || !recognition) {
         console.log("%c[Sensa Dock Voice] 🔄 Window refocused / recovering speech engine...", "color: #38bdf8; font-weight: bold;")
         lastRevivedTime = now
         lastSpeechActivityTime = now
         isPermanentlyDead = false
+        consecutiveNotAllowedCount = 0
         buildAndStart()
       }
     }
-    const handleClick = () => reviveEngine(false)
     const handleFocus = () => reviveEngine(true)
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") reviveEngine(true)
     }
-    window.addEventListener("click", handleClick)
     window.addEventListener("focus", handleFocus)
     window.addEventListener("visibilitychange", handleVisibilityChange)
 
@@ -2029,7 +2069,6 @@ export default function VisualDock({
         try { window.speechSynthesis.cancel() } catch (e) {}
       }
       resetSilenceTimerRef.current = null
-      window.removeEventListener("click", handleClick)
       window.removeEventListener("focus", handleFocus)
       window.removeEventListener("visibilitychange", handleVisibilityChange)
       if (restartTimer) window.clearTimeout(restartTimer)

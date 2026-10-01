@@ -87,24 +87,55 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
   const isNarratingCommandsRef = useRef(false)
   const commandNarrationTimeoutRef = useRef<number | null>(null)
+  const isMountedRef = useRef(true)
+  const narrationSessionRef = useRef(0)
+  const activeNarrationUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
+  const lastCommandsSpokenAtRef = useRef(0)
+  const lastUISpeechTimeRef = useRef(0)
+  const lastUISpeechDurationRef = useRef(0)
 
   const stopCommandNarration = useCallback(() => {
+    narrationSessionRef.current += 1
     isNarratingCommandsRef.current = false
     if (commandNarrationTimeoutRef.current !== null) {
       window.clearTimeout(commandNarrationTimeoutRef.current)
       commandNarrationTimeoutRef.current = null
     }
+    if (voiceActiveTimeoutRef.current !== null) {
+      window.clearTimeout(voiceActiveTimeoutRef.current)
+      voiceActiveTimeoutRef.current = null
+    }
     setVoiceActiveBtn(null)
+    if (activeNarrationUtteranceRef.current) {
+      activeNarrationUtteranceRef.current.onend = null
+      activeNarrationUtteranceRef.current.onerror = null
+      activeNarrationUtteranceRef.current.onstart = null
+      activeNarrationUtteranceRef.current = null
+    }
+    try {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel()
+      }
+    } catch (e) {}
   }, [])
 
-  const startCommandsNarration = useCallback(() => {
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      window.speechSynthesis.cancel()
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+      stopCommandNarration()
+      if (voiceActiveTimeoutRef.current) window.clearTimeout(voiceActiveTimeoutRef.current)
     }
+  }, [stopCommandNarration])
+
+  const startCommandsNarration = useCallback(() => {
     stopCommandNarration()
     isReadingVoiceListRef.current = false
     setSpeakingVoiceURI(null)
+
+    const currentSession = ++narrationSessionRef.current
     isNarratingCommandsRef.current = true
+    lastCommandsSpokenAtRef.current = Date.now()
 
     const commandSteps: Array<{ key: string | null; text: string }> = [
       { key: null, text: "Here are the commands." },
@@ -114,7 +145,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     ]
 
     chrome.storage.local.get(["sensa_visual_voice_uri", "sensa_visual_voice_name"], (res) => {
-      if (!isNarratingCommandsRef.current) return
+      if (narrationSessionRef.current !== currentSession || !isMountedRef.current) return
       const voiceURI = typeof res.sensa_visual_voice_uri === "string" ? res.sensa_visual_voice_uri : ""
       const voiceName = typeof res.sensa_visual_voice_name === "string" ? res.sensa_visual_voice_name : ""
 
@@ -122,7 +153,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
       const preferredVoice = resolveVoice(currentVoices, voiceURI, voiceName)
 
       const speakStep = (index: number) => {
-        if (!isNarratingCommandsRef.current) return
+        if (narrationSessionRef.current !== currentSession || !isMountedRef.current) return
         if (index >= commandSteps.length) {
           stopCommandNarration()
           return
@@ -135,6 +166,10 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
         }
         setVoiceActiveBtn(step.key)
         console.log(`%c[Sensa Settings Commands] 🗣️ Announcing (${index + 1}/${commandSteps.length}): "${step.text}" (Key: ${step.key || 'none'})`, "color: #38bdf8; font-weight: bold;")
+        
+        lastUISpeechTimeRef.current = Date.now()
+        lastUISpeechDurationRef.current = Math.max(1600, step.text.length * 90)
+
         try { window.speechSynthesis.resume() } catch (e) {}
 
         const utterance = new SpeechSynthesisUtterance(step.text)
@@ -144,16 +179,20 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
         }
         utterance.rate = 0.88
 
+        activeNarrationUtteranceRef.current = utterance
+
         let advanced = false
         const advance = () => {
           if (advanced) return
           advanced = true
+          if (narrationSessionRef.current !== currentSession || !isMountedRef.current) return
           if (commandNarrationTimeoutRef.current !== null) {
             window.clearTimeout(commandNarrationTimeoutRef.current)
             commandNarrationTimeoutRef.current = null
           }
-          if (!isNarratingCommandsRef.current) return
+          activeNarrationUtteranceRef.current = null
           commandNarrationTimeoutRef.current = window.setTimeout(() => {
+            if (narrationSessionRef.current !== currentSession || !isMountedRef.current) return
             speakStep(index + 1)
           }, 140)
         }
@@ -180,12 +219,6 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
     voiceActiveTimeoutRef.current = window.setTimeout(() => {
       setVoiceActiveBtn(null)
     }, 450)
-  }, [])
-
-  useEffect(() => {
-    return () => {
-      if (voiceActiveTimeoutRef.current) window.clearTimeout(voiceActiveTimeoutRef.current)
-    }
   }, [])
   const audioCtxRef = useRef<AudioContext | null>(null)
   const [isVoiceGuideEnabled, setIsVoiceGuideEnabled] = useState<boolean>(true)
@@ -397,7 +430,6 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const selectedVoiceURIRef = useRef(selectedVoiceURI)
   const hasAnnouncedOpenRef = useRef(false)
   const speakSettingsGuideRef = useRef<(message: string) => void>(() => { })
-  const lastUISpeechTimeRef = useRef(0)
 
   useEffect(() => {
     selectedVoiceURIRef.current = selectedVoiceURI
@@ -406,6 +438,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
   const speakSettingsGuide = React.useCallback((message: string) => {
     if (!message.trim()) return
     lastUISpeechTimeRef.current = Date.now()
+    lastUISpeechDurationRef.current = Math.max(1500, message.length * 80)
     speakWithUserVoice(message, { cancelPrevious: true })
   }, [])
 
@@ -954,6 +987,13 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
           cleanText = cleanText.replace(new RegExp(p, "gi"), " ")
         }
 
+        // Block feedback loops from the system's own speech for the "help/commands" trigger words
+        const isCurrentlyNarrating = isNarratingCommandsRef.current
+        const systemRecentlySpoke = isCurrentlyNarrating || (Date.now() - lastUISpeechTimeRef.current < (lastUISpeechDurationRef.current || 2000))
+        if (systemRecentlySpoke) {
+          cleanText = cleanText.replace(/\b(help|commands|command|guide|instructions)\b/gi, " ")
+        }
+
         // Suppress acoustic self-echo from TTS
         const { cleanText: echoFilteredText, isEcho, droppedWords } = ttsEchoFilter.filterTranscript(cleanText)
         if (isEcho) {
@@ -986,8 +1026,17 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
         let matchedCmd = false
 
         const applyCommand = (commandName: string, keywordsToConsume: string[], action: () => void, customExpires = 1200) => {
-          if (commandName !== "help") stopCommandNarration()
           const timeSinceLastCommand = Date.now() - lastCommandTime
+
+          if (commandName !== "help") {
+            stopCommandNarration()
+          } else {
+            // Deduplicate rapid "commands" triggers (e.g. repeated utterances or acoustic self-echo)
+            if (timeSinceLastCommand < 2000 || Date.now() - lastCommandsSpokenAtRef.current < 2000) {
+              console.log(`%c[Sensa Settings Voice] ⏸️ Ignored duplicate/rapid 'commands' trigger (within 2000ms cooldown)`, "color: #f59e0b; font-weight: bold;")
+              return
+            }
+          }
           if (commandName === lastCommandName) {
             if (currentResultIndex === lastCommandResultIndex) {
               return
@@ -1285,6 +1334,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
   const previewVoice = (voice: SpeechSynthesisVoice) => {
     if (isReadingVoiceListRef.current) return
+    stopCommandNarration()
     window.speechSynthesis.cancel()
     const utterance = new SpeechSynthesisUtterance(simplifyVoiceName(voice.name))
     utterance.voice = voice
@@ -1294,6 +1344,7 @@ export default function VisualSettingsModal({ onClose, isDark = false, isVoiceCo
 
   const startReadingVoiceList = () => {
     if (!isVoiceGuideEnabledRef.current) return
+    stopCommandNarration()
     stopReadingVoiceList()
     isReadingVoiceListRef.current = true
     lastUISpeechTimeRef.current = Date.now() + 120000

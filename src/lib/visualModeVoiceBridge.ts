@@ -231,6 +231,7 @@ const applyCommand = (command: "activate" | "deactivate" | "auditory") => {
   }, 1800)
 
   if (command === "activate") {
+    stopVisualModeVoiceListener()
     chrome.storage.local.set({
       sensa_visual_active: true,
       sensa_visual_activated_via_voice: true,
